@@ -1,7 +1,7 @@
 # Gate 2 — Log viewer architecture
 
-Draft for Andreas's approval. Gate 1 is approved; Gate 2 is not. No implementation
-or lab has been started. This document chooses boundaries and flows, not the
+Approved by Andreas on 2026-10-23 (“Yeah. That sounds good. Let's go for it.”).
+No implementation or lab has been started. This document chooses boundaries and flows, not the
 file/type signatures or slice sequence reserved for Gates 3 and 4.
 
 ## Fit
@@ -219,10 +219,10 @@ Local success does not prove Azure networking/SSO, Serverless or multi-node beha
 
 ## Approval and remaining uncertainty
 
-Approve the independent app boundary, initial Elastic/fake providers, shared
+Approved: independent app boundary, initial Elastic/fake providers, shared
 policy-safe investigation path, stdio/default-deny MCP and two-loop local lab.
 The production provider/version still needs identification; that does not block
 designing or testing a clearly labeled local Elastic target. If the actual source
 is Azure Monitor, revisit adapter priority before claiming live readiness.
 
-Approve Gate 2, or what should change?
+Proceed to Gate 3 program design; implementation still waits for Gate 4 approval.
