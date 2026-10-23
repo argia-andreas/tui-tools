@@ -1,6 +1,6 @@
 # Local Service Bus development research
 
-Research and bounded execution checked 2026-10-23. The emulator now runs in this orb and messaging checks passed. Runtime counts have a verified compatibility gap. This informs Gate 2; it is not an approved architecture or completed reusable lab implementation.
+Research and bounded execution checked 2026-10-23. The emulator now runs in this orb and messaging checks passed. Runtime counts have a verified compatibility gap. Gate 2 subsequently approved the independent lab and layered tests; this experiment is not a completed reusable lab implementation.
 
 ## Azurite is not Service Bus
 
@@ -63,7 +63,7 @@ Manifest research found amd64 and arm64 emulator children. SQL's `latest` manife
 2. Disposable emulator integration on a container-capable machine: health/readiness, seeded topology, send, peek, receive/settle, DLQ, replay and count/discovery checks. Development commands should include start/stop, seed/reset, send, drain and dead-letter, guarded against cloud endpoints.
 3. Explicit opt-in real-Azure smoke checks for Entra/RBAC and differences the emulator cannot prove; no production writes implied.
 
-Remaining: approve Gate 2, validate the selected Go SDK path, specify reusable lab tooling in Gate 3, and execute macOS checks on a Mac. Emulator messaging/discovery is proven here; accurate runtime counts, cloud auth and macOS execution are not. Do not add unapproved application implementation to conceal these gaps.
+Remaining: review Gate 3's reusable tooling design, validate the selected Go SDK path during implementation, and execute macOS checks on a Mac. Read-only source research confirms azservicebus 1.11.0 messaging emulator support and a separate admin HTTP-routing requirement; it does not establish executed Go compatibility. Emulator messaging/discovery is proven here using other SDKs; accurate runtime counts, cloud auth and macOS execution are not. Do not add unapproved application implementation to conceal these gaps.
 
 ## Sources
 

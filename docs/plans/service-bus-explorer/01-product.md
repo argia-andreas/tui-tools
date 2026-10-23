@@ -1,6 +1,6 @@
 # Product: Service Bus Explorer terminal UI
 
-Working description, not a selected product name. Gate 1 approved 2026-10-23, including the platform, local-feedback and replay decisions below. No implementation or technical architecture is approved by this document.
+Working description, not a selected product name. Gate 1 approved 2026-10-23, including the platform, local-feedback and replay decisions below. Architecture approval is recorded separately in `02-architecture.md`; program design and implementation slices remain unapproved.
 
 ## Problem
 
@@ -45,7 +45,7 @@ A terminal workspace for your Azure Service Bus queues and topic subscriptions. 
 
 - Peek is the default inspection path: no lock acquisition or message removal. Distinguish it from Receive, which acquires a message lock.
 - Complete removes a received message; Dead-letter settles it into its DLQ. Review risky actions with clear resource/message scope and consequences; safe cancellation is the default.
-- DLQ actions include resending to the source queue/topic and permanently deleting selected DLQ messages, subject to permissions and explicit review.
+- DLQ actions include resending to the source queue/topic and permanently deleting the explicitly reviewed, received DLQ message, subject to permissions. User-approved first flow: receive next, then review its actual identity; it may differ from the highlighted peek message. No promise of arbitrary peek-row acquisition. Releasing a received message can affect delivery count, so cancellation is not presented as side-effect-free browsing.
 - Resend sends a new copy, not an atomic move. Review destination, duplicate-processing risk and whether to remove the original only after a successful send. Send success and cleanup failure must be distinguishable; the original can remain in the DLQ.
 - Replay from a subscription DLQ sends to the original topic; warn that other matching subscriptions may receive another copy. No subscription-only replay is promised. Queue DLQ replay sends to the original queue.
 
@@ -74,4 +74,4 @@ Painter-generated images, not running UI. Preserve them rather than creating a n
 - Exact shortcuts, preferences navigation and theme selection.
 - Watchlist size behavior beyond one grid viewport, refresh/staleness display and partial-access states.
 - Session-enabled messages, duplicate detection and replay property handling.
-- Architecture, concrete performance targets and implementation plan still require their own approval.
+- Architecture is approved separately. Gate 3 proposes concrete behavior/resource targets; Gate 4 will define implementation slices. Neither is approved yet.

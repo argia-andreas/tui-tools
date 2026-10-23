@@ -1,6 +1,6 @@
 # Architecture: Service Bus Explorer terminal UI
 
-Gate 2 proposal — requires approval. Gate 1 is approved. The local emulator capability experiment is running; no application implementation or reusable repository lab tooling exists yet.
+Gate 2 approved 2026-10-23: independent app/lab, direct SDK access and layered testing. The user also agreed to independent-first theme/layout reuse, with shared-library extraction only after contracts stabilize. The local emulator capability experiment is running; no application implementation or reusable repository lab tooling exists yet. Gate 3 details remain proposals.
 
 ## Fit and isolation
 
@@ -33,9 +33,9 @@ No application HTTP server or backend. Initially one local terminal process comm
 3. Fetch runtime counts for watched entities asynchronously and with bounded concurrency. Retain last-known data with a stale marker on failure; do not tightly poll every entity or block keyboard input on requests. Exact intervals/limits are Gate 3 decisions.
 4. Selecting Active/DLQ peeks a bounded page, with explicit sequence positioning for refresh/pagination. A probe showed that implicit peek cursors can advance within a client; refreshing must not silently skip the messages already viewed.
 5. Inspector shows the selected message body and properties without receiving it. Message actions require explicit scope and a separate review/confirmation.
-6. Resend receives/locks the selected DLQ message, sends a new copy to the original queue/topic, and only then performs separately authorized optional cleanup. Distinguish send failure, confirmed send with failed cleanup, and unknown outcomes. Do not auto-retry an ambiguous send as though it were safe. Topic confirmation warns about other matching subscriptions.
+6. The user-approved mutation flow receives/locks the next available DLQ message, then reviews that actual message before resend/delete. It does not acquire a peek-selected message by sequence. Resend sends a new copy to the original queue/topic, and only then performs separately authorized optional cleanup. Distinguish send rejection, confirmed send with failed cleanup, and unknown outcomes. Do not auto-retry an ambiguous send as though it were safe. Topic confirmation warns about other matching subscriptions.
 
-Selection-to-receive identity, lock lifecycle and property preservation must be specified before mutation implementation. Do not assume that the next received DLQ message is the message selected by peek.
+Supported Go SDK contracts do not acquire an arbitrary active DLQ message by its peek sequence number; deferred-message receive is not a substitute. The user chose receive-next/review rather than receive-and-scan. Cancellation/release can affect delivery count. Gate 3 specifies lock lifecycle, message conversion and unsupported-session behavior before mutation implementation.
 
 ## Local development and verification
 
