@@ -1,6 +1,6 @@
 # Program Design: Service Bus Explorer terminal UI
 
-Gate 3 proposal, prepared 2026-10-23. Gates 1 and 2 are approved. This document contains future contracts, not implemented application code. Gate 3 approval is followed by a separately approved Gate 4 slice plan.
+Gate 3 approved 2026-10-23. This document contains approved future contracts, not implemented application code. Application implementation follows a separately approved Gate 4 slice plan in `04-slices.md`.
 
 ## Boundaries and dependency baseline
 
