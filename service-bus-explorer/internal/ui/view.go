@@ -271,6 +271,12 @@ func (m Model) View() string {
 	if m.screen == "messages" {
 		keys = "  j/k message   [ Active   ] DLQ   i inspector   n/p pages   Tab focus   Esc back   q quit"
 	}
+	if m.width < 110 {
+		keys = "  j/k move  Enter open  ] DLQ  g/t view  b sidebar  q quit"
+		if m.screen == "messages" {
+			keys = "  j/k move  [/] view  n/p pages  i inspector  Esc back  q quit"
+		}
+	}
 	lines = append(lines, m.paint(strings.Repeat("─", m.width), m.theme.Border), m.paint(fit(keys, m.width), m.theme.Focus), m.paint(fit("  "+clean(m.status, false), m.width), m.theme.Muted))
 	return strings.Join(lines, "\n")
 }

@@ -100,6 +100,9 @@ func TestFixtureWorkspaceNavigationAndResponsiveFrames(t *testing.T) {
 	m = press(m, "tab")
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	assertFrame(t, m, 80, 24)
+	if !strings.Contains(ansi.Strip(m.View()), "q quit") {
+		t.Fatal("compact layout hid the exit shortcut")
+	}
 	m = press(m, "enter")
 	if !strings.Contains(ansi.Strip(m.View()), "orders / ACTIVE") {
 		t.Fatal("hidden sidebar retained focus after resize")

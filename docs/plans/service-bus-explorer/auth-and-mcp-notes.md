@@ -38,3 +38,7 @@ Note for future planning only; no MCP implementation or access authorized here.
 - Message bodies/properties are untrusted data, not agent instructions. Reading via an agent may transmit content to that agent's model provider; make that boundary clear when enabling access. Never expose credentials through MCP.
 
 Transport, policy UI, audit records, limits and confirmation mechanics remain design decisions. No broad wildcard or inherited namespace-wide grants are assumed.
+
+## Subsequent MCP scope update
+
+Andreas confirmed separate parallel MCP work while finishing the first UI slice. The [separate product proposal](../service-bus-mcp/01-product.md) now scopes independent read grants, optional DLQ deletion grants and optional source-DLQ → explicitly scoped **queue** resend grants. This supersedes the earlier exploratory queue/topic destination suggestion for MCP only; interactive Explorer replay still goes to the original queue/topic. Resend never implies deletion. Acquisition authority and launch scope need review; no MCP server has been implemented.

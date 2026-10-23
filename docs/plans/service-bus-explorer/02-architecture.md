@@ -1,6 +1,6 @@
 # Architecture: Service Bus Explorer terminal UI
 
-Gate 2 approved 2026-10-23: independent app/lab, direct SDK access and layered testing. The user also agreed to independent-first theme/layout reuse, with shared-library extraction only after contracts stabilize. The local emulator capability experiment is running; no application implementation or reusable repository lab tooling exists yet. Gate 3 is now approved separately; Gate 4's build sequence awaits approval.
+Gate 2 approved 2026-10-23: independent app/lab, direct SDK access and layered testing. The user also agreed to independent-first theme/layout reuse, with shared-library extraction only after contracts stabilize. All design gates are approved. Slice 1's fixture-only app exists; its Go broker backend and reusable repository lab tooling remain future slices. The separate emulator capability experiment is running.
 
 ## Fit and isolation
 

@@ -1,6 +1,6 @@
 # Product: Service Bus Explorer terminal UI
 
-Working description, not a selected product name. Gate 1 approved 2026-10-23, including the platform, local-feedback and replay decisions below. Architecture and program design approvals are recorded separately; implementation slices await Gate 4 approval.
+Working description, not a selected product name. Gate 1 approved 2026-10-23, including the platform, local-feedback and replay decisions below. All four design gates are approved separately; consult `00-status.md` for implemented slices versus future scope.
 
 ## Problem
 
@@ -74,4 +74,4 @@ Painter-generated images, not running UI. Preserve them rather than creating a n
 - Exact shortcuts, preferences navigation and theme selection.
 - Watchlist size behavior beyond one grid viewport, refresh/staleness display and partial-access states.
 - Session-enabled messages, duplicate detection and replay property handling.
-- Architecture and Gate 3's concrete behavior/resource targets are approved separately. Gate 4's implementation slices await approval; the items above are resolved or explicitly deferred in the program design where specified.
+- All design gates are approved separately. The items above are resolved or explicitly deferred in the program design where specified; slice progress lives in `00-status.md`.
