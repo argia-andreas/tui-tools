@@ -1,6 +1,6 @@
 # Product: Service Bus Explorer terminal UI
 
-Working description, not a selected product name. This document captures the discussion to date; it is not a claim of implemented functionality or formal product-gate approval.
+Working description, not a selected product name. Gate 1 approved 2026-10-23, including the platform, local-feedback and replay decisions below. No implementation or technical architecture is approved by this document.
 
 ## Problem
 
@@ -8,13 +8,21 @@ Developers need a keyboard-first way to see the Azure Service Bus queues that ma
 
 ## Success metric
 
-Proposed acceptance measure, not yet user-approved or measured: at a representative terminal size, show 12 watched queues simultaneously in grid view with both queued and DLQ counts, and let the user open either message view using the keyboard. Table view must show more rows at that size. Choose the terminal dimensions and broader usability/performance targets during design; do not treat generated image dimensions as tested terminal capacity.
+Acceptance direction: at a representative terminal size, show 12 watched queues simultaneously in grid view with both queued and DLQ counts, and let the user open either message view using the keyboard. Table view must show more rows at that size. Choose the terminal dimensions and broader usability/performance targets during design; do not treat generated image dimensions as tested terminal capacity. No measurements have been made yet.
 
 ## Announcement — proposed user experience
 
 A terminal workspace for your Azure Service Bus queues and topic subscriptions. Start with a personal dashboard, switch between clear queue boxes and a compact table, and jump straight into active or dead-letter messages. Inspect safely by default, find actions with Ctrl+P, and review consequences before resending or deleting messages. Choose a dark, warm or light theme and keep navigation visible or collapse it for more space.
 
 ## User-requested direction
+
+### Initial delivery and local feedback
+
+- Linux and macOS first, with portable choices allowing Windows later without redesign.
+- Begin with connection-string access, dashboard and safe Active/DLQ browsing; add reviewed single-message resend/delete next. Microsoft sign-in follows the connection-string development path. Bulk operations and MCP are later scope.
+- Fast repeatable local development must work on the developer's computer and, where feasible, in the orb. Include deterministic seeded active/DLQ messages, empty queues, useful failure reasons and topic subscriptions.
+- Provide simple development commands to start, seed/reset, send, drain and dead-letter messages in a disposable lab. Do not allow these destructive lab commands to silently target real Azure.
+- Separate instant fixture-backed UI tests from local broker integration and the smaller set of checks requiring real Azure. Mocks are not proof of broker behavior or cloud authentication.
 
 ### Dashboard
 
@@ -39,11 +47,11 @@ A terminal workspace for your Azure Service Bus queues and topic subscriptions. 
 - Complete removes a received message; Dead-letter settles it into its DLQ. Review risky actions with clear resource/message scope and consequences; safe cancellation is the default.
 - DLQ actions include resending to the source queue/topic and permanently deleting selected DLQ messages, subject to permissions and explicit review.
 - Resend sends a new copy, not an atomic move. Review destination, duplicate-processing risk and whether to remove the original only after a successful send. Send success and cleanup failure must be distinguishable; the original can remain in the DLQ.
-- Topic-subscription replay targets and effects on other subscriptions need an explicit product decision before implementation; a subscription is not a send destination.
+- Replay from a subscription DLQ sends to the original topic; warn that other matching subscriptions may receive another copy. No subscription-only replay is promised. Queue DLQ replay sends to the original queue.
 
 ### Authentication and future agents
 
-- Discussed options: Microsoft/Azure sign-in and connection strings, informed by ViewBus. Microsoft sign-in is the recommended default, not yet an approved implementation choice. Make account, tenant and permissions understandable.
+- Product auth options are Microsoft/Azure sign-in and connection strings, informed by ViewBus. Implement connection strings first for local development; Microsoft sign-in follows. Make account, tenant and permissions understandable. Exact SDK and token storage implementation remain architecture decisions.
 - Future MCP access is locked down by default. Explicitly allowlist read access to particular queues/subscriptions and DLQs, with a separate optional allowlist for resubmission. Reading never implies resending, resending never silently implies deletion, and dashboard inclusion never grants MCP access.
 - See the separate research notes for auth recommendations, references and security boundaries; these are not architecture approval.
 
@@ -59,11 +67,11 @@ A terminal workspace for your Azure Service Bus queues and topic subscriptions. 
 
 Painter-generated images, not running UI. Preserve them rather than creating a new interactive prototype as part of this documentation-only task.
 
-## Open before product approval
+## Open for later design
 
-- Product name, target operating systems, terminal size and accessible icon fallback.
-- Initial release boundary versus future capabilities, including timing of MCP support.
+- Product name, representative terminal size and accessible icon fallback.
+- Detailed delivery slices and timing of deferred capabilities.
 - Exact shortcuts, preferences navigation and theme selection.
 - Watchlist size behavior beyond one grid viewport, refresh/staleness display and partial-access states.
-- Session-enabled messages, duplicate detection, replay property handling and topic replay scope.
-- Confirm success measures and then review Gate 1 explicitly. No implementation plan is approved.
+- Session-enabled messages, duplicate detection and replay property handling.
+- Architecture, concrete performance targets and implementation plan still require their own approval.
