@@ -34,7 +34,9 @@ for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64; do
   mkdir "$stage/$name"
   echo "Building $target..."
   CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -o "$stage/$name/lazyftp" ./cmd/lazyftp
+  CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -o "$stage/$name/lazyftp-mcp" ./cmd/lazyftp-mcp
   cp docs/alpha.md "$stage/$name/ALPHA.md"
+  cp docs/mcp.md "$stage/$name/MCP.md"
   printf 'lazyftp %s\nTarget: %s\nSource: %s\nToolchain: %s\n' \
     "$version" "$target" "$revision" "$(go version)" > "$stage/$name/BUILD.txt"
   tar -czf "$output/$name.tar.gz" -C "$stage" "$name"

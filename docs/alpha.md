@@ -20,7 +20,8 @@ bash scripts/package.sh 0.1.0-alpha.1 /tmp/lazyftp-alpha-check
 The explicit build matrix is Linux amd64/arm64 and macOS amd64/arm64. Windows is
 not packaged in this alpha. Cross-builds use `CGO_ENABLED=0` and `-trimpath`;
 they are not native runtime tests. Each versioned `.tar.gz` contains `lazyftp`,
-these instructions as `ALPHA.md`, and `BUILD.txt` with the package label, target,
+`lazyftp-mcp`, its default-deny policy guide as `MCP.md`, these instructions as
+`ALPHA.md`, and `BUILD.txt` with the package label, target,
 source revision/dirty status and toolchain. The version labels the archive; the
 executable has no `--version` flag. Packages use the current working tree, so
 commit intended changes first for traceability. A failed build can leave an
@@ -62,9 +63,16 @@ established by packaging.
 ```
 
 Never distribute your rclone config with an archive. Live mode can write files
-after explicit confirmation. Current transfer support is single-file
-local↔remote copy, not recursive jobs, synchronization or remote↔remote copy.
+after explicit confirmation. Files and recursive folders copy local↔remote
+through a serial in-memory queue, with individual conflict choices and retry
+of failed/canceled files. Empty directories are not created; cancellation may
+leave partial files. Synchronization and remote↔remote copying are not supported.
 FTP cannot guarantee atomic no-clobber against a concurrent external writer.
+
+`lazyftp-mcp` is a separate stdio server. It denies every operation until an
+operator-owned policy grants listing/upload/download for explicit remote and
+local roots. It refuses overwrite requests. Read `MCP.md` before enabling permissions;
+path checks are not race-proof confinement against hostile filesystem writers.
 
 Storage consumers may type-assert the optional
 `storage.Reader` interface: `Read(context.Context, storage.Location, int64)
@@ -91,8 +99,10 @@ bash -n scripts/package.sh
 
 Normal tests need no rclone service or cloud account. Controlled process tests
 exercise an overproducing backend, cancellation and credential-bearing stderr.
-For optional real local FTP/Azurite tests, prepare the repository's disposable
+For optional real local FTP/Azurite/S3-compatible tests, prepare the disposable
 lab (`make lab-up lab-seed`) and run `make test-integration`. Those checks validate
 local mechanics only, not real FTP servers, Azure accounts, production network
-conditions or every packaged platform. Terminal behavior and UI preview states
-need their own terminal acceptance checks.
+conditions or every packaged platform. The combined integration target includes
+byte-verified UI folder round trips and MCP subprocess transfers on all three
+backends. Terminal behavior and UI preview states also have separate terminal
+acceptance checks.
