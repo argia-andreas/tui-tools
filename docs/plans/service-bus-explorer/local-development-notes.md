@@ -63,7 +63,47 @@ Manifest research found amd64 and arm64 emulator children. SQL's `latest` manife
 2. Disposable emulator integration on a container-capable machine: health/readiness, seeded topology, send, peek, receive/settle, DLQ, replay and count/discovery checks. Development commands should include start/stop, seed/reset, send, drain and dead-letter, guarded against cloud endpoints.
 3. Explicit opt-in real-Azure smoke checks for Entra/RBAC and differences the emulator cannot prove; no production writes implied.
 
-Remaining: review Gate 3's reusable tooling design, validate the selected Go SDK path during implementation, and execute macOS checks on a Mac. Read-only source research confirms azservicebus 1.11.0 messaging emulator support and a separate admin HTTP-routing requirement; it does not establish executed Go compatibility. Emulator messaging/discovery is proven here using other SDKs; accurate runtime counts, cloud auth and macOS execution are not. Do not add unapproved application implementation to conceal these gaps.
+The earlier experiment did not establish Go compatibility. The approved Slice 2 implementation below now does; accurate runtime counts, cloud authentication and native macOS execution remain unverified.
+
+## Slice 2 — reusable Go lab, executed 2026-10-23
+
+`service-bus-explorer/` now owns pinned Compose/config, guarded Python lifecycle
+commands, Go seed/send/peek/dead-letter/drain tooling and the real read-only TUI
+backend. No LazyFTP/root lab or setup files were modified. The new Compose
+project and supervised orb service are `sbx-explorer-lab`, publishing only
+loopback 5673/5301; the older spike remains independent. Generated SQL credentials
+are private outside Git at `~/.local/share/sbx-explorer-lab/compose.env`.
+
+Executed project-local commands with Go 1.27.3 and SDK 1.11.0:
+
+- `make lab-seed LAB_FLAGS="--sudo --orb --accept-eula --confirm-disposable"`
+  twice successfully from recreated empty brokers after fixing seed pacing.
+- `make integration-test`: real SDK discovery of 12 queues/two subscriptions,
+  independently expected IDs/body bytes/properties, explicit paging and refresh,
+  Active/DLQ bodies/reasons, empty queue, and independently received binary probe
+  after peek. Real PTY verified emulator labeling, unavailable counts, navigation,
+  pages/refresh, resize and clean exit. Repeated after reseed.
+- Actual lab CLI send/repeated peek/dead-letter/drain with asymmetric multiline
+  UTF-8 body; exact bytes retained, reason retained, drain acknowledged 1 then 0.
+- `make test terminal-test` and `go vet ./...`: fixture/guard/race-enabled tests
+  and the original fixture PTY control passed separately.
+
+First unpaced seed stopped partway through on the broker's 50002 throttle with
+unknown send outcome. It was not resumed or blindly retried. Successful send
+batches are now paced at 100 ms, and two explicit reset/reseed runs completed.
+This is a measured local workaround, not a published emulator throughput limit.
+
+Queue insertion expectations follow the shared fixture scenario. Eight topic
+publications fan out to both subscriptions; dead-lettering one for Billing and
+three for Shipping leaves 7/1 and 5/3 Active/DLQ samples respectively. Never show
+these expectations as live totals. Emulator runtime counts deliberately remain
+unavailable, regardless of silent SDK zeros. No cloud/native Mac claim follows.
+
+Inspected actual terminal screenshots and keyboard recording, indexed in the
+workspace `.amp/in/artifacts/service-bus-slice2/README.md`. The temporary ttyd
+capture harness was stopped; the seeded disposable lab remains running. See the
+application README for portable commands, explicit license acceptance, destructive
+operation guards and the retired SQL Edge/untested Apple Silicon limitation.
 
 ## Sources
 

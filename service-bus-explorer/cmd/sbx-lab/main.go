@@ -210,6 +210,9 @@ func send(client *azservicebus.Client, destination string, messages []explorer.M
 			return errors.New("send failed; outcome may be unknown; inspect destination before retrying")
 		}
 		messages = messages[n:]
+		// The development broker throttles bursts during a large seed. Pace
+		// acknowledged batches instead of retrying an ambiguous send result.
+		time.Sleep(100 * time.Millisecond)
 	}
 	return nil
 }

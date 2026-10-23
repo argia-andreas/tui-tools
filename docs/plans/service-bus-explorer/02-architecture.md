@@ -1,20 +1,20 @@
 # Architecture: Service Bus Explorer terminal UI
 
-Gate 2 approved 2026-10-23: independent app/lab, direct SDK access and layered testing. The user also agreed to independent-first theme/layout reuse, with shared-library extraction only after contracts stabilize. All design gates are approved. Slice 1's fixture-only app exists; its Go broker backend and reusable repository lab tooling remain future slices. The separate emulator capability experiment is running.
+Gate 2 approved 2026-10-23: independent app/lab, direct SDK access and layered testing. The user also agreed to independent-first theme/layout reuse, with shared-library extraction only after contracts stabilize. All design gates are approved. Slices 1–2 now provide the fixture workspace, read-only Go emulator backend and reusable repository lab tooling. The earlier emulator capability experiment remains separate.
 
 ## Fit and isolation
 
 - Build an independent Go application in `service-bus-explorer/` with its own module, dependency lock, build commands, lab and configuration. Do not change LazyFTP's module, commands, internal packages, Makefile, setup scripts, documentation or lab.
 - Recommend Bubble Tea/Lip Gloss for a keyboard-first terminal UI and the official Azure Service Bus Go SDK for messaging/administration. The repository already uses this terminal toolkit, but that is familiarity, not authorization to import LazyFTP application code. Pin versions and validate SDK behavior in program design.
-- Prefer direct SDK calls over a separate .NET broker bridge. A bounded experiment verified messaging via the official JavaScript SDK and checked the .NET administration behavior; it did not validate a Go implementation. Go SDK compatibility remains an explicit first integration check, not an assumed success.
+- Prefer direct SDK calls over a separate .NET broker bridge. The initial JavaScript/.NET capability experiment did not validate Go; Slice 2 subsequently executed the Go SDK discovery/peek path and independent receipt check against the pinned emulator. This does not establish cloud authentication or accurate runtime counters.
 - Keep terminal rendering, explorer actions and Azure access separate enough that deterministic in-memory fixtures can drive the same user-facing flows. Do not build a generic plugin system or share storage abstractions with FTP.
 
 ## Endpoints
 
 No application HTTP server or backend. Initially one local terminal process communicates directly with the selected namespace.
 
-- Messaging: Azure Service Bus AMQP/TLS in cloud; explicitly selected emulator mode uses local AMQP/TCP on 5672.
-- Discovery/runtime properties: namespace administration endpoint in cloud. Emulator has a separate local HTTP administration endpoint on 5300; any non-TLS/custom-port transport handling must be confined to explicit emulator mode, never cloud requests.
+- Messaging: Azure Service Bus AMQP/TLS in future cloud mode; explicitly selected emulator mode uses local AMQP/TCP on host port 5673 (container 5672), separate from the older spike.
+- Discovery/runtime properties: namespace administration endpoint in future cloud mode. The reusable emulator lab publishes HTTP management at host port 5301 (container 5300); the exact-loopback read-only transport rejects redirects and all other authorities. It is never a cloud transport.
 - Browser Microsoft sign-in is a later delivery step. No embedded client secret or application-operated auth relay.
 - MCP is deferred; do not expose a listener or stdio tool surface in the first implementation.
 

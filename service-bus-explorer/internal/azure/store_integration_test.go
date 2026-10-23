@@ -84,10 +84,20 @@ func TestSeededEmulatorBrowsing(t *testing.T) {
 	if dlq.Messages[0].ID != "orders-dlq-0001" || dlq.Messages[0].DeadLetterReason != "MaxDeliveryCountExceeded" || len(dlq.Messages[0].Body) == 0 {
 		t.Fatal("DLQ inspection lost body or failure reason")
 	}
-	for _, name := range []string{"events/billing", "events/shipping"} {
-		page, err := store.Peek(ctx, byName[name], false, 0, 20)
-		if err != nil || len(page.Messages) == 0 {
-			t.Fatalf("topic subscription %s: %+v, %v", name, page, err)
+	for _, test := range []struct {
+		name, firstID string
+		active, dead  int
+	}{
+		{"events/billing", "events/billing-active-0001", 7, 1},
+		{"events/shipping", "events/billing-active-0003", 5, 3},
+	} {
+		page, err := store.Peek(ctx, byName[test.name], false, 0, 20)
+		if err != nil || len(page.Messages) != test.active || page.Messages[0].ID != test.firstID || !bytes.Contains(page.Messages[0].Body, []byte(test.firstID)) {
+			t.Fatalf("topic subscription %s: %+v, %v", test.name, page, err)
+		}
+		dead, err := store.Peek(ctx, byName[test.name], true, 0, 20)
+		if err != nil || len(dead.Messages) != test.dead || dead.Messages[0].ID != "events/billing-dlq-0001" || dead.Messages[0].DeadLetterReason != "MaxDeliveryCountExceeded" {
+			t.Fatalf("subscription DLQ %s: %+v, %v", test.name, dead, err)
 		}
 	}
 	empty, err := store.Peek(ctx, byName["empty"], false, 0, 20)
