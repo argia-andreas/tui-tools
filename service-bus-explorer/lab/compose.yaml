@@ -1,0 +1,23 @@
+name: sbx-explorer-lab
+services:
+  sql:
+    image: mcr.microsoft.com/azure-sql-edge@sha256:902628a8be89e35dfb7895ca31d602974c7bafde4d583a0d0873844feb1c42cf
+    environment:
+      ACCEPT_EULA: ${SBX_ACCEPT_EULA:?Explicit EULA acceptance required}
+      MSSQL_SA_PASSWORD: ${SBX_SQL_PASSWORD:?Use scripts/lab.py to generate local credentials}
+      MSSQL_MEMORY_LIMIT_MB: "1024"
+  emulator:
+    image: mcr.microsoft.com/azure-messaging/servicebus-emulator@sha256:5a96d893b245031740f7d46e0fe5ff282d24b78c4b7d761dd57590f3f010a9b3
+    depends_on:
+      - sql
+    ports:
+      - "127.0.0.1:5673:5672"
+      - "127.0.0.1:5301:5300"
+    volumes:
+      - ./config.json:/ServiceBus_Emulator/ConfigFiles/Config.json:ro
+    environment:
+      ACCEPT_EULA: ${SBX_ACCEPT_EULA:?Explicit EULA acceptance required}
+      SQL_SERVER: sql
+      MSSQL_SA_PASSWORD: ${SBX_SQL_PASSWORD:?Use scripts/lab.py to generate local credentials}
+      SQL_WAIT_INTERVAL: "30"
+      EMULATOR_HTTP_PORT: "5300"

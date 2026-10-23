@@ -1,0 +1,26 @@
+{
+  "UserConfig": {
+    "Namespaces": [{
+      "Name": "sbemulatorns",
+      "Queues": [
+        {"Name":"orders", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"payments", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"notifications", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"inventory", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"shipping", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"invoices", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"audit-log", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"email-outbox", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"webhook-dispatch", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"reports", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"customer-sync", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"empty", "Properties":{"MaxDeliveryCount":10}}
+      ],
+      "Topics": [{"Name":"events", "Subscriptions":[
+        {"Name":"billing", "Properties":{"MaxDeliveryCount":10}},
+        {"Name":"shipping", "Properties":{"MaxDeliveryCount":10}}
+      ]}]
+    }],
+    "Logging":{"Type":"Console"}
+  }
+}
