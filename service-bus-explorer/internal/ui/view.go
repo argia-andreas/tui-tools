@@ -365,10 +365,20 @@ func (m Model) settingsView(width, height int) []string {
 	if m.saving {
 		state = "saving…"
 	}
+	sidebar, inspector, layout := "Collapsed", "Hidden", "Grid"
+	if m.prefs.Sidebar {
+		sidebar = "Expanded"
+	}
+	if m.prefs.Inspector {
+		inspector = "Visible"
+	}
+	if m.prefs.Table {
+		layout = "Table"
+	}
 	labels := []string{"Color theme: " + m.prefs.Theme,
-		fmt.Sprintf("Navigation sidebar: %t", m.prefs.Sidebar),
-		fmt.Sprintf("Message inspector: %t", m.prefs.Inspector),
-		fmt.Sprintf("Dashboard table layout: %t", m.prefs.Table), "Save preferences (s)"}
+		"Navigation sidebar: " + sidebar,
+		"Message inspector: " + inspector,
+		"Dashboard layout: " + layout, "Save preferences (s)"}
 	for _, i := range m.items {
 		mark := "[ ]"
 		if m.watched(i.resource) {

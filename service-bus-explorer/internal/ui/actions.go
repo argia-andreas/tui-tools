@@ -213,7 +213,7 @@ func (m Model) tree() []treeRow {
 			continue
 		}
 		seen[ns] = true
-		rows = append(rows, treeRow{label: r.Namespace, branch: ns})
+		rows = append(rows, treeRow{label: r.Profile + " / " + r.Namespace, branch: ns})
 		if m.collapsed[ns] {
 			continue
 		}

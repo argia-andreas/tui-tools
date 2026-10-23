@@ -2,8 +2,9 @@
 
 An independent keyboard-first terminal workspace, alongside—but not part of—LazyFTP.
 **Two explicit modes:** deterministic offline fixtures, or read-only browsing
-against the independent local Service Bus emulator. No cloud connection,
-interactive receive/settlement operations or saved preferences exist yet.
+against the independent local Service Bus emulator. No cloud connection or
+interactive receive/settlement operations exist yet. Layout, theme and dashboard
+watchlists can be saved explicitly; credentials and MCP grants cannot.
 Fixture counts are sample data. Emulator counts are **unavailable**, never zero
 or totals inferred from peek pages.
 
@@ -19,7 +20,7 @@ Or inside this directory: `go run ./cmd/sbx --fixture`. Select exactly one of
 `--fixture` or `--emulator`; the app never silently falls back to sample data.
 
 The workspace includes a 12-card dashboard at 160×48, denser table over the
-same 14 watched queues/subscriptions, expanded/collapsible navigation, bounded
+same watched queues/subscriptions (14 by default), a collapsible namespace/entity tree, bounded
 Active/DLQ peek pages, and a read-only metadata/body inspector. Smaller terminals
 show fewer cards; move through the list to reach the rest. Under 110 columns the
 sidebar hides automatically. The full inspector appears when enough width exists.
@@ -31,17 +32,41 @@ sidebar hides automatically. The full inspector appears when enough width exists
 | `]` | Open selected entity's DLQ / switch to DLQ |
 | `[` | Switch to Active in message view |
 | `g` / `t` | Grid / table dashboard |
-| `Tab` / `Shift+Tab` | Switch sidebar/content focus when sidebar visible |
+| `Ctrl+P` | Open fuzzy actions; type to filter, arrows/Ctrl+N/P choose, Enter runs, Esc closes |
+| `Tab` / `Shift+Tab` | Cycle visible content, inspector and sidebar panes |
+| `h` / `l` | Collapse / expand the selected sidebar group |
 | `b` | Collapse/expand sidebar |
 | `i` | Toggle inspector in message view |
 | `n` / `p` / `r` | Next / previous / refresh peek page |
+| `r` on Dashboard | Refresh watched counts |
+| `j/k`, Page Up/Down in inspector | Scroll without changing selected message |
+| `s` in Settings | Save preferences explicitly |
 | `Esc` | Return to resource list/dashboard |
 | `q`, `Ctrl+C` | Quit |
 
-Settings is an explicitly labeled placeholder. Ctrl+P, theme selection, saved
-watchlists and reviewed mutations arrive in later approved slices; they are not
-working features yet. Three semantic
-palettes exist internally, but this slice renders the default Midnight theme.
+Settings and Ctrl+P provide Midnight, Gruvbox and Light themes, layout controls,
+watchlist editing and Save preferences. Printable keys—including `q`, `j`, and
+`k`—belong to the palette query while it is open. There are no receive/resend/
+delete actions in this slice.
+
+Preferences use `os.UserConfigDir()/service-bus-explorer/preferences.json`
+(`$XDG_CONFIG_HOME` or `~/.config` on Linux; `~/Library/Application Support` on
+macOS). Override with `--config /path/preferences.json`; `--ascii` substitutes
+ASCII UI glyphs. Changes apply immediately but persist **only on Save**. The
+footer marks unsaved edits. Malformed/unsupported files stop startup and are
+never silently replaced. Files are written privately via atomic replacement.
+
+Watchlists retain full profile/namespace/queue or topic/subscription identity.
+An absent profile initially watches all discovered resources; an explicit empty
+list watches none. Unwatched resources remain browsable under Queues, Topics and
+the tree. Dashboard inclusion never grants MCP access. No connection strings,
+credentials or message contents are persisted.
+
+Counts refresh 30 seconds after each bounded sweep, with manual refresh and at
+most four concurrent reads. Discovery/browsing remains responsive during reads.
+Failed reads retain prior values marked `~` (stale), with observation time and
+error details for the selected entity; `—` means unavailable/unobserved, not zero.
+The emulator's known counter limitation remains unavailable after refresh.
 
 ## Reproducible local lab
 
@@ -103,7 +128,11 @@ make -C service-bus-explorer terminal-test
 
 The PTY test runs the real binary and decodes its screen; no Docker, Azure or
 credentials are needed. It covers 12-card layout, grid/table, navigation, Active/
-DLQ previews, paging and resize. PTY tests currently require POSIX (Linux/macOS).
+DLQ previews, paging, resize, palette query ownership, actual theme colors and
+saved-watchlist reload after restarting the binary. Go tests additionally cover
+full identities/empty watchlists, stale counts, nonoverlapping bounded reads,
+tree grouping, inspector scrolling, Unicode and ASCII frames across themes.
+PTY tests currently require POSIX (Linux/macOS).
 Native macOS execution is not yet validated; cross-compilation is not that proof.
 
 After `lab-seed`, run the separate real-broker checks **serially**, without other
