@@ -27,6 +27,9 @@ type peeked struct {
 // Model is an offline-first workspace. Network/fixture reads run as commands.
 type Model struct {
 	store                                    explorer.Store
+	mode                                     string
+	life                                     context.Context
+	stop                                     context.CancelFunc
 	theme                                    theme.Theme
 	width, height                            int
 	items                                    []item
@@ -43,14 +46,15 @@ type Model struct {
 	status                                   string
 }
 
-func New(store explorer.Store) Model {
+func New(store explorer.Store, mode string) Model {
 	t, _ := theme.Get("")
-	return Model{store: store, theme: t, width: 160, height: 48, screen: "dashboard", sidebar: true, inspector: true, loading: true, status: "Loading offline fixtures…"}
+	ctx, cancel := context.WithCancel(context.Background())
+	return Model{store: store, mode: mode, life: ctx, stop: cancel, theme: t, width: 160, height: 48, screen: "dashboard", sidebar: true, inspector: true, loading: true, status: "Discovering resources…"}
 }
 
 func (m Model) Init() tea.Cmd {
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(m.life, 10*time.Second)
 		defer cancel()
 		resources, err := m.store.Discover(ctx)
 		if err != nil {
@@ -93,7 +97,7 @@ func (m Model) peek(from int64) (tea.Model, tea.Cmd) {
 	m.generation++
 	m.from, m.message, m.loading = from, 0, true
 	m.page = explorer.Page{}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(m.life, 10*time.Second)
 	m.cancel = cancel
 	store, r, dlq, generation := m.store, m.resource, m.dlq, m.generation
 	return m, func() tea.Msg {
@@ -118,6 +122,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.items = msg.items
 		m.status = "Offline sample data · browsing never receives or removes a message"
+		if m.mode == "emulator" {
+			m.status = "Emulator connected · runtime counts unavailable (emulator limitation) · peek only"
+		}
 	case peeked:
 		if msg.generation != m.generation {
 			break
@@ -132,6 +139,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		key := msg.String()
 		if key == "ctrl+c" || key == "q" {
+			m.stop()
 			if m.cancel != nil {
 				m.cancel()
 			}

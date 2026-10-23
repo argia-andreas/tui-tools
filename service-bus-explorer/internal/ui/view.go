@@ -79,7 +79,23 @@ func (m Model) sidebarView(height int) []string {
 		}
 		lines = append(lines, "")
 	}
-	lines = append(lines, m.paint("  NAMESPACE", m.theme.Muted), m.paint("  local-lab", m.theme.Foreground), "", m.paint("  12 queues", m.theme.Muted), m.paint("  2 subscriptions", m.theme.Muted), "", m.paint("  FIXTURE / OFFLINE", m.theme.Warning), m.paint("  Read-only sample", m.theme.Muted))
+	namespace, queues, subscriptions := "local-lab", 0, 0
+	for _, i := range m.items {
+		namespace = i.resource.Namespace
+		if i.resource.Queue != "" {
+			queues++
+		} else if i.resource.Subscription != "" {
+			subscriptions++
+		}
+	}
+	badge, detail := "FIXTURE / OFFLINE", "Read-only sample"
+	if m.mode == "emulator" {
+		badge, detail = "EMULATOR / LOCAL", "Read-only broker"
+		if len(m.items) == 0 {
+			namespace = "Not discovered"
+		}
+	}
+	lines = append(lines, m.paint("  NAMESPACE", m.theme.Muted), m.paint("  "+clean(namespace, false), m.theme.Foreground), "", m.paint(fmt.Sprintf("  %d queues", queues), m.theme.Muted), m.paint(fmt.Sprintf("  %d subscriptions", subscriptions), m.theme.Muted), "", m.paint("  "+badge, m.theme.Warning), m.paint("  "+detail, m.theme.Muted))
 	return m.panel("WORKSPACE", 24, height, lines, m.navFocus)
 }
 
@@ -107,7 +123,7 @@ func (m Model) dashboardView(width, height int) []string {
 		return m.panel("Settings", width, height, []string{"", m.paint("  Preferences arrive in the read-only workspace slice.", m.theme.Foreground), "", m.paint("  This tracer bullet does not save configuration or credentials.", m.theme.Muted), "", m.paint("  Esc returns to the dashboard.", m.theme.Focus)}, true)
 	}
 	if m.loading {
-		return m.panel(title, width, height, []string{"", m.paint("  Loading offline fixtures…", m.theme.Muted)}, true)
+		return m.panel(title, width, height, []string{"", m.paint("  Discovering resources…", m.theme.Muted)}, true)
 	}
 	var lines []string
 	mode := "GRID"
@@ -248,7 +264,12 @@ func (m Model) View() string {
 	}
 	header := "  SBX / Service Bus Explorer"
 	badge := "FIXTURE · OFFLINE  "
-	lines := []string{m.paint(fit(header, m.width-lipgloss.Width(badge)), m.theme.Focus) + m.paint(badge, m.theme.Warning), m.paint(fit("  Safe browsing workspace · sample data, no Azure connection", m.width), m.theme.Muted), m.paint(strings.Repeat("─", m.width), m.theme.Border)}
+	subtitle := "  Safe browsing workspace · sample data, no Azure connection"
+	if m.mode == "emulator" {
+		badge = "EMULATOR · LOCAL  "
+		subtitle = "  Real local broker · peek only · — means runtime counts unavailable"
+	}
+	lines := []string{m.paint(fit(header, m.width-lipgloss.Width(badge)), m.theme.Focus) + m.paint(badge, m.theme.Warning), m.paint(fit(subtitle, m.width), m.theme.Muted), m.paint(strings.Repeat("─", m.width), m.theme.Border)}
 	height, width := m.height-6, m.width
 	showSidebar := m.sidebar && width >= 110
 	if showSidebar {

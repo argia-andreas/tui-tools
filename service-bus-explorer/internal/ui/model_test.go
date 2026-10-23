@@ -1,11 +1,13 @@
 package ui_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"servicebusexplorer/internal/explorer"
 	"servicebusexplorer/internal/fixture"
 	"servicebusexplorer/internal/ui"
 )
@@ -16,7 +18,7 @@ func workspace(t *testing.T) tea.Model {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := ui.New(s)
+	m := ui.New(s, "fixture")
 	ready, _ := m.Update(m.Init()())
 	return ready
 }
@@ -123,4 +125,29 @@ func TestLateActiveReplyCannotReplaceDLQ(t *testing.T) {
 	if !strings.Contains(view, "orders-dlq-0001") || strings.Contains(view, "orders-active-0001") {
 		t.Fatalf("late reply replaced DLQ selection\n%s", view)
 	}
+}
+
+type unavailableCounts struct{ explorer.Store }
+
+func (unavailableCounts) Counts(context.Context, explorer.Resource) (explorer.Counts, error) {
+	return explorer.Counts{State: "unavailable", Detail: "emulator limitation"}, nil
+}
+
+func TestEmulatorLabelAndUnavailableCounts(t *testing.T) {
+	store, err := fixture.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := ui.New(unavailableCounts{store}, "emulator")
+	ready, _ := m.Update(m.Init()())
+	view := ansi.Strip(ready.View())
+	for _, want := range []string{"EMULATOR · LOCAL", "runtime counts unavailable", "— queued", "— dead-letter"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("missing %q\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "FIXTURE") || strings.Contains(view, "0 queued") || strings.Contains(view, "0 dead-letter") {
+		t.Fatal("emulator was mislabeled or unknown counts rendered as zero")
+	}
+	assertFrame(t, ready, 160, 48)
 }
