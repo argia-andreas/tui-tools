@@ -1,13 +1,13 @@
 # Log viewer exploration
 
 - Gate 1 — Product: APPROVED 2026-10-23 by Andreas (“Yes, this sounds good”).
-- Gate 2 — Architecture: pending.
+- Gate 2 — Architecture: in progress; draft in 02-architecture.md awaiting approval.
 - Gate 3 — Program Design: pending.
 - Gate 4 — Slice plan: pending.
 
 ## Scope
 
-Product exploration, Painter references, and provider feasibility research only.
+Product/design references, provider research, and an architecture proposal only.
 No implementation, approved architecture, slice commitments, deployment, or publishing.
 SIGNAL is a provisional mockup label, not an approved product name.
 
@@ -25,6 +25,11 @@ SIGNAL is a provisional mockup label, not an approved product name.
 - Andreas requested a fast local Elastic development/test loop. Recommend a fake
   provider for instant UI tests plus a real, pinned single-node Elasticsearch for
   adapter/security integration tests. See provider-research.md. No lab was started.
+- On Andreas's request to continue, pulled main before preparing Gate 2. The draft
+  proposes an independent log-viewer module, shared policy-safe investigation path,
+  capability-aware adapters, stdio-only/default-deny MCP and a standalone native
+  Elasticsearch lab in orbs (Docker equivalent on hosts with a daemon). Exact
+  release/digest, files and signatures wait for Gate 3. Stop for Gate 2 approval.
 - Painter images live only under `.amp/in/artifacts/log-viewer/`; they are static,
   fictional references, not rendered application screenshots or behavior tests.
 - Product and research notes take precedence over generated labels and shortcuts.
