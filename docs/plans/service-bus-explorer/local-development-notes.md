@@ -1,6 +1,6 @@
 # Local Service Bus development research
 
-Research checked 2026-10-23. No emulator deployment or broker test has been executed. This informs Gate 2; it is not an approved architecture.
+Research and bounded execution checked 2026-10-23. The emulator now runs in this orb and messaging checks passed. Runtime counts have a verified compatibility gap. This informs Gate 2; it is not an approved architecture or completed reusable lab implementation.
 
 ## Azurite is not Service Bus
 
@@ -22,7 +22,40 @@ Important boundaries:
 
 ## Observed orb state
 
-`docker info` found Docker CLI 29.9.2 but failed because `/var/run/docker.sock` does not exist. Architecture is x86_64; no Podman executable was found. The emulator cannot currently be started through an existing Docker daemon here. This is not proof that a daemon cannot be provisioned; investigate orb/container capabilities before selecting an alternative. Never report fixtures as successful emulator validation.
+The initial missing Docker socket was resolved by starting `dockerd` as supervised orb service `servicebus-docker` with `sudo`, using overlay2. A real `hello-world` container passed. Installed Docker Compose plugin and started the two-container emulator as supervised service `servicebus-lab`. Ports 5672/5300 bind loopback only; no public portal or cloud resources were created.
+
+The live experiment configuration is outside the repository at `/home/user/.local/share/servicebus-explorer-lab/`. It is a capability spike, not the future portable developer command interface. Inspect through `amp orb service status servicebus-lab` / `logs servicebus-lab` and `sudo docker compose -f /home/user/.local/share/servicebus-explorer-lab/compose.yaml ps`. No secret values need to be printed.
+
+Resource observations: x86_64, 3.8 GiB RAM, roughly 60 GiB disk initially free. After exercising the broker, Docker reported approximately 151 MiB for the emulator and 456 MiB for SQL; system available memory was about 2.7 GiB. No orb upgrade is needed for this tested workload. Larger/parallel suites have not been measured.
+
+## Executed capability probe
+
+Used a temporary Node probe with `@azure/service-bus` 7.10.0 and the official sample's isolated HTTP/custom-port administration override. This is not a recommendation to use private SDK overrides in production. A second probe used .NET SDK 10.0.402 and `Azure.Messaging.ServiceBus` 7.20.1 without custom administration overrides.
+
+Verified against emulator 2.0.1 on x86_64:
+
+- Health endpoint returned HTTP 200 and `Service is healthy`.
+- Discovered configured queues and both topic subscriptions.
+- Sent three known JSON messages and peeked their exact IDs/body data.
+- Confirmed peek left those messages available, using independent bounded samples (not aggregate counters).
+- Dead-lettered one, verified its ID/reason, and observed the expected two active / one DLQ sample.
+- Sent its replay copy before completing the original DLQ message; observed three active / one DLQ before cleanup, three active / zero DLQ after cleanup.
+- Completed Billing's original event, dead-lettered Shipping's original, then resent to the topic: both Billing and Shipping received the new copy. This independently demonstrates the agreed replay warning.
+- Drained exactly three remaining active messages; repeated from a fresh emulator restart successfully.
+- Left illustrative seed data in the running lab: Orders has two active and one dead-letter message; Empty is empty; Billing has one active event and Shipping one dead-letter event. These are seed expectations, not values from a trusted runtime count API.
+
+Important failure: queue runtime response returned HTTP 200 but omitted `CountDetails` and `AccessedAt`. The JavaScript SDK rejected it with `PARSE_ERROR`. Adding .NET-style `enrich=True` and API version 2024-05 did not change the omission. The unmodified .NET administration client returned active=0/DLQ=0 after a real send, and again after that message was dead-lettered. Do not present these zeros as accurate. No authoritative count fallback was implemented. This limits emulator validation of live dashboard totals; use fixtures for presentation and explicit cloud checks for true runtime counts.
+
+Explicit peek sequence positioning matters: repeated implicit peeks on a client can advance its shared management cursor. The probe used an explicit starting sequence for refresh assertions rather than treating an empty subsequent page as an empty queue.
+
+## Image reproducibility and macOS boundary
+
+Tested manifest-list digests:
+
+- Emulator: `mcr.microsoft.com/azure-messaging/servicebus-emulator@sha256:5a96d893b245031740f7d46e0fe5ff282d24b78c4b7d761dd57590f3f010a9b3` (2.0.1).
+- SQL: `mcr.microsoft.com/azure-sql-edge@sha256:902628a8be89e35dfb7895ca31d602974c7bafde4d583a0d0873844feb1c42cf` (the upstream `latest` multi-architecture manifest).
+
+Manifest research found amd64 and arm64 emulator children. SQL's `latest` manifest selects a 2.0.0-equivalent amd64 image but an older 1.0.7-equivalent arm64 image; pinning SQL 2.0.0 would not provide a native ARM image. SQL Edge is retired; historical ARM image availability does not prove supported Apple Silicon execution. No macOS device was available to execute this test. Validate the developer's actual Mac before claiming parity.
 
 ## Proposed feedback layers
 
@@ -30,7 +63,7 @@ Important boundaries:
 2. Disposable emulator integration on a container-capable machine: health/readiness, seeded topology, send, peek, receive/settle, DLQ, replay and count/discovery checks. Development commands should include start/stop, seed/reset, send, drain and dead-letter, guarded against cloud endpoints.
 3. Explicit opt-in real-Azure smoke checks for Entra/RBAC and differences the emulator cannot prove; no production writes implied.
 
-Before Gate 2 approval: validate a viable orb integration environment, SDK count/discovery support, Apple Silicon setup, and emulator DLQ/replay behavior with a bounded capability spike. Do not add unapproved implementation merely to conceal these unknowns.
+Remaining: approve Gate 2, validate the selected Go SDK path, specify reusable lab tooling in Gate 3, and execute macOS checks on a Mac. Emulator messaging/discovery is proven here; accurate runtime counts, cloud auth and macOS execution are not. Do not add unapproved application implementation to conceal these gaps.
 
 ## Sources
 
