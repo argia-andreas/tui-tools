@@ -46,7 +46,7 @@ func main() {
 		}
 	}
 	m := ui.New(ui.Options{Browser: storage.NewDemo(), Left: storage.Location{Path: "/project"}, Right: storage.Location{Remote: "demo-ftp", Path: "/incoming"}, Theme: t, Icons: *icons})
-	if _, err = tea.NewProgram(m, tea.WithAltScreen()).Run(); err != nil {
+	if _, err = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

@@ -140,10 +140,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				p.cursor = 0
 			}
 		}
+	case tea.MouseMsg:
+		return m.mouse(msg)
 	case tea.KeyMsg:
 		key := msg.String()
 		if key == "ctrl+c" {
 			return m, tea.Quit
+		}
+		if key == "f1" {
+			return m.execute("help")
 		}
 		if m.modal != "" {
 			return m.modalKey(msg)
@@ -326,6 +331,12 @@ func (m Model) modalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if m.modal == "help" {
+		switch key {
+		case "up", "k":
+			m.choice = max(0, m.choice-1)
+		case "down", "j":
+			m.choice = min(max(0, len(shortcutLines())-(min(20, m.height-4)-3)), m.choice+1)
+		}
 		return m, nil
 	}
 	switch key {
@@ -389,6 +400,7 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		return m, m.list(i)
 	case "help":
 		m.modal = "help"
+		m.choice = 0
 	case "quit":
 		return m, tea.Quit
 	case "copy", "preview":

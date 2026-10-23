@@ -72,6 +72,30 @@ func join(a, b []string) []string {
 	return result
 }
 
+const toolbar = " [Nav] [Info] [Jobs] [?] [Actions] "
+const paneControls = " ↑ Up  / Filter  ↻ Refresh"
+const paletteFooter = "  ↑↓ choose · Enter run · F1 shortcuts · Esc close"
+const helpFooter = "  ↑↓ / wheel scroll · Esc close"
+
+// Rendering and mouse input share these dimensions, including responsive panels.
+type workspaceLayout struct{ nav, inspector, center, left, height, drawer int }
+
+func (m Model) layout() workspaceLayout {
+	l := workspaceLayout{height: m.height - 3}
+	if m.navigation && m.width >= 90 {
+		l.nav = 22
+	}
+	if m.inspector && m.width >= 120 {
+		l.inspector = 28
+	}
+	l.center = m.width - l.nav - l.inspector
+	l.left = l.center / 2
+	if m.jobs {
+		l.drawer = min(7, l.height-6)
+	}
+	return l
+}
+
 func (m Model) View() string {
 	if m.width == 0 {
 		return "Starting workspace…"
@@ -79,20 +103,9 @@ func (m Model) View() string {
 	if m.width < 60 || m.height < 12 {
 		return m.paint(fit("Resize terminal to at least 60 × 12", m.width), m.theme.Warning)
 	}
-	h := m.height - 3
-	navWidth, inspectorWidth := 0, 0
-	if m.navigation && m.width >= 90 {
-		navWidth = 22
-	}
-	if m.inspector && m.width >= 120 {
-		inspectorWidth = 28
-	}
-	centerWidth := m.width - navWidth - inspectorWidth
-	leftWidth := centerWidth / 2
-	drawerHeight := 0
-	if m.jobs {
-		drawerHeight = min(7, h-6)
-	}
+	l := m.layout()
+	h, navWidth, inspectorWidth := l.height, l.nav, l.inspector
+	centerWidth, leftWidth, drawerHeight := l.center, l.left, l.drawer
 	center := join(m.filePane(0, leftWidth, h-drawerHeight), m.filePane(1, centerWidth-leftWidth, h-drawerHeight))
 	if m.jobs {
 		center = append(center, m.block("TRANSFERS · demo", centerWidth, drawerHeight, []string{
@@ -107,9 +120,16 @@ func (m Model) View() string {
 		body = join(body, m.inspectorPane(inspectorWidth, h))
 	}
 	headerLeft := m.paint(" LAZYFTP", m.theme.Focus) + m.paint(" / proof of concept", m.theme.Muted)
-	headerRight := m.paint(m.theme.Name+"  ·  Ctrl+P Actions ", m.theme.Foreground)
+	if m.width < 110 {
+		headerLeft = m.paint(" LAZYFTP", m.theme.Focus)
+	}
+	headerRight := toolbar
+	if m.width >= 110 {
+		headerRight = m.theme.Name + " ·" + headerRight
+	}
+	headerRight = m.paint(headerRight, m.theme.Foreground)
 	header := headerLeft + m.paint(strings.Repeat(" ", max(0, m.width-lipgloss.Width(headerLeft)-lipgloss.Width(headerRight))), m.theme.Foreground) + headerRight
-	footer := " Tab focus · ↑↓/jk move · Enter open · Space select · / filter · [ nav · ] info · t jobs · ? help"
+	footer := " Click row to open · Click marker to select · Wheel scroll · Ctrl+P actions · F1 / ? shortcuts"
 	if m.width < 110 {
 		footer = " Tab pane · j/k move · Enter open · Ctrl+P actions · ? help"
 	}
@@ -140,7 +160,7 @@ func (m Model) filePane(i, w, h int) []string {
 		accent = m.theme.Remote
 		label = "REMOTE"
 	}
-	lines := []string{m.paint(fit("  Name", max(1, w-13))+"Size", m.theme.Muted), m.paint(strings.Repeat("─", max(0, w-2)), m.theme.Border)}
+	lines := []string{m.paint(paneControls, m.theme.Muted), m.paint(strings.Repeat("─", max(0, w-2)), m.theme.Border)}
 	entries := p.visible()
 	available := max(1, h-7)
 	start := max(0, p.cursor-available+1)
@@ -178,11 +198,11 @@ func (m Model) filePane(i, w, h int) []string {
 				color = m.theme.Local
 			}
 		}
-		marker := " "
+		marker := "○"
 		if p.selected[e.Name] {
 			marker = "●"
 		}
-		if j == p.cursor && m.focus == i+1 {
+		if j == p.cursor && m.focus == i+1 && !p.selected[e.Name] {
 			marker = "›"
 		}
 		row := marker + " " + icon + " " + fit(name, max(1, w-17)) + fit(size, 10)
@@ -268,8 +288,11 @@ func (m Model) overlay(background []string) []string {
 	lines := []string{}
 	title := "ACTIONS · Ctrl+P"
 	if m.modal == "help" {
-		title = "KEYBOARD SHORTCUTS"
-		lines = []string{"", "  Ctrl+P        Search every action", "  Tab/Shift+Tab Focus next/previous panel", "  ↑↓ or j/k     Move cursor", "  Enter         Open directory / action", "  Backspace/h   Parent directory", "  Space         Select file", "  /             Filter current pane", "  [  /  ]       Navigation / inspector", "  t             Transfer drawer", "  Ctrl+R        Refresh", "  q             Quit", "", "  Esc returns to your workspace"}
+		title = "KEYBOARD SHORTCUTS · F1"
+		guide := shortcutLines()
+		start := min(m.choice, max(0, len(guide)-(h-3)))
+		lines = append(lines, guide[start:min(len(guide), start+h-3)]...)
+		lines = append(lines, m.paint(helpFooter, m.theme.Muted))
 	} else {
 		lines = append(lines, "  > "+text(m.query)+"▏", m.paint(strings.Repeat("─", w-2), m.theme.Border))
 		matches := m.matches()
@@ -293,7 +316,7 @@ func (m Model) overlay(background []string) []string {
 		if len(matches) == 0 {
 			lines = append(lines, "  No matching actions")
 		}
-		for len(lines) < h-6 {
+		for len(lines) < h-5 {
 			lines = append(lines, "")
 		}
 		detail := "Actions follow the focused pane."
@@ -303,13 +326,24 @@ func (m Model) overlay(background []string) []string {
 				detail = a.disabled
 			}
 		}
-		lines = append(lines, m.paint("  "+detail, m.theme.Muted), "", "  ↑↓ choose · Enter run · Esc close")
+		lines = append(lines, m.paint("  "+detail, m.theme.Muted), "", paletteFooter)
 	}
 	box := m.block(title, w, h, lines, true, m.theme.Focus)
+	box[0] = ansi.Cut(box[0], 0, w-6) + m.paint(" [×] ", m.theme.Focus) + ansi.Cut(box[0], w-1, w)
 	x, y := (m.width-w)/2, (m.height-h)/2
 	for i, row := range box {
 		idx := y + i
 		background[idx] = ansi.Cut(background[idx], 0, x) + row + ansi.Cut(background[idx], x+w, m.width)
 	}
 	return background
+}
+
+func shortcutLines() []string {
+	return []string{
+		"  DISCOVER", "  Ctrl+P        Search every action", "  F1 / ?        Keyboard shortcuts", "  Esc           Close modal / clear filter", "",
+		"  BROWSE & SELECT", "  Tab/Shift+Tab Focus next/previous panel", "  ↑↓ or j/k     Move cursor", "  Enter         Open directory / run action", "  Backspace/h   Parent directory", "  Space         Toggle file selection", "  /             Filter current pane", "  Ctrl+R        Refresh / retry", "",
+		"  WORKSPACE", "  [ / ]         Toggle navigation / inspector", "  t             Toggle transfer drawer", "  q / Ctrl+C    Quit workspace", "",
+		"  COMMAND PALETTE", "  Type          Fuzzy-search actions", "  ↑↓ / Ctrl+N/K Choose action", "  Enter         Run selected action", "  F1            Show this guide", "",
+		"  MOUSE", "  Click row     Open directory / inspect file", "  Click marker  Toggle selection without opening", "  Wheel         Scroll list / guide / palette", "  Top buttons   Toggle panels / help / actions",
+	}
 }

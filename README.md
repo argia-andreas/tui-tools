@@ -52,6 +52,7 @@ produce errors rather than silently falling back.
 | Key | Action |
 | --- | --- |
 | Ctrl+P | Open the command palette (including theme selection) |
+| F1 / ? | Open the grouped, scrollable shortcut guide (F1 also works in the palette) |
 | Tab | Move focus between panes |
 | Arrow keys / j / k | Navigate lists |
 | Enter / Backspace | Open directory / go to parent |
@@ -59,14 +60,25 @@ produce errors rather than silently falling back.
 | `/` / Ctrl+R | Filter the focused file pane / refresh |
 | `[` / `]` | Toggle the sidebars |
 | t | Toggle the transfer drawer |
-| ? / q | Help / quit |
+| q | Quit |
 
 In the palette, type to fuzzy-search, use arrows to choose, Enter to run, and
 Esc to return. In the navigation sidebar, Enter opens the selected location in
 the corresponding file pane. Local and remote selections remain independent.
 
-**Keyboard-only for now:** clicking a browser-hosted terminal focuses keyboard
-input; file rows and actions do not yet support mouse interaction. At narrow
+## Mouse navigation
+
+- Click a directory name to open it, or a file to focus it for the inspector.
+- Click a row's leading marker to toggle selection without opening it.
+- Click sidebar locations to switch endpoints. Up, Filter, and Refresh controls
+  are available above each file list.
+- Use the top Nav, Info, Jobs, ?, and Actions buttons to control the workspace.
+- Click palette results to run them; F1 shortcuts opens the keyboard guide.
+- Scroll the mouse wheel over lists, the palette, or the shortcut guide.
+- Close modals with ×, Esc, or an outside click. Outside clicks never activate
+  the files underneath.
+
+Your terminal must support mouse reporting (the browser demo does). At narrow
 widths optional sidebars hide automatically and return when there is room.
 
 ## Checks

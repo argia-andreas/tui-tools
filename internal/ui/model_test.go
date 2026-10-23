@@ -46,7 +46,7 @@ func (d *driver) run(cmd tea.Cmd) {
 	}
 }
 func (d *driver) key(key string) {
-	special := map[string]tea.KeyType{"tab": tea.KeyTab, "enter": tea.KeyEnter, "esc": tea.KeyEsc, "ctrl+p": tea.KeyCtrlP, "ctrl+r": tea.KeyCtrlR, "backspace": tea.KeyBackspace, "shift+tab": tea.KeyShiftTab}
+	special := map[string]tea.KeyType{"tab": tea.KeyTab, "enter": tea.KeyEnter, "esc": tea.KeyEsc, "ctrl+p": tea.KeyCtrlP, "ctrl+r": tea.KeyCtrlR, "backspace": tea.KeyBackspace, "shift+tab": tea.KeyShiftTab, "f1": tea.KeyF1}
 	if kind, ok := special[key]; ok {
 		d.deliver(tea.KeyMsg{Type: kind})
 	} else {
@@ -244,4 +244,96 @@ func TestUntrustedFilenameIsRenderedAsText(t *testing.T) {
 	if strings.Contains(d.model.View(), "\x1b[2J") {
 		t.Fatal("entry injected a terminal clear")
 	}
+}
+
+func TestMouseBrowsingAndShortcutGuide(t *testing.T) {
+	for _, size := range [][2]int{{160, 40}, {80, 24}, {60, 12}} {
+		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
+			d := start(t, storage.NewDemo())
+			d.deliver(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+			locate := func(label string) (int, int) {
+				t.Helper()
+				for y, row := range strings.Split(d.screen(), "\n") {
+					if i := strings.Index(row, label); i >= 0 {
+						return ansi.StringWidth(row[:i]), y
+					}
+				}
+				t.Fatalf("missing clickable text %q:\n%s", label, d.screen())
+				return 0, 0
+			}
+			click := func(x, y int) {
+				d.deliver(tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+				d.deliver(tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+			}
+			clickText := func(label string) {
+				x, y := locate(label)
+				click(x, y)
+			}
+			x, y := locate("src/")
+			click(x-4, y)
+			requireText(t, d, "1 selected")
+			if strings.Contains(d.screen(), "LOCAL /project/src") {
+				t.Fatal("selection marker opened directory")
+			}
+			click(x, y)
+			requireText(t, d, "browser.go")
+			clickText("↑ Up")
+			requireText(t, d, "src/")
+			clickText("[Actions]")
+			requireText(t, d, "ACTIONS · Ctrl+P")
+			d.key("f1")
+			requireText(t, d, "KEYBOARD SHORTCUTS")
+			for range 40 {
+				d.deliver(tea.MouseMsg{X: size[0] / 2, Y: size[1] / 2, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+			}
+			requireText(t, d, "Top buttons")
+			clickText("[×]")
+			x, y = locate("src/")
+			clickText("[Actions]")
+			// Dismissal must consume the click, not open the directory below.
+			if size[0] < 160 {
+				x, y = 0, 0 // the narrow modal covers the whole file row
+			}
+			click(x, y)
+			if strings.Contains(d.screen(), "LOCAL /project/src") || strings.Contains(d.screen(), "ACTIONS · Ctrl+P") {
+				t.Fatal("outside click did not dismiss modal safely")
+			}
+			clickText("src/")
+			requireText(t, d, "browser.go")
+			if size[0] == 160 {
+				clickText("demo-blob /assets")
+				requireText(t, d, "hero image.png")
+				clickText("icons/")
+				requireText(t, d, "logo.svg")
+				requireText(t, d, "browser.go") // remote navigation leaves local untouched
+				clickText("[Actions]")
+				clickText("Copy to left pane")
+				requireText(t, d, "demo is read-only")
+				requireText(t, d, "ACTIONS · Ctrl+P")
+				clickText("Keyboard shortcuts")
+				requireText(t, d, "KEYBOARD SHORTCUTS")
+			}
+		})
+	}
+}
+
+func TestMouseSelectsScrolledRow(t *testing.T) {
+	b := browserFunc(func(context.Context, storage.Location) ([]storage.Entry, error) {
+		entries := make([]storage.Entry, 40)
+		for i := range entries {
+			entries[i].Name = fmt.Sprintf("file-%02d", i)
+		}
+		return entries, nil
+	})
+	d := start(t, b)
+	d.deliver(tea.WindowSizeMsg{Width: 80, Height: 12})
+	d.deliver(tea.MouseMsg{X: 10, Y: 4, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+	d.deliver(tea.MouseMsg{X: 10, Y: 4, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	requireText(t, d, "› · file-02")
+	d.key("/")
+	d.key("17")
+	d.key("enter")
+	d.deliver(tea.MouseMsg{X: 1, Y: 4, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	requireText(t, d, "● · file-17")
+	requireText(t, d, "1 selected")
 }

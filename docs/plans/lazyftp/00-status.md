@@ -37,7 +37,9 @@
 ## First-slice implementation notes
 - Go 1.27.3, Bubble Tea 1.3.10, Lip Gloss 1.1.0. Fixture storage and semantic theme packages were independently delegated; combined verification stays in this checkout.
 - Dual-pane navigation, selection, filtering, sidebar connection switching, full-height sidebar toggles, metadata inspector, empty central job drawer, fuzzy Ctrl+P palette, help and four theme presets work.
-- Demo data only: no network or disk writes; copy and content-preview actions explicitly explain that they are not implemented. Mouse interactions are not implemented; clicking the browser terminal only focuses keyboard input.
+- Demo data only: no network or disk writes; copy and content-preview actions explicitly explain that they are not implemented.
+- Mouse reporting enables single-click directory navigation, marker selection, endpoint switching, panel controls, parent/filter/refresh buttons and palette actions. Scroll wheel works over lists and modals. Outside clicks dismiss modals without activating underlying rows.
+- F1 opens a grouped, scrollable shortcut guide from the workspace or palette; the palette also exposes a clickable F1 link and Keyboard shortcuts action. Keyboard navigation remains supported.
 - `make check`, `go test -race ./...`, `make test-terminal` and two idempotent setup runs exercised. Terminal smoke verifies actual input/resize handling and styled cell backgrounds, not just raw ANSI strings.
 - `.agents/setup` installs the pinned toolchain and PTY test dependencies; warm setup measured about 0.04s after dependency download.
 - A supervised one-off ttyd service provides a browser demo at the portal recorded in `.amp/portals/lazyftp-demo.json` (ignored). It launches only the read-only executable, not a shell. It is not yet a persisted repository service.
