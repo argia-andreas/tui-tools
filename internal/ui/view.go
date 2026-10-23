@@ -79,7 +79,17 @@ const helpFooter = "  ↑↓ / wheel scroll · Esc close"
 
 func (m Model) toolbar() string {
 	if m.transferer != nil {
-		return strings.Replace(toolbar, "[Actions]", "[Copy] [Actions]", 1)
+		controls := "[Copy] [Actions]"
+		if m.width >= 110 {
+			controls = "[Preview] " + controls
+			if m.cancelDisabled() == "" {
+				controls = "[Stop] " + controls
+			}
+			if m.retryDisabled() == "" {
+				controls = "[Retry] " + controls
+			}
+		}
+		return strings.Replace(toolbar, "[Actions]", controls, 1)
 	}
 	return toolbar
 }
@@ -112,6 +122,9 @@ func (m Model) layout() workspaceLayout {
 		if m.job != nil && m.job.err != nil {
 			l.drawer = min(6, l.height-6)
 		}
+		if len(m.queue) > 0 {
+			l.drawer = min(9, l.height-6)
+		}
 	}
 	return l
 }
@@ -120,7 +133,7 @@ func (m Model) layout() workspaceLayout {
 func (m Model) modalSize() (int, int) {
 	w, h := min(82, m.width-6), min(20, m.height-4)
 	switch m.modal {
-	case "copy":
+	case "copy", "batch":
 		h = min(h, 12)
 	case "rename":
 		h = min(h, 8)
@@ -162,6 +175,32 @@ func (m Model) View() string {
 			if m.job.err != nil {
 				jobLines = append(jobLines, m.paint("  "+text(m.job.err.Error()), m.theme.Error))
 			}
+		}
+		if len(m.queue) > 0 {
+			jobLines = []string{m.paint("  "+m.queueSummary(), m.theme.Focus)}
+			start := max(0, min(m.jobCursor, len(m.queue)-1)-max(0, drawerHeight-5))
+			for i := start; i < min(len(m.queue), start+drawerHeight-4); i++ {
+				j := m.queue[i]
+				row := "  " + j.state + " · " + text(j.destination.String())
+				if j.err != nil {
+					row += " — " + text(j.err.Error())
+				}
+				color := m.theme.Foreground
+				if j.state == "Failed" {
+					color = m.theme.Error
+				}
+				if j.state == "Completed" {
+					color = m.theme.Success
+				}
+				if j.state == "Canceled" || j.state == "Skipped" {
+					color = m.theme.Warning
+				}
+				if m.focus == 4 && i == m.jobCursor {
+					row = "› " + row[2:]
+				}
+				jobLines = append(jobLines, m.paint(row, color))
+			}
+			jobLines = append(jobLines, m.paint("  ↑↓ / wheel review · Ctrl+X stop · r retry · partial files may remain", m.theme.Muted))
 		}
 		center = append(center, m.block("TRANSFERS", centerWidth, drawerHeight, jobLines, m.focus == 4, m.theme.Success)...)
 	}
@@ -356,7 +395,7 @@ func (m Model) inspectorPane(w, h int) []string {
 		if e.IsDir {
 			kind = "Directory"
 		}
-		lines = append(lines, "  "+text(e.Name), "", fmt.Sprintf("  Size     %d B", e.Size), "  Type     "+kind, "  Modified", "  "+e.Modified.Format("02 Jan 2006 15:04"), "", m.paint("  CONTENT PREVIEW", m.theme.Muted), "  Not loaded", "  Coming after storage", "  integration.")
+		lines = append(lines, "  "+text(e.Name), "", fmt.Sprintf("  Size     %d B", e.Size), "  Type     "+kind, "  Modified", "  "+e.Modified.Format("02 Jan 2006 15:04"), "", m.paint("  CONTENT PREVIEW", m.theme.Muted), "  p / Actions → Preview", "  Explicit bounded read", "  (up to 64 KiB)")
 	}
 	return m.block("INSPECTOR", w, h, lines, m.focus == 3, m.theme.Remote)
 }
@@ -375,7 +414,11 @@ func (m Model) overlay(background []string) []string {
 	m.theme.Focus = accent
 	lines := []string{}
 	title := "ACTIONS · Ctrl+P"
-	if m.modal == "copy" || m.modal == "rename" {
+	if m.modal == "preview" {
+		title, lines = m.previewLines(w, h)
+	} else if m.modal == "batch" {
+		title, lines = m.batchLines(h)
+	} else if m.modal == "copy" || m.modal == "rename" {
 		title, lines = m.copyLines(w, h)
 	} else if m.modal == "help" {
 		title = "KEYBOARD SHORTCUTS · F1"
@@ -436,7 +479,7 @@ func (m Model) overlay(background []string) []string {
 func shortcutLines() []string {
 	return []string{
 		"  DISCOVER", "  Ctrl+P        Search every action", "  F1 / ?        Keyboard shortcuts", "  Esc           Close modal / clear filter", "",
-		"  BROWSE & SELECT", "  Tab/Shift+Tab Focus next/previous panel", "  ↑↓ or j/k     Move cursor", "  Enter         Open directory / run action", "  Backspace/h   Parent directory", "  Space         Toggle file selection", "  c             Confirm single-file copy (live)", "  /             Filter current pane", "  Ctrl+R        Refresh / retry", "",
+		"  BROWSE & SELECT", "  Tab/Shift+Tab Focus next/previous panel", "  ↑↓ or j/k     Move cursor", "  Enter         Open directory / run action", "  Backspace/h   Parent directory", "  Space         Toggle file selection", "  c             Copy files / folders (live)", "  Ctrl+X        Cancel unfinished transfers", "  r             Retry failed / canceled files", "  p             Bounded text preview", "  /             Filter current pane", "  Ctrl+R        Refresh listing", "",
 		"  WORKSPACE", "  [ / ]         Toggle navigation / inspector", "  t             Toggle transfer drawer", "  q / Ctrl+C    Quit workspace", "",
 		"  COMMAND PALETTE", "  Type          Fuzzy-search actions", "  ↑↓ / Ctrl+N/K Choose action", "  Enter         Run selected action", "  F1            Show this guide", "",
 		"  MOUSE", "  Click row     Open directory / inspect file", "  Click marker  Toggle selection without opening", "  Wheel         Scroll list / guide / palette", "  Top buttons   Toggle panels / help / actions",

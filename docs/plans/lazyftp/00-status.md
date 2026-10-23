@@ -7,15 +7,15 @@
 
 ## Slices
 - [x] Slice 1 — Interactive fixture-backed workspace, command palette and themes; fast tests and real-terminal smoke.
-- [ ] Slice 2 — Disposable FTP/Blob lab, backend spike and real remote browsing.
-- [ ] Slice 3 — Single-file transfers and conflict decisions, verified by returned bytes.
+- [x] Slice 2 — Disposable FTP/Blob/S3 lab, backend spike and real remote browsing.
+- [x] Slice 3 — Single-file transfers and conflict decisions, verified by returned bytes.
 - [ ] Slice 4 — Folder jobs, queue, cancellation, interruption and retry of unfinished work.
 - [ ] Slice 5 — Bounded previews, edge-case coverage and alpha packaging.
 
 ## Notes for a fresh session
 - The repository was empty at the start.
 - The user wants a keyboard-first TUI after poor experiences with Midnight Commander for FTP and Azure Storage Explorer for Blob storage.
-- FTP and Azure Blob are the first validation targets; SFTP and S3 remain later scope.
+- FTP and Azure Blob were the initial validation targets; user subsequently authorized S3-compatible local testing. SFTP remains later scope.
 - The user explicitly requests good testing and quick feedback loops, suggesting local Docker FTP and a Blob emulator.
 - Proposed architecture questions for Gate 2: Go/Bubble Tea, rclone CLI versus RC, Docker FTP and Azurite, deterministic fixtures, network-failure controls, terminal automation, and local developer commands.
 - Docker CLI is installed in this orb; daemon availability is not yet checked. Go and rclone were not found on PATH.
@@ -44,4 +44,15 @@
 - `.agents/setup` installs the pinned toolchain and PTY test dependencies; warm setup measured about 0.04s after dependency download.
 - A supervised one-off ttyd service provides a browser demo at the portal recorded in `.amp/portals/lazyftp-demo.json` (ignored). It launches only the read-only executable, not a shell. It is not yet a persisted repository service.
 - Artifacts under `.amp/in/artifacts/` are ignored local evidence, not generated mockups. Current sources and demo commands are documented in README.
-- A separate user-requested Service Bus mockup thread is complete: https://ampcode.com/threads/T-01a16a8a-2a84-7615-ae4e-5cd2d7fd57f1 . No Service Bus implementation belongs in this repository.
+- Service Bus work continues independently in its own thread and `service-bus-explorer/` subtree; FTP changes must not alter that application's files.
+
+## Current usable-alpha work
+- User authorized all five next steps plus S3 in parallel, then the FTP project's own default-deny MCP server. Verified scoped commits may be pushed to main; no deployment or publishing is authorized.
+- S3 lab uses pinned standalone SeaweedFS 4.49 because the archived MinIO binary returned HTTP 410. FTP, Azurite and all required SeaweedFS listeners bind to loopback. Lab seed preserves existing bytes.
+- `--live` without `--right` opens the themed mouse/keyboard connection picker; explicit `--right` bypasses discovery. Repeatable `--remote` adds navigation roots. Non-secret bookmarks are separate from rclone credentials. `docs/connections.md` documents this contract.
+- Serial batch/folder queue freezes endpoints, plans before writes, defaults to Cancel and checks each file destination afresh. New files in a confirmed queue run automatically; conflicts pause for per-file decisions. Rename requires rechecking and confirmation. Empty directories are not created; plans cap at 10,000 files / 64 levels.
+- Ctrl+X / Stop cancels planning, checks and running copies; canceled and failed work is retryable within the current in-memory queue. Completed/skipped files never retry. Partial output is possible, and retries do not inherit overwrite authorization. Drawer supports keyboard/mouse review of individual outcomes.
+- Preview requests read at most 64 KiB + one lookahead byte, display at most 64 KiB, reject binary/invalid UTF-8, sanitize terminal controls and label truncation. Closing cancels; late results cannot replace a new preview.
+- `lazyftp-mcp` exposes list/upload/download over stdio using the official Go SDK. Default deny; independent operation + exact remote/path-root grants and transfer local roots. No overwrites/delete/execute, no implicit permissions from interactive credentials or bookmarks. `docs/mcp.md` explains trusted staging and non-race-proof path checks.
+- Actual PTY validation interrupted throttled running transfers on FTP, Blob and S3, retried unfinished files, verified exact bytes and confirmed completed files were not repeated. Kept public UI tests cover conflict/failure/retry and nested round trips; `make test-integration` includes storage, UI and MCP on all three services.
+- New inspected visual evidence: `.amp/in/artifacts/alpha-*.png`, `alpha-interaction.mp4` / `.loop.webp`. These are real terminal captures, not mockups. Real Azure/AWS identity, IAM/TLS/provider behavior and non-Linux native execution remain unverified.

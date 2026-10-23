@@ -5,6 +5,7 @@ LAB_RIGHT ?= lab-ftp:/incoming
 
 build:
 	go build -o bin/lazyftp ./cmd/lazyftp
+	go build -o bin/lazyftp-mcp ./cmd/lazyftp-mcp
 
 demo run: build
 	./bin/lazyftp --demo
@@ -21,7 +22,7 @@ test-terminal-live: build
 
 run-lab: build
 	python3 scripts/lab.py check
-	./bin/lazyftp --live --rclone-config .lab/rclone.conf --left "$(CURDIR)/.lab/local" --right "$(LAB_RIGHT)" --blob lab-blob:/files/assets
+	./bin/lazyftp --live --rclone-config .lab/rclone.conf --left "$(CURDIR)/.lab/local" --right "$(LAB_RIGHT)" --remote lab-ftp:/incoming --remote lab-blob:/files/assets --remote lab-s3:/files/assets
 
 check:
 	@test -z "$$(gofmt -l $$(git ls-files --cached --others --exclude-standard '*.go'))" || { echo 'Run gofmt on the Go source files.'; exit 1; }
@@ -42,4 +43,4 @@ lab-down:
 
 test-integration:
 	python3 scripts/lab.py check
-	PATH="$$HOME/.local/bin:$$PATH" RCLONE_CONFIG="$(CURDIR)/.lab/rclone.conf" go test -tags=integration ./internal/storage -count=1
+	PATH="$$HOME/.local/bin:$$PATH" RCLONE_CONFIG="$(CURDIR)/.lab/rclone.conf" go test -tags=integration ./internal/storage ./internal/ui ./cmd/lazyftp-mcp -count=1

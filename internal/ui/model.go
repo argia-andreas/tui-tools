@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"strings"
@@ -46,6 +47,15 @@ type Model struct {
 	locations                   []storage.Location
 	pending                     *copyState
 	job                         *transferJob
+	queue                       []transferJob
+	queueIndex                  int
+	jobCursor                   int
+	queuePlanning               bool
+	queueCancel                 context.CancelFunc
+	transferCancel              context.CancelFunc
+	preview                     *previewState
+	previewGeneration           int
+	previewCancel               context.CancelFunc
 	operation                   int
 	panes                       [2]pane
 	theme                       theme.Theme
@@ -162,16 +172,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case destinationChecked:
 		if m.pending != nil && msg.operation == m.operation {
+			if m.queueCancel != nil {
+				m.queueCancel()
+				m.queueCancel = nil
+			}
 			p := *m.pending
 			p.checking, p.conflict, p.err = false, msg.exists, msg.err
 			m.pending = &p
 			m.choice = 0
+			if p.auto && !p.conflict && p.err == nil {
+				return m.startCopy(false)
+			}
 		}
+	case queuePlanned:
+		return m.acceptPlan(msg)
+	case previewLoaded:
+		m = m.applyPreview(msg)
 	case copyFinished:
+		if m.transferCancel != nil {
+			m.transferCancel()
+			m.transferCancel = nil
+		}
 		m.job = &transferJob{source: msg.source, destination: msg.destination, state: "Completed"}
 		if msg.err != nil {
 			m.job.state = "Failed"
 			m.job.err = msg.err
+			if errors.Is(msg.err, context.Canceled) {
+				m.job.state = "Canceled"
+			}
 		}
 		m.status = m.job.state + ": " + msg.destination.String()
 		var cmds []tea.Cmd
@@ -184,15 +212,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, m.list(i))
 			}
 		}
+		if m.queueIndex < len(m.queue) {
+			m.queue[m.queueIndex] = *m.job
+			m.queueIndex++
+			next, cmd := m.nextQueued()
+			m = next
+			cmds = append(cmds, cmd)
+		}
 		return m, tea.Batch(cmds...)
 	case tea.MouseMsg:
 		return m.mouse(msg)
 	case tea.KeyMsg:
 		key := msg.String()
 		if key == "ctrl+c" {
+			m.cancelWork()
 			return m, tea.Quit
 		}
-		if key == "f1" && m.modal != "copy" && m.modal != "rename" {
+		if key == "ctrl+x" && !m.filtering && m.modal != "rename" && m.modal != "palette" {
+			m.cancelWork()
+			return m, nil
+		}
+		if key == "f1" && (m.modal == "" || m.modal == "palette" || m.modal == "help") {
 			return m.execute("help")
 		}
 		if m.modal != "" {
@@ -253,6 +293,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.focus == 0 {
 				m.navCursor = (m.navCursor + delta + len(m.locations)) % len(m.locations)
+			}
+			if m.focus == 4 {
+				m.jobCursor = max(0, min(len(m.queue)-1, m.jobCursor+delta))
 			}
 			if m.focus == 1 || m.focus == 2 {
 				p := &m.panes[m.active()]
@@ -332,13 +375,15 @@ func (m Model) actions() []action {
 	}
 	a := []action{
 		{"copy", "Copy to " + direction + " pane", "c", "upload download transfer", m.copyDisabled()},
-		{"preview", "Preview selected file", "p", "inspect text", "Content previews arrive after real storage integration"},
+		{"preview", "Preview selected file", "p", "inspect text", m.previewDisabled()},
 		{"navigation", "Toggle navigation sidebar", "[", "connections places", ""},
 		{"inspector", "Toggle file inspector", "]", "metadata details sidebar", ""},
 		{"jobs", "Toggle transfer drawer", "t", "queue jobs", ""},
 		{"refresh", "Refresh focused filesystem", "ctrl+r", "reload browse", ""},
 		{"icons", "Toggle filetype icons", "", "glyphs nerd font", ""},
 		{"help", "Keyboard shortcuts", "?", "help keys", ""},
+		{"cancel", "Cancel unfinished transfers", "ctrl+x", "stop queue", m.cancelDisabled()},
+		{"retry", "Retry unfinished transfers", "r", "recover failed canceled queue", m.retryDisabled()},
 	}
 	for _, name := range theme.Names() {
 		a = append(a, action{"theme:" + name, "Theme: " + name, "", "colors style appearance", ""})
@@ -372,6 +417,12 @@ func (m Model) matches() []action {
 }
 
 func (m Model) modalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.modal == "preview" {
+		return m.previewKey(msg)
+	}
+	if m.modal == "batch" {
+		return m.batchKey(msg)
+	}
 	if m.modal == "copy" || m.modal == "rename" {
 		return m.copyKey(msg)
 	}
@@ -455,12 +506,22 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		m.modal = "help"
 		m.choice = 0
 	case "quit":
+		m.cancelWork()
 		return m, tea.Quit
+	case "cancel":
+		m.cancelWork()
+		return m, nil
+	case "retry":
+		return m.retryQueue()
 	case "copy":
 		if reason := m.copyDisabled(); reason != "" {
 			m.status = reason
 			return m, nil
 		}
+		if entries := m.copyEntries(); len(entries) != 1 || entries[0].IsDir {
+			return m.planQueue(entries)
+		}
+		m.queue, m.queueIndex = nil, 0
 		i := m.active()
 		e, _ := m.copyEntry()
 		source, destination := m.panes[i].location, m.panes[1-i].location
@@ -469,11 +530,7 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		m.pending = &copyState{source: source, destination: destination, size: e.Size}
 		return m.checkDestination()
 	case "preview":
-		for _, a := range m.actions() {
-			if a.id == id {
-				m.status = a.disabled
-			}
-		}
+		return m.startPreview()
 	}
 	return m, nil
 }

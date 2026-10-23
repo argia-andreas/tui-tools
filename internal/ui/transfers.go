@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -17,6 +18,7 @@ type copyState struct {
 	source, destination storage.Location
 	size                int64
 	checking, conflict  bool
+	auto                bool // only untouched new files in a confirmed batch
 	err                 error
 }
 
@@ -31,8 +33,27 @@ type copyFinished struct {
 }
 type transferJob struct {
 	source, destination storage.Location
+	size                int64
 	state               string
 	err                 error
+}
+
+func (m Model) copyEntries() []storage.Entry {
+	p := m.panes[m.active()]
+	var chosen []storage.Entry
+	for _, e := range p.entries {
+		if p.selected[e.Name] {
+			chosen = append(chosen, e)
+		}
+	}
+	if len(chosen) == 0 {
+		entries := p.visible()
+		if len(entries) == 0 {
+			return nil
+		}
+		chosen = append(chosen, entries[p.cursor])
+	}
+	return chosen
 }
 
 func (m Model) copyEntry() (storage.Entry, string) {
@@ -40,34 +61,19 @@ func (m Model) copyEntry() (storage.Entry, string) {
 	if p.loading || p.err != nil {
 		return storage.Entry{}, "Wait for a successful directory listing"
 	}
-	var chosen []storage.Entry
-	for _, e := range p.entries {
-		if p.selected[e.Name] {
-			chosen = append(chosen, e)
-		}
+	entries := m.copyEntries()
+	if len(entries) == 0 {
+		return storage.Entry{}, "No file to copy"
 	}
-	if len(chosen) > 1 {
-		return storage.Entry{}, "Select exactly one file; batch copies arrive later"
-	}
-	if len(chosen) == 0 {
-		entries := p.visible()
-		if len(entries) == 0 {
-			return storage.Entry{}, "No file to copy"
-		}
-		chosen = append(chosen, entries[p.cursor])
-	}
-	if chosen[0].IsDir {
-		return storage.Entry{}, "Choose a file; folder transfers arrive later"
-	}
-	return chosen[0], ""
+	return entries[0], ""
 }
 
 func (m Model) copyDisabled() string {
 	if m.transferer == nil {
 		return "Transfers arrive in live mode; demo is read-only"
 	}
-	if m.job != nil && m.job.state == "Running" {
-		return "A transfer is already running"
+	if m.queuePlanning || m.queueIndex < len(m.queue) || (m.job != nil && m.job.state == "Running") {
+		return "Finish or cancel the current transfer queue first"
 	}
 	if m.panes[0].location.Remote != "" && m.panes[1].location.Remote != "" {
 		return "Remote-to-remote copies are not supported yet"
@@ -82,8 +88,11 @@ func (m Model) checkDestination() (tea.Model, tea.Cmd) {
 	m.pending, m.modal, m.choice = &p, "copy", 0
 	m.operation++
 	op := m.operation
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.queueCancel = cancel
 	return m, func() tea.Msg {
-		e, err := m.transferer.Stat(m.ctx, p.destination)
+		defer cancel()
+		e, err := m.transferer.Stat(ctx, p.destination)
 		if errors.Is(err, fs.ErrNotExist) {
 			return destinationChecked{operation: op}
 		}
@@ -110,6 +119,9 @@ func (m Model) copyButtons() []string {
 func (m Model) copyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	if key == "esc" {
+		if m.queueIndex < len(m.queue) || m.queueCancel != nil {
+			m.cancelWork()
+		}
 		m.modal, m.pending = "", nil
 		return m, nil
 	}
@@ -122,6 +134,7 @@ func (m Model) copyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			p := *m.pending
 			p.destination.Path = path.Join(path.Dir(p.destination.Path), m.query)
+			p.auto = false
 			m.pending = &p
 			return m.checkDestination()
 		case "backspace", "ctrl+h":
@@ -146,24 +159,41 @@ func (m Model) copyKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		switch buttons[min(m.choice, len(buttons)-1)] {
 		case "Cancel":
+			if m.queueIndex < len(m.queue) || m.queueCancel != nil {
+				m.cancelWork()
+			}
 			m.modal, m.pending = "", nil
 		case "Skip":
 			m.job = &transferJob{source: m.pending.source, destination: m.pending.destination, state: "Skipped"}
 			m.status, m.modal, m.pending = "Skipped — destination preserved", "", nil
+			if m.queueIndex < len(m.queue) {
+				m.queue[m.queueIndex] = *m.job
+				m.queueIndex++
+				return m.nextQueueModel()
+			}
 		case "Rename":
 			m.modal, m.query = "rename", path.Base(m.pending.destination.Path)
 		case "Copy", "Overwrite":
-			p := *m.pending
-			overwrite := p.conflict
-			m.job = &transferJob{source: p.source, destination: p.destination, state: "Running"}
-			m.jobs, m.modal, m.pending = true, "", nil
-			m.status = "Copying " + p.source.String()
-			return m, func() tea.Msg {
-				return copyFinished{source: p.source, destination: p.destination, err: m.transferer.Copy(m.ctx, p.source, p.destination, overwrite)}
-			}
+			return m.startCopy(m.pending.conflict)
 		}
 	}
 	return m, nil
+}
+
+func (m Model) startCopy(overwrite bool) (tea.Model, tea.Cmd) {
+	p := *m.pending
+	ctx, cancel := context.WithCancel(m.ctx)
+	m.transferCancel = cancel
+	m.job = &transferJob{source: p.source, destination: p.destination, size: p.size, state: "Running"}
+	if m.queueIndex < len(m.queue) {
+		m.queue[m.queueIndex] = *m.job
+		m.jobCursor = m.queueIndex
+	}
+	m.jobs, m.modal, m.pending = true, "", nil
+	m.status = "Copying " + p.source.String()
+	return m, func() tea.Msg {
+		return copyFinished{source: p.source, destination: p.destination, err: m.transferer.Copy(ctx, p.source, p.destination, overwrite)}
+	}
 }
 
 func (m Model) copyLines(w, h int) (string, []string) {

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bounded real-PTY FTP/Blob copy smoke; only unique owned files are mutated.
+"""Bounded real-PTY FTP/Blob/S3 copy smoke; only unique owned files are mutated.
 
 Run with .venv/bin/python scripts/terminal-live.py after building and seeding
 the lab. No fixture fallback: missing dependencies or unavailable services fail.
@@ -189,9 +189,9 @@ def main():
         raise AssertionError("bin/lazyftp and .lab/rclone.conf required; build and start/seed lab first")
     if not (ROOT / ".lab/local").is_dir():
         raise AssertionError(".lab/local missing; start/seed the lab first")
-    for remote in ("lab-ftp:/incoming", "lab-blob:/files/assets"):
+    for remote in ("lab-ftp:/incoming", "lab-blob:/files/assets", "lab-s3:/files/assets"):
         exercise(remote)
-    print(f"Live PTY smoke PASS: both real backends; owned local/remote files cleaned ({time.monotonic() - started:.2f}s)")
+    print(f"Live PTY smoke PASS: all three real backends; owned local/remote files cleaned ({time.monotonic() - started:.2f}s)")
 
 
 if __name__ == "__main__":

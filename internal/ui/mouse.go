@@ -24,11 +24,27 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		x, y := (m.width-w)/2, (m.height-h)/2
 		outside := msg.X < x || msg.X >= x+w || msg.Y < y || msg.Y >= y+h
 		if click && (outside || (msg.Y == y && msg.X >= x+w-6)) {
+			if m.modal == "copy" || m.modal == "rename" || m.modal == "batch" || m.modal == "preview" {
+				return key(tea.KeyEsc)
+			}
 			m.modal = ""
 			m.pending = nil
 			return m, nil
 		}
 		if outside {
+			return m, nil
+		}
+		if m.modal == "batch" {
+			if click && msg.Y == y+h-2 {
+				if msg.X >= x+2 && msg.X < x+12 {
+					m.choice = 0
+					return key(tea.KeyEnter)
+				}
+				if !m.queuePlanning && msg.X >= x+12 && msg.X < x+27 {
+					m.choice = 1
+					return key(tea.KeyEnter)
+				}
+			}
 			return m, nil
 		}
 		if m.modal == "copy" || m.modal == "rename" {
@@ -88,7 +104,7 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		controls := m.toolbar()
 		x := msg.X - (m.width - ansi.StringWidth(controls))
 		for _, button := range []struct{ label, action string }{
-			{"[Nav]", "navigation"}, {"[Info]", "inspector"}, {"[Jobs]", "jobs"}, {"[?]", "help"}, {"[Copy]", "copy"}, {"[Actions]", "palette"},
+			{"[Nav]", "navigation"}, {"[Info]", "inspector"}, {"[Jobs]", "jobs"}, {"[?]", "help"}, {"[Copy]", "copy"}, {"[Preview]", "preview"}, {"[Stop]", "cancel"}, {"[Retry]", "retry"}, {"[Actions]", "palette"},
 		} {
 			start := strings.Index(controls, button.label)
 			if start >= 0 && x >= start && x < start+len(button.label) {
@@ -127,6 +143,17 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	if msg.Y >= 1+l.height-l.drawer {
 		m.focus = 4
+		if wheel {
+			if msg.Button == tea.MouseButtonWheelUp {
+				return key(tea.KeyUp)
+			}
+			return key(tea.KeyDown)
+		}
+		row := msg.Y - (1 + l.height - l.drawer) - 2
+		start := max(0, min(m.jobCursor, len(m.queue)-1)-max(0, l.drawer-5))
+		if row >= 0 && row < l.drawer-4 && start+row < len(m.queue) {
+			m.jobCursor = start + row
+		}
 		return m, nil
 	}
 	i, origin := 0, l.nav
