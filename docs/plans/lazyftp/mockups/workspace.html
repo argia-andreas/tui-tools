@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LazyFTP — workspace proposal</title>
+<style>
+:root{color-scheme:dark;--bg:#10151d;--surface:#18212d;--text:#e2e8ef;--muted:#a1b0c2;--accent:#88d6bb;--border:#405266;--warn:#f2cb82}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.6 system-ui,sans-serif}main{max-width:1120px;margin:36px auto;padding:0 24px}h1{font-size:26px;margin-bottom:8px}p{color:var(--muted)}figure{margin:28px 0}.terminal{background:var(--surface);border:1px solid var(--border);border-radius:8px;font:14px/1.7 ui-monospace,monospace;overflow:hidden}.bar,.footer{padding:12px 16px}.bar{border-bottom:1px solid var(--border);display:flex;justify-content:space-between;gap:16px}.panes{display:grid;grid-template-columns:1fr 1fr}.pane{padding:14px 16px;min-width:0}.pane:first-child{border-right:1px solid var(--border)}h2{font-size:14px;margin:0 0 12px;color:var(--muted)}.active h2{color:var(--accent)}.entry{white-space:pre;overflow:hidden;padding:3px 5px}.selected{background:#2b4d45;color:#fff}.footer{border-top:1px solid var(--border);color:var(--muted)}.queue{border-top:1px solid var(--border);padding:12px 16px}.good{color:var(--accent)}.warn{color:var(--warn)}.dialog{margin:0 16px 16px;padding:14px;border:1px solid var(--warn)}figcaption{font-size:14px;color:var(--muted);margin-top:10px}@media(max-width:650px){main{padding:0 12px}.terminal{font-size:11px}.pane{padding:10px 6px}.bar{display:block}h2{font-size:11px}}
+</style>
+<main>
+<h1 id="proposal">LazyFTP: browse, copy, understand the result</h1>
+<p id="decision">Q1 · Approve the first usable scope and this workspace direction. Static mockup only; the numbers and filenames below are illustrative.</p>
+<figure id="fig-workspace">
+<div class="terminal">
+<div class="bar"><strong>LazyFTP · Practice environment</strong><span>Remote: demo-ftp · FTP / unencrypted</span></div>
+<div class="panes">
+<section class="pane active"><h2>LOCAL · ~/practice [focused]</h2><div class="entry">  ../</div><div class="entry">  assets/</div><div class="entry selected">› report.txt             12 KB</div><div class="entry">  empty.txt               0 B</div><div class="entry">  résumé.txt              2 KB</div></section>
+<section class="pane"><h2>REMOTE · demo-ftp:/incoming</h2><div class="entry">  ../</div><div class="entry">  assets/</div><div class="entry">  report.txt              9 KB</div><div class="entry">  server-notes.txt        4 KB</div></section>
+</div>
+<div class="queue"><strong>Transfers · 1 running</strong><br>assets/ → demo-ftp:/incoming/assets/ · 3 of 8 files · 42%</div>
+<div class="footer">Tab pane · ↑↓ navigate · Enter open · Space select · c copy →<br>/ filter · r refresh · t transfers · connections: F2 · ? help · q quit</div>
+</div>
+<figcaption>F1 · Copy always goes from the focused pane to the other pane. Queued jobs retain their original destination.</figcaption>
+</figure>
+<figure id="fig-conflict">
+<div class="terminal"><div class="bar"><strong>Destination already contains report.txt</strong></div>
+<div class="queue">Local: 12 KB → demo-ftp:/incoming/report.txt: 9 KB</div>
+<div class="dialog">No overwrite has started.<br><strong>[s] Skip</strong> · [o] Overwrite · [n] Choose a new name · Esc Cancel<br><span class="warn">Applies to this file only. Any broader choice must be explicit.</span></div></div>
+<figcaption>F2 · Conflicts name both sides and require a deliberate choice.</figcaption>
+</figure>
+<figure id="fig-interrupted">
+<div class="terminal"><div class="bar"><strong>Transfers · connection lost</strong></div>
+<div class="queue"><span class="warn">assets/ · Incomplete · 3 of 8 files completed</span><br><span class="good">Completed files remain marked complete.</span><br>5 files unfinished; a destination file may be partial.<br><br>[r] Retry unfinished work · [Enter] Details</div></div>
+<figcaption>F3 · Interruption is not success. Retry does not silently repeat completed work; conflicts remain explicit.</figcaption>
+</figure>
+<p id="limits">R1 · FTP and Blob practice checks establish repeatable behavior, not production parity. Blob uses virtual prefixes; no administration features are proposed.</p>
+</main>
+</html>
