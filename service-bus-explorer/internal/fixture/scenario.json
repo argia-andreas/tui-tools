@@ -1,0 +1,16 @@
+[
+  {"queue":"orders", "active":128, "deadLetter":12},
+  {"queue":"payments", "active":37, "deadLetter":3},
+  {"queue":"notifications", "active":418, "deadLetter":0},
+  {"queue":"inventory", "active":6, "deadLetter":1},
+  {"queue":"shipping", "active":54, "deadLetter":8},
+  {"queue":"invoices", "active":0, "deadLetter":4},
+  {"queue":"audit-log", "active":204, "deadLetter":0},
+  {"queue":"email-outbox", "active":92, "deadLetter":2},
+  {"queue":"webhook-dispatch", "active":15, "deadLetter":26},
+  {"queue":"reports", "active":3, "deadLetter":0},
+  {"queue":"customer-sync", "active":18, "deadLetter":5},
+  {"queue":"empty", "active":0, "deadLetter":0},
+  {"topic":"events", "subscription":"billing", "active":7, "deadLetter":1},
+  {"topic":"events", "subscription":"shipping", "active":2, "deadLetter":3}
+]
