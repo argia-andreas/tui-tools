@@ -2,11 +2,15 @@
 
 - Gate 1 — Product: APPROVED 2026-10-23
 - Gate 2 — Architecture: APPROVED 2026-10-23
-- Gate 3 — Program Design: in progress
-- Gate 4 — Slice plan: pending
+- Gate 3 — Program Design: APPROVED 2026-10-23
+- Gate 4 — Slice plan: in progress
 
 ## Slices
-- Pending Gate 4.
+- [ ] Slice 1 — Interactive fixture-backed workspace, command palette and themes; fast tests and real-terminal smoke.
+- [ ] Slice 2 — Disposable FTP/Blob lab, backend spike and real remote browsing.
+- [ ] Slice 3 — Single-file transfers and conflict decisions, verified by returned bytes.
+- [ ] Slice 4 — Folder jobs, queue, cancellation, interruption and retry of unfinished work.
+- [ ] Slice 5 — Bounded previews, edge-case coverage and alpha packaging.
 
 ## Notes for a fresh session
 - The repository was empty at the start.
@@ -15,7 +19,7 @@
 - The user explicitly requests good testing and quick feedback loops, suggesting local Docker FTP and a Blob emulator.
 - Proposed architecture questions for Gate 2: Go/Bubble Tea, rclone CLI versus RC, Docker FTP and Azurite, deterministic fixtures, network-failure controls, terminal automation, and local developer commands.
 - Docker CLI is installed in this orb; daemon availability is not yet checked. Go and rclone were not found on PATH.
-- No implementation has begun. Product and architecture are approved; program design and the slice plan still require approval.
+- No implementation has begun. Product, architecture and program design are approved; the slice plan still requires approval.
 - User requires design and shortcut proposals before implementation and a better product name; Tandem is only a candidate, not approved or availability-checked.
 - User requests a collapsible left sidebar, exploration of an optional right file-info/preview sidebar, and confirmations in modals (interpreting the typo "morals").
 - Design influences: LazyGit panel structure, Amp CLI workspace, Neovim navigation. No requirement for full Vim modes.

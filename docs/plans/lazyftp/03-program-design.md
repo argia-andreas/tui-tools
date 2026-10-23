@@ -1,6 +1,6 @@
 # Program design: first interactive workspace
 
-Status: proposed; awaiting Gate 3 approval. This specifies the first runnable slice, not speculative implementations of future transfer logic. Extend the design and obtain approval before adding real-storage slices.
+Status: Gate 3 approved 2026-10-23. This specifies the first runnable slice, not speculative implementations of future transfer logic. Extend the design and obtain approval before adding real-storage slices.
 
 ## Files
 - `go.mod`, `go.sum`: repository-based module identity and pinned compatible Charm dependencies; the final product name is not required.
