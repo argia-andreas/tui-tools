@@ -18,11 +18,18 @@ make demo
 Setup installs checksum-verified Go **1.27.3** under
 `~/.local/toolchains/go1.27.3`, links `go` and `gofmt` into `~/.local/bin`, and
 adds that directory to the login-shell PATH. When passwordless sudo is available,
-it also links those commands into `/usr/local/bin`. Setup downloads Go module
-dependencies and creates `.venv` with `pyte==0.8.2` for terminal smoke tests.
+it also links those commands into `/usr/local/bin`. Setup downloads dependencies
+for the root and top-level Go modules and creates their Python terminal-test
+environments (including `service-bus-explorer/.venv`). It pins `pyte==0.8.2`
+and ttyd **1.7.7** for repeatable terminal checks and browser-terminal previews.
 It also installs checksum-verified rclone **1.70.3**, pyftpdlib **2.1.0**, and
 locked Azurite **3.35.0** dependencies, plus pinned SeaweedFS **4.49** for
 S3-compatible local storage. It is safe to run repeatedly.
+
+Setup installs dependencies only: it does not authenticate cloud accounts,
+start storage servers, or require a Docker daemon. Start the disposable lab
+when needed with `make lab-up lab-seed`; no resume hook is required for these
+supervised services. The log viewer is design-only and has no runtime to install yet.
 
 `make build` writes `bin/lazyftp`; `make run` and `make demo` build and launch
 `bin/lazyftp --demo`. You can also launch the binary directly:

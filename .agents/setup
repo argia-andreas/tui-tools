@@ -33,10 +33,11 @@ export PATH="$HOME/.local/bin:$PATH"
 go version
 echo "Go ready after $((SECONDS - started))s: $toolchain/bin/go"
 
-if [[ -f go.mod ]]; then
-  echo 'Downloading Go module dependencies...'
-  go mod download
-fi
+for module_file in go.mod */go.mod; do
+  [[ -f "$module_file" ]] || continue
+  echo "Downloading Go dependencies for $module_file..."
+  go -C "$(dirname "$module_file")" mod download
+done
 
 echo 'Preparing terminal smoke-test dependencies...'
 if ! command -v uv >/dev/null; then
@@ -47,6 +48,33 @@ if [[ ! -x .venv/bin/python ]]; then
   uv venv .venv
 fi
 uv pip install --python .venv/bin/python 'pyte==0.8.2' 'pyftpdlib==2.1.0'
+
+for requirements in */scripts/requirements.txt; do
+  [[ -f "$requirements" ]] || continue
+  environment="${requirements%/scripts/requirements.txt}/.venv"
+  echo "Preparing terminal-test environment: $environment..."
+  if [[ ! -x "$environment/bin/python" ]]; then
+    uv venv "$environment"
+  fi
+  uv pip install --python "$environment/bin/python" -r "$requirements"
+done
+
+echo 'Preparing pinned browser-terminal preview helper...'
+ttyd_version=1.7.7
+ttyd_sha256=8a217c968aba172e0dbf3f34447218dc015bc4d5e59bf51db2f2cd12b7be4f55
+ttyd_target="$HOME/.local/toolchains/ttyd-$ttyd_version/ttyd"
+if [[ ! -f "$ttyd_target" ]] || ! printf '%s  %s\n' "$ttyd_sha256" "$ttyd_target" | sha256sum --check --status; then
+  (
+    download="$(mktemp)"
+    trap 'rm -f "$download"' EXIT
+    curl --fail --silent --show-error --location --retry 3 \
+      "https://github.com/tsl0922/ttyd/releases/download/$ttyd_version/ttyd.x86_64" -o "$download"
+    printf '%s  %s\n' "$ttyd_sha256" "$download" | sha256sum --check -
+    install -D -m 0755 "$download" "$ttyd_target"
+  )
+fi
+ln -sfn "$ttyd_target" "$HOME/.local/bin/ttyd"
+ttyd --version
 
 echo 'Preparing pinned direct-process FTP/Blob/S3 lab dependencies...'
 if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
