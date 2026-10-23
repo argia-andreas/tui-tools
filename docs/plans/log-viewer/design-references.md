@@ -9,7 +9,7 @@ overrides accidental generated wording, icons and shortcuts.
 
 | Board | Purpose | Status |
 | --- | --- | --- |
-| [01 — Layout study](../../../.amp/in/artifacts/log-viewer/01-layout-study.png) | A: stream workbench; B: focus reader; C: context drawer | Recommend A, with B/C as modes; not approved |
+| [01 — Layout study](../../../.amp/in/artifacts/log-viewer/01-layout-study.png) | A: stream workbench; B: focus reader; C: context drawer | Gate 1 approved: A default, B/C as modes; not a pixel-level specification |
 | [02 — Stream workbench](../../../.amp/in/artifacts/log-viewer/02-stream-workbench.png) | App keyword versus selected app; source search versus local find; event-focused inspector | Default-layout reference; stack content superseded by 04 |
 | [03 — Palette and context](../../../.amp/in/artifacts/log-viewer/03-palette-and-context.png) | Ctrl+P owns input; context visibly relaxes text/level while preserving security/source/app/instance | Proposed interaction states, not executable |
 | [04 — Inspector yank](../../../.amp/in/artifacts/log-viewer/04-inspector-yank.png) | Inspector focus; y value / Y key=value; provider direction | Latest response to Andreas's field-yank/provider request |

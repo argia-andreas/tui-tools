@@ -1,6 +1,6 @@
 # Log viewer exploration
 
-- Gate 1 — Product: in progress; awaiting Andreas's decisions and approval.
+- Gate 1 — Product: APPROVED 2026-10-23 by Andreas (“Yes, this sounds good”).
 - Gate 2 — Architecture: pending.
 - Gate 3 — Program Design: pending.
 - Gate 4 — Slice plan: pending.
@@ -19,8 +19,12 @@ SIGNAL is a provisional mockup label, not an approved product name.
 - The current source is NOT identified. Andreas recalls a hostname resembling
   `logs.insights…` and suspects Elastic. That substring is insufficient evidence.
   Ask for only a sanitized hostname or visible product name, never credentials.
-- Recommend the stream workbench, with focus-reader and context modes rather than
-  three separate products. No layout has yet been approved.
+- Approved product direction: stream workbench, with focus-reader and context
+  modes rather than three separate products. Exact bindings/architecture still
+  require their later gates; SIGNAL remains an unapproved name.
+- Andreas requested a fast local Elastic development/test loop. Recommend a fake
+  provider for instant UI tests plus a real, pinned single-node Elasticsearch for
+  adapter/security integration tests. See provider-research.md. No lab was started.
 - Painter images live only under `.amp/in/artifacts/log-viewer/`; they are static,
   fictional references, not rendered application screenshots or behavior tests.
 - Product and research notes take precedence over generated labels and shortcuts.

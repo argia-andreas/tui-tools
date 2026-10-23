@@ -203,8 +203,67 @@ partials and permission revocation. Use real read-only provider sandboxes after
 authorization. Measure keyboard tasks and rendering latency; do not infer runtime
 quality from Painter images.
 
+## Fast local development and testing
+
+Andreas requested this loop when approving Gate 1. It is a feasibility proposal,
+not permission to implement the app before the remaining gates.
+
+Recommend two complementary modes, not a fake Elasticsearch reimplementation:
+
+1. **Instant fake-provider loop:** deterministic events, controllable clock and
+   scripted delays/errors exercise UI navigation, field yank, context, redaction,
+   pause and cancellation without any external process. Inject 429/partial replies
+   and pathological payloads deliberately. This does not verify Elasticsearch
+   syntax, analyzers, cursors or authorization.
+2. **Real Elasticsearch loop:** one pinned official Elasticsearch node, no Kibana,
+   Logstash, Fleet, ML or cloud account. Elastic documents a 1 GB container example;
+   this is a reasonable small-fixture starting point, not a measured budget or a
+   guarantee for large tests. Docker Desktop needs additional host allocation
+   (the guide says at least 4 GB). Prefer the Basic feature set rather than an
+   expiring trial dependency. Pin to the real deployment's supported version once
+   known; a current-version-only lab does not prove older-version compatibility.
+
+Use one warm node while developing, then isolated disposable test indices with
+explicit ECS-style mappings, stable IDs and fixed timestamps. Keep replica count
+appropriate for a single-node lab; don't wait for replicas that cannot allocate.
+Seed via bulk operations and wait for search visibility, rather than sleeping
+arbitrarily. A separate replay scenario can append events and intentionally delay
+refresh to exercise follow and late arrivals. Include more equal-time events than
+one page, repeated messages with distinct IDs, other apps/instances, missing levels,
+nested fields, multiline exceptions and canary secret strings.
+
+The seeder owns lab-only write credentials. The viewer and its MCP use a scoped
+read-only key; an additional forbidden index verifies scope denial. Keep TLS and
+authentication in at least the security integration profile, trust the local CA,
+and expose no public log endpoint. Passing tests as `elastic` superuser or with
+security disabled would not validate the product's read-only contract. Cleanup
+must touch only owned disposable test resources, never a configured live source.
+
+CI should start a fresh pinned node per integration job, not per test. Ordinary
+unit/UI tests stay Docker-free. A Go test harness can use an existing lab endpoint
+or Testcontainers later; neither warrants a dependency decision before Gate 3.
+OpenSearch is not a substitute for validating Elasticsearch-specific behavior.
+Self-managed local Elastic also does not verify Azure hosting/Entra SSO, Private
+Link, cloud-specific roles, Serverless behavior or distributed failure modes.
+
+Environment check: this orb has a Docker CLI but no reachable daemon at the
+default socket. No daemon, container or Elasticsearch node was started. Elastic
+also publishes a Linux archive with bundled JDK, so a Docker-free supervised
+process is a viable option to evaluate for orbs. It would still need resource,
+user and kernel checks before claiming it works here. Don't modify FTP/Service
+Bus setup or install privileged container infrastructure merely to answer this
+feasibility question.
+
+Elastic's `start-local` quickstart is convenient for an exploratory throwaway lab,
+but includes Kibana and a one-month trial and warns that its configuration is not
+production-secure. Prefer a small reviewed/pinned lab configuration for repeatable
+project tests; don't execute a floating remote shell script as the test harness.
+
 ## Official sources
 
+- [Single-node Docker guide](https://www.elastic.co/docs/deploy-manage/deploy/self-managed/install-elasticsearch-docker-basic): real 1 GB development node, optional Kibana and larger ML requirements.
+- [Local quickstart](https://www.elastic.co/docs/deploy-manage/deploy/self-managed/local-development-installation-quickstart): start-local, trial license and local-only security warning.
+- [Linux/macOS archive](https://www.elastic.co/docs/deploy-manage/deploy/self-managed/install-elasticsearch-from-archive-on-linux-macos): standalone distribution with bundled JDK.
 - [Elastic on Azure Native Service](https://www.elastic.co/docs/deploy-manage/deploy/elastic-cloud/azure-native-isv-service): data endpoints versus management, Azure/Elastic access distinction.
 - [Elasticsearch search API](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-search): `read` index privilege, Query DSL search.
 - [Elasticsearch API keys](https://www.elastic.co/docs/deploy-manage/api-keys/elasticsearch-api-keys): scoped data credentials and Serverless differences.

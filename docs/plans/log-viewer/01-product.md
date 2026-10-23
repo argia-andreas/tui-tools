@@ -1,6 +1,6 @@
 # Product proposal: an exceptional terminal log workbench
 
-Gate 1 draft. No approval recorded. SIGNAL is only a working label.
+Gate 1 approved by Andreas on 2026-10-23. SIGNAL is only a working label.
 
 ## Problem
 
@@ -118,11 +118,11 @@ native query. No cross-provider global merge, dashboard builder, ingestion,
 alerting, log deletion, cluster administration or automatic AI upload. A later
 redacted incident bundle could be useful, but export is not an MVP prerequisite.
 
-## Decisions for Andreas
+## Remaining source/provider questions
 
 1. What is the sanitized hostname or product name behind `logs.insights…`? That
    clue does not identify the provider. No token, private query or log dump needed.
-2. Does the workbench plus focused `y`/`Y` inspector feel like the right default?
-3. Which provider should follow the current one: Kubernetes or Loki (or another)?
+2. Which provider should follow the current one: Kubernetes or Loki (or another)?
 
-Approve Gate 1, or what should change?
+Andreas approved the product direction and requested a fast local Elastic test
+loop. Product approval does not identify the live provider or approve later gates.
