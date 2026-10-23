@@ -23,7 +23,7 @@ func main() {
 	right := flag.String("right", "", "Starting rclone remote:path in live mode")
 	blob := flag.String("blob", "", "Optional second rclone remote:path in navigation")
 	rcloneConfig := flag.String("rclone-config", "", "Existing rclone config file (defaults to rclone environment/config)")
-	preset := flag.String("theme", "", "Theme preset (default catppuccin-mocha)")
+	preset := flag.String("theme", "", "Theme preset (default midnight)")
 	config := flag.String("config", "", "Optional JSON theme configuration")
 	icons := flag.Bool("icons", false, "Enable Nerd Font filetype icons")
 	flag.Parse()

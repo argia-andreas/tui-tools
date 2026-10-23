@@ -37,7 +37,7 @@ func (m Model) block(title string, w, h int, lines []string, focused bool, accen
 		return make([]string, max(0, h))
 	}
 	border := m.theme.Border
-	if focused && m.modal == "" {
+	if focused {
 		border = m.theme.Focus
 	}
 	bar := func(s string) string { return m.paint(s, border) }
@@ -108,9 +108,26 @@ func (m Model) layout() workspaceLayout {
 	l.center = m.width - l.nav - l.inspector
 	l.left = l.center / 2
 	if m.jobs {
-		l.drawer = min(7, l.height-6)
+		l.drawer = min(5, l.height-6)
+		if m.job != nil && m.job.err != nil {
+			l.drawer = min(6, l.height-6)
+		}
 	}
 	return l
+}
+
+// Use the same content-sized modal bounds for rendering and mouse hit testing.
+func (m Model) modalSize() (int, int) {
+	w, h := min(82, m.width-6), min(20, m.height-4)
+	switch m.modal {
+	case "copy":
+		h = min(h, 12)
+	case "rename":
+		h = min(h, 8)
+	case "palette":
+		h = min(h, max(9, min(9, len(m.matches()))+8))
+	}
+	return w, h
 }
 
 func (m Model) View() string {
@@ -126,13 +143,22 @@ func (m Model) View() string {
 	center := join(m.filePane(0, leftWidth, h-drawerHeight), m.filePane(1, centerWidth-leftWidth, h-drawerHeight))
 	if m.jobs {
 		jobLines := []string{
-			"", m.paint("  No real transfers yet", m.theme.Muted), "  Browse, select, and try Ctrl+P.",
-			"  FTP + Blob integration is next."}
+			m.paint("  No real transfers in demo mode", m.theme.Muted), "  Browse, select, and try Ctrl+P.",
+			"  Use --live to connect your filesystems."}
 		if m.transferer != nil {
 			jobLines = []string{"  No transfers yet — select a file and press c."}
 		}
 		if m.job != nil {
-			jobLines = []string{"  " + m.job.state, "  From: " + text(m.job.source.String()), "  To:   " + text(m.job.destination.String())}
+			color := m.theme.Focus
+			switch m.job.state {
+			case "Completed":
+				color = m.theme.Success
+			case "Failed":
+				color = m.theme.Error
+			case "Skipped":
+				color = m.theme.Warning
+			}
+			jobLines = []string{m.paint("  ● "+m.job.state, color), "  From: " + text(m.job.source.String()), "  To:   " + text(m.job.destination.String())}
 			if m.job.err != nil {
 				jobLines = append(jobLines, m.paint("  "+text(m.job.err.Error()), m.theme.Error))
 			}
@@ -146,10 +172,7 @@ func (m Model) View() string {
 	if inspectorWidth > 0 {
 		body = join(body, m.inspectorPane(inspectorWidth, h))
 	}
-	headerLeft := m.paint(" LAZYFTP", m.theme.Focus) + m.paint(" / proof of concept", m.theme.Muted)
-	if m.width < 110 {
-		headerLeft = m.paint(" LAZYFTP", m.theme.Focus)
-	}
+	headerLeft := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.Focus)).Background(lipgloss.Color(m.theme.Background)).Render(" LAZYFTP")
 	headerRight := m.toolbar()
 	if m.width >= 110 {
 		headerRight = m.theme.Name + " ·" + headerRight
@@ -187,14 +210,15 @@ func (m Model) filePane(i, w, h int) []string {
 		accent = m.theme.Remote
 		label = "REMOTE"
 	}
-	lines := []string{m.paint(paneControls, m.theme.Muted), m.paint(strings.Repeat("─", max(0, w-2)), m.theme.Border)}
+	columns := fit("    Name", max(1, w-13)) + fit("Size", 10)
+	lines := []string{m.paint(paneControls, m.theme.Muted), m.paint(fit(columns, w-2), m.theme.Muted)}
 	entries := p.visible()
 	available := max(1, h-7)
 	start := max(0, p.cursor-available+1)
 	for j := start; j < min(len(entries), start+available); j++ {
 		e := entries[j]
 		color := m.theme.Foreground
-		icon := "·"
+		icon := "▤"
 		name := text(e.Name)
 		size := fmt.Sprintf("%d B", e.Size)
 		if e.Size >= 1024 {
@@ -205,6 +229,19 @@ func (m Model) filePane(i, w, h int) []string {
 			color = m.theme.Folder
 			icon = "▸"
 			size = "—"
+		} else {
+			switch strings.ToLower(path.Ext(e.Name)) {
+			case ".md", ".markdown":
+				icon, color = "≡", m.theme.Markdown
+			case ".json", ".csv", ".yaml", ".yml", ".toml", ".xml":
+				icon, color = "⌘", m.theme.Data
+			case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp":
+				icon, color = "◈", m.theme.Image
+			case ".go", ".rs", ".js", ".ts", ".py", ".sh":
+				icon, color = "λ", m.theme.Local
+			case ".zip", ".gz", ".tar":
+				icon, color = "▣", m.theme.Warning
+			}
 		}
 		if m.icons {
 			icon = "\uf15b"
@@ -232,12 +269,14 @@ func (m Model) filePane(i, w, h int) []string {
 		if j == p.cursor && m.focus == i+1 && !p.selected[e.Name] {
 			marker = "›"
 		}
-		row := marker + " " + icon + " " + fit(name, max(1, w-17)) + fit(size, 10)
-		row = fit(row, w-2)
+		nameColor := m.theme.Foreground
+		if e.IsDir {
+			nameColor = m.theme.Folder
+		}
+		row := m.paint(marker+" ", m.theme.Focus) + m.paint(icon+" ", color) + m.paint(fit(name, max(1, w-17)), nameColor) + m.paint(fit(size, 10), m.theme.Muted)
+		row += m.paint(strings.Repeat(" ", max(0, w-2-lipgloss.Width(row))), m.theme.Foreground)
 		if j == p.cursor && m.focus == i+1 && m.modal == "" {
-			row = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection)).Render(row)
-		} else {
-			row = m.paint(row, color)
+			row = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection)).Render(ansi.Strip(row))
 		}
 		lines = append(lines, row)
 	}
@@ -323,8 +362,17 @@ func (m Model) inspectorPane(w, h int) []string {
 }
 
 func (m Model) overlay(background []string) []string {
-	w := min(82, m.width-6)
-	h := min(20, m.height-4)
+	w, h := m.modalSize()
+	// Suppress competing colors without altering workspace state or hit regions.
+	for i, row := range background {
+		background[i] = m.paint(ansi.Strip(row), m.theme.Border)
+	}
+	m.theme.Background = m.theme.Surface
+	accent := m.theme.Focus
+	if m.modal == "copy" && m.pending != nil && (m.pending.conflict || m.pending.err != nil) {
+		accent = m.theme.Warning
+	}
+	m.theme.Focus = accent
 	lines := []string{}
 	title := "ACTIONS · Ctrl+P"
 	if m.modal == "copy" || m.modal == "rename" {
@@ -366,12 +414,17 @@ func (m Model) overlay(background []string) []string {
 			a := matches[min(m.choice, len(matches)-1)]
 			if a.disabled != "" {
 				detail = a.disabled
+			} else if a.id == "copy" {
+				entry, _ := m.copyEntry()
+				destination := m.panes[1-m.active()].location
+				destination.Path = path.Join(destination.Path, entry.Name)
+				detail = entry.Name + " → " + destination.String()
 			}
 		}
 		lines = append(lines, m.paint("  "+detail, m.theme.Muted), "", paletteFooter)
 	}
-	box := m.block(title, w, h, lines, true, m.theme.Focus)
-	box[0] = ansi.Cut(box[0], 0, w-6) + m.paint(" [×] ", m.theme.Focus) + ansi.Cut(box[0], w-1, w)
+	box := m.block(title, w, h, lines, true, accent)
+	box[0] = ansi.Cut(box[0], 0, w-6) + m.paint(" [×] ", accent) + ansi.Cut(box[0], w-1, w)
 	x, y := (m.width-w)/2, (m.height-h)/2
 	for i, row := range box {
 		idx := y + i

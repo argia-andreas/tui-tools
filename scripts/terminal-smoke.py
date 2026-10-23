@@ -75,10 +75,10 @@ def main():
         wait("no network or disk writes")
         # Styled labels must not reset their trailing fill to the terminal's
         # default background (visible as dark rectangles in real terminals).
-        expect_background(0, 40, "1e1e2e")
-        expect_background(2, 50, "1e1e2e")
+        expect_background(0, 40, "0b1423")
+        expect_background(2, 50, "0b1423")
         notice_row = next(i for i, row in enumerate(screen.display) if "FTP · unencrypted" in row)
-        expect_background(notice_row, 20, "313244")
+        expect_background(notice_row, 20, "101d2f")
 
         # Exercise actual terminal mouse reports, not synthetic model messages.
         # Marking a directory must not open it, and a press/release pair must

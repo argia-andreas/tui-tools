@@ -48,7 +48,7 @@ func (s *memoryStorage) Copy(_ context.Context, source, destination storage.Loca
 }
 
 func TestConfirmedSingleFileCopies(t *testing.T) {
-	for _, scenario := range []string{"cancel", "skip", "overwrite", "rename", "failure", "new", "download", "frozen"} {
+	for _, scenario := range []string{"cancel", "skip", "overwrite", "mouse", "rename", "failure", "new", "download", "frozen"} {
 		t.Run(scenario, func(t *testing.T) {
 			local := storage.Location{Path: "/local/source.txt"}
 			remote := storage.Location{Remote: "ftp", Path: "/incoming/source.txt"}
@@ -128,6 +128,13 @@ func TestConfirmedSingleFileCopies(t *testing.T) {
 					if _, ok := s.files[storage.Location{Remote: "blob", Path: "/assets/source.txt"}]; ok {
 						t.Fatal("running copy was retargeted")
 					}
+				} else if scenario == "mouse" {
+					for y, row := range strings.Split(d.screen(), "\n") {
+						if x := strings.Index(row, "[Overwrite]"); x >= 0 {
+							d.deliver(tea.MouseMsg{X: ansi.StringWidth(row[:x]) + 1, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+							break
+						}
+					}
 				} else {
 					d.key("enter")
 				}
@@ -139,7 +146,7 @@ func TestConfirmedSingleFileCopies(t *testing.T) {
 				}
 			}
 			wantRemote, wantLocal := "remote ORIGINAL", "local payload"
-			if scenario == "new" || scenario == "overwrite" || scenario == "frozen" {
+			if scenario == "new" || scenario == "overwrite" || scenario == "mouse" || scenario == "frozen" {
 				wantRemote = "local payload"
 			}
 			if scenario == "download" {

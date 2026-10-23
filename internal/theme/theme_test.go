@@ -22,7 +22,8 @@ func configPath(t *testing.T, body string) string {
 
 func TestPresets(t *testing.T) {
 	names := theme.Names()
-	if len(names) != 4 {
+	wantNames := []string{"midnight", "catppuccin-mocha", "tokyo-night", "gruvbox-dark", "dracula"}
+	if !reflect.DeepEqual(names, wantNames) {
 		t.Fatalf("got presets %v", names)
 	}
 	valid := regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
@@ -39,14 +40,17 @@ func TestPresets(t *testing.T) {
 		}
 	}
 	names[0] = "changed"
-	if theme.Names()[0] != "catppuccin-mocha" {
+	if theme.Names()[0] != "midnight" {
 		t.Fatal("Names aliases shared data")
 	}
 	if _, err := theme.Get("unknown"); err == nil {
 		t.Fatal("unknown preset accepted")
 	}
+	want, _ := theme.Get("midnight")
+	if got, err := theme.Get(""); err != nil || got != want {
+		t.Fatalf("default preset: %+v %v", got, err)
+	}
 	got, err := theme.Load("", "")
-	want, _ := theme.Get("catppuccin-mocha")
 	if err != nil || got != want {
 		t.Fatalf("default: %+v %v", got, err)
 	}
@@ -70,6 +74,12 @@ func TestConfigPrecedence(t *testing.T) {
 	}
 	if _, err := theme.Load(configPath(t, `{"icons":true}`), ""); err != nil {
 		t.Fatal(err)
+	}
+	got, err = theme.Load(configPath(t, `{"colors":{"selection":"#AbC123"}}`), "")
+	want, _ = theme.Get("midnight")
+	want.Selection = "#AbC123"
+	if err != nil || got != want {
+		t.Fatalf("default preset/overrides: %+v %v", got, err)
 	}
 }
 

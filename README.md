@@ -34,7 +34,10 @@ locked Azurite **3.35.0** dependencies. It is safe to run repeatedly.
 Use `--theme` to select a theme and `--config` to select the local configuration
 file. Theme choices are also available in the command palette.
 
-Presets: `catppuccin-mocha`, `tokyo-night`, `gruvbox-dark`, `dracula`.
+Presets: `midnight` (default), `catppuccin-mocha`, `tokyo-night`, `gruvbox-dark`,
+`dracula`. Midnight is an original lazyftp palette inspired by the project's
+dark-blue mockup, with mint selections and contrasting borders; it is not an
+editor-theme port. The four existing editor-inspired presets remain unchanged.
 Configuration uses semantic color roles, not executable editor theme files:
 
 ```json
@@ -46,8 +49,10 @@ Configuration uses semantic color roles, not executable editor theme files:
 ```
 
 `--theme` overrides the configured preset; explicit color overrides still apply.
+When neither specifies a preset, Midnight is used, including with custom colors.
 `--icons` enables Nerd Font glyphs if your terminal font supports them; the
-default uses portable text glyphs. Unknown presets, roles, and invalid colors
+default uses portable filetype symbols with semantic colors, without requiring
+a special font. Unknown presets, roles, and invalid colors
 produce errors rather than silently falling back.
 
 ## Real local FTP + Blob lab

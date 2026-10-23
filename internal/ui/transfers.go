@@ -185,19 +185,28 @@ func (m Model) copyLines(w, h int) (string, []string) {
 		detail = "  " + text(p.err.Error())
 	}
 	lines = append(lines, m.paint(detail, m.theme.Warning))
-	if h >= 13 {
-		lines = append(lines, "", "  FTP cannot prevent races with other writers.", "  Tab / arrows choose · Enter confirms · Esc cancels")
+	if h >= 10 {
+		lines = append(lines, "", m.paint("  This choice applies to this file only.", m.theme.Muted), "  Tab / arrows choose · Enter confirms · Esc cancels")
 	}
 	for len(lines) < h-3 {
 		lines = append(lines, "")
 	}
-	row := " "
+	row := m.paint(" ", m.theme.Foreground)
 	for i, label := range m.copyButtons() {
 		button := " [" + label + "] "
-		if i == m.choice {
-			button = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection)).Render(button)
+		color := m.theme.Focus
+		if label == "Overwrite" {
+			color = m.theme.Error
 		}
-		row += button
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Background(lipgloss.Color(m.theme.Background))
+		if i == m.choice {
+			background := m.theme.Selection
+			if label == "Overwrite" {
+				background = m.theme.Error
+			}
+			style = style.Bold(true).Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(background))
+		}
+		row += style.Render(button)
 	}
 	return title, append(lines, row)
 }

@@ -299,6 +299,13 @@ func TestMouseBrowsingAndShortcutGuide(t *testing.T) {
 			}
 			requireText(t, d, "Top buttons")
 			clickText("[×]")
+			// Filtering shrinks and recenters the palette; its visible result
+			// must remain clickable at the new position, including narrow screens.
+			clickText("[Actions]")
+			d.key("kybrd")
+			clickText("Keyboard shortcuts")
+			requireText(t, d, "KEYBOARD SHORTCUTS")
+			clickText("[×]")
 			x, y = locate("src/")
 			clickText("[Actions]")
 			// Dismissal must consume the click, not open the directory below.
@@ -340,11 +347,11 @@ func TestMouseSelectsScrolledRow(t *testing.T) {
 	d.deliver(tea.WindowSizeMsg{Width: 80, Height: 12})
 	d.deliver(tea.MouseMsg{X: 10, Y: 4, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
 	d.deliver(tea.MouseMsg{X: 10, Y: 4, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	requireText(t, d, "› · file-02")
+	requireText(t, d, "› ▤ file-02")
 	d.key("/")
 	d.key("17")
 	d.key("enter")
 	d.deliver(tea.MouseMsg{X: 1, Y: 4, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	requireText(t, d, "● · file-17")
+	requireText(t, d, "● ▤ file-17")
 	requireText(t, d, "1 selected")
 }

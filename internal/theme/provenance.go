@@ -1,6 +1,9 @@
 package theme
 
-// Palette provenance (checked against upstream on 2026-10-23):
+// Midnight is an original lazyftp palette inspired by the project's dark-blue
+// command-palette mockup, with mint selections. It is not an editor-theme port.
+//
+// Other palette provenance (checked against upstream on 2026-10-23):
 // These are semantic adaptations of published RGB palette values, not imports
 // of editor theme code. All role assignments and loader code are original here.
 //

@@ -21,16 +21,18 @@ type Theme struct {
 
 // Names returns a new slice in stable preset order.
 func Names() []string {
-	return []string{"catppuccin-mocha", "tokyo-night", "gruvbox-dark", "dracula"}
+	return []string{"midnight", "catppuccin-mocha", "tokyo-night", "gruvbox-dark", "dracula"}
 }
 
-// Get returns the named preset. An empty name selects Catppuccin Mocha.
+// Get returns the named preset. An empty name selects Midnight.
 func Get(name string) (Theme, error) {
 	if name == "" {
-		name = "catppuccin-mocha"
+		name = "midnight"
 	}
 	var colors []string
 	switch name {
+	case "midnight":
+		colors = []string{"#0b1423", "#101d2f", "#dce8f4", "#91a6bb", "#4b6a89", "#65c7f7", "#8af0ce", "#071a24", "#68d6da", "#b6a1f8", "#78dba6", "#efc46f", "#f47d91", "#6dbcfb", "#8fe1b5", "#f5ce79", "#c29bfa"}
 	case "catppuccin-mocha":
 		colors = []string{"#1e1e2e", "#313244", "#cdd6f4", "#a6adc8", "#585b70", "#89b4fa", "#45475a", "#cdd6f4", "#a6e3a1", "#cba6f7", "#a6e3a1", "#f9e2af", "#f38ba8", "#89b4fa", "#a6e3a1", "#fab387", "#f5c2e7"}
 	case "tokyo-night":

@@ -20,7 +20,7 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m.Update(tea.KeyMsg{Type: kind})
 	}
 	if m.modal != "" {
-		w, h := min(82, m.width-6), min(20, m.height-4)
+		w, h := m.modalSize()
 		x, y := (m.width-w)/2, (m.height-h)/2
 		outside := msg.X < x || msg.X >= x+w || msg.Y < y || msg.Y >= y+h
 		if click && (outside || (msg.Y == y && msg.X >= x+w-6)) {
