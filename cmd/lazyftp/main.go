@@ -19,7 +19,7 @@ import (
 
 func main() {
 	demo := flag.Bool("demo", false, "Run the read-only fixture workspace (default without --live)")
-	live := flag.Bool("live", false, "Use real filesystems and enable confirmed single-file copies")
+	live := flag.Bool("live", false, "Use real filesystems and enable confirmed file/folder copies")
 	left := flag.String("left", ".", "Local starting directory in live mode")
 	right := flag.String("right", "", "Starting rclone remote:path in live mode")
 	blob := flag.String("blob", "", "Optional second rclone remote:path in navigation")

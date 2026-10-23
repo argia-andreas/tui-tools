@@ -9,8 +9,8 @@
 - [x] Slice 1 — Interactive fixture-backed workspace, command palette and themes; fast tests and real-terminal smoke.
 - [x] Slice 2 — Disposable FTP/Blob/S3 lab, backend spike and real remote browsing.
 - [x] Slice 3 — Single-file transfers and conflict decisions, verified by returned bytes.
-- [ ] Slice 4 — Folder jobs, queue, cancellation, interruption and retry of unfinished work.
-- [ ] Slice 5 — Bounded previews, edge-case coverage and alpha packaging.
+- [x] Slice 4 — Folder jobs, queue, cancellation, interruption and retry of unfinished work.
+- [x] Slice 5 — Bounded previews, edge-case coverage and local alpha packaging (cross-builds, not native platform or production-cloud validation).
 
 ## Notes for a fresh session
 - The repository was empty at the start.
@@ -56,3 +56,4 @@
 - `lazyftp-mcp` exposes list/upload/download over stdio using the official Go SDK. Default deny; independent operation + exact remote/path-root grants and transfer local roots. No overwrites/delete/execute, no implicit permissions from interactive credentials or bookmarks. `docs/mcp.md` explains trusted staging and non-race-proof path checks.
 - Actual PTY validation interrupted throttled running transfers on FTP, Blob and S3, retried unfinished files, verified exact bytes and confirmed completed files were not repeated. Kept public UI tests cover conflict/failure/retry and nested round trips; `make test-integration` includes storage, UI and MCP on all three services.
 - New inspected visual evidence: `.amp/in/artifacts/alpha-*.png`, `alpha-interaction.mp4` / `.loop.webp`. These are real terminal captures, not mockups. Real Azure/AWS identity, IAM/TLS/provider behavior and non-Linux native execution remain unverified.
+- Combined acceptance: `make check`, `go test -race ./...`, terminal smoke (0.64s), three-backend live PTY smoke (3.12s), and tagged storage/UI/MCP integration (29.611s / 7.516s / 7.186s respectively) passed. Local alpha matrix builds both binaries for Linux/macOS amd64/arm64; all four archive checksums verified, extracted Linux binaries' help and MCP EOF startup exercised. Nothing published or deployed.
