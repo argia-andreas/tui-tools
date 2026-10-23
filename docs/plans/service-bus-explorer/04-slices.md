@@ -1,6 +1,6 @@
 # Vertical slices: Service Bus Explorer terminal UI
 
-Gate 4 proposal, prepared 2026-10-23. Gates 1–3 are approved. This is the last design approval before application implementation; no implementation files exist yet.
+Gate 4 approved 2026-10-23. All design gates are approved. Build and verify one runnable slice at a time below.
 
 ## Build order
 
