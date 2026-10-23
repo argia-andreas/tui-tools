@@ -2,3 +2,5 @@
 /.venv/
 /.amp/portals/
 /.amp/in/
+/.lab/
+/lab/node_modules/

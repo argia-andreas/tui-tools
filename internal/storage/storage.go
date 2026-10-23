@@ -1,4 +1,4 @@
-// Package storage defines the read-only browsing contract used by the demo UI.
+// Package storage defines browsing and single-file transfer contracts.
 package storage
 
 import (
@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Location identifies a directory. An empty Remote identifies the demo local tree.
+// Location identifies a path. An empty Remote identifies the local filesystem.
 type Location struct {
 	Remote string
 	Path   string
@@ -23,4 +23,12 @@ type Entry struct {
 // Browser lists directories without changing their contents.
 type Browser interface {
 	List(ctx context.Context, loc Location) ([]Entry, error)
+}
+
+// Transferer operates on full file paths, not directory destinations. Copy must
+// reject directories and existing destinations unless overwrite is explicit.
+// FTP cannot guarantee atomic no-clobber against concurrent external writers.
+type Transferer interface {
+	Stat(context.Context, Location) (Entry, error)
+	Copy(ctx context.Context, source, destination Location, overwrite bool) error
 }

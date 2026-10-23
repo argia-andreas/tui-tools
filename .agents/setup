@@ -46,5 +46,14 @@ fi
 if [[ ! -x .venv/bin/python ]]; then
   uv venv .venv
 fi
-uv pip install --python .venv/bin/python 'pyte==0.8.2'
+uv pip install --python .venv/bin/python 'pyte==0.8.2' 'pyftpdlib==2.1.0'
+
+echo 'Preparing pinned direct-process FTP/Blob lab dependencies...'
+if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
+  echo 'Node.js and npm are required for the pinned local Azurite emulator.' >&2
+  exit 1
+fi
+python3 scripts/lab.py install-rclone
+npm ci --prefix lab --ignore-scripts --no-audit --no-fund
+echo 'Lab dependencies ready. Run make lab-up lab-seed inside the orb (no Docker required).'
 echo "Setup complete in $((SECONDS - started))s."

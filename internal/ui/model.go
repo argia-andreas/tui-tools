@@ -14,6 +14,9 @@ import (
 
 type Options struct {
 	Browser     storage.Browser
+	Context     context.Context
+	Transferer  storage.Transferer
+	Locations   []storage.Location
 	Left, Right storage.Location
 	Theme       theme.Theme
 	Icons       bool
@@ -38,6 +41,12 @@ type listed struct {
 
 type Model struct {
 	browser                     storage.Browser
+	ctx                         context.Context
+	transferer                  storage.Transferer
+	locations                   []storage.Location
+	pending                     *copyState
+	job                         *transferJob
+	operation                   int
 	panes                       [2]pane
 	theme                       theme.Theme
 	icons                       bool
@@ -56,6 +65,17 @@ type Model struct {
 func New(o Options) Model {
 	m := Model{browser: o.Browser, theme: o.Theme, icons: o.Icons, focus: 1, navigation: true,
 		status: "Demo workspace — fixture data only; no network or disk writes"}
+	m.transferer, m.locations = o.Transferer, o.Locations
+	m.ctx = o.Context
+	if m.ctx == nil {
+		m.ctx = context.Background()
+	}
+	if len(m.locations) == 0 {
+		m.locations = navLocations
+	}
+	if m.transferer != nil {
+		m.status = "Live workspace — confirm each copy; FTP is unencrypted"
+	}
 	m.panes[0] = pane{location: o.Left, selected: map[string]bool{}, loading: true}
 	m.panes[1] = pane{location: o.Right, selected: map[string]bool{}, loading: true}
 	return m
@@ -68,7 +88,7 @@ func (m Model) Init() tea.Cmd {
 func (m Model) list(i int) tea.Cmd {
 	p := m.panes[i]
 	return func() tea.Msg {
-		entries, err := m.browser.List(context.Background(), p.location)
+		entries, err := m.browser.List(m.ctx, p.location)
 		return listed{pane: i, generation: p.generation, entries: entries, err: err}
 	}
 }
@@ -140,6 +160,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				p.cursor = 0
 			}
 		}
+	case destinationChecked:
+		if m.pending != nil && msg.operation == m.operation {
+			p := *m.pending
+			p.checking, p.conflict, p.err = false, msg.exists, msg.err
+			m.pending = &p
+			m.choice = 0
+		}
+	case copyFinished:
+		m.job = &transferJob{source: msg.source, destination: msg.destination, state: "Completed"}
+		if msg.err != nil {
+			m.job.state = "Failed"
+			m.job.err = msg.err
+		}
+		m.status = m.job.state + ": " + msg.destination.String()
+		var cmds []tea.Cmd
+		for i := range m.panes {
+			loc := msg.destination
+			loc.Path = path.Dir(loc.Path)
+			if m.panes[i].location == loc {
+				m.panes[i].generation++
+				m.panes[i].loading = true
+				cmds = append(cmds, m.list(i))
+			}
+		}
+		return m, tea.Batch(cmds...)
 	case tea.MouseMsg:
 		return m.mouse(msg)
 	case tea.KeyMsg:
@@ -147,7 +192,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key == "ctrl+c" {
 			return m, tea.Quit
 		}
-		if key == "f1" {
+		if key == "f1" && m.modal != "copy" && m.modal != "rename" {
 			return m.execute("help")
 		}
 		if m.modal != "" {
@@ -163,6 +208,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.filtering = false
 			case "backspace", "ctrl+h":
 				p.filter = dropRune(p.filter)
+			case " ":
+				p.filter += " "
 			default:
 				if msg.Type == tea.KeyRunes {
 					p.filter += string(msg.Runes)
@@ -205,7 +252,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				delta = -1
 			}
 			if m.focus == 0 {
-				m.navCursor = (m.navCursor + delta + len(navLocations)) % len(navLocations)
+				m.navCursor = (m.navCursor + delta + len(m.locations)) % len(m.locations)
 			}
 			if m.focus == 1 || m.focus == 2 {
 				p := &m.panes[m.active()]
@@ -216,7 +263,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			if m.focus == 0 {
-				loc := navLocations[m.navCursor]
+				loc := m.locations[m.navCursor]
 				i := 1
 				if loc.Remote == "" {
 					i = 0
@@ -284,7 +331,7 @@ func (m Model) actions() []action {
 		direction = "left"
 	}
 	a := []action{
-		{"copy", "Copy to " + direction + " pane", "c", "upload download transfer", "Transfers arrive in the next slice; demo is read-only"},
+		{"copy", "Copy to " + direction + " pane", "c", "upload download transfer", m.copyDisabled()},
 		{"preview", "Preview selected file", "p", "inspect text", "Content previews arrive after real storage integration"},
 		{"navigation", "Toggle navigation sidebar", "[", "connections places", ""},
 		{"inspector", "Toggle file inspector", "]", "metadata details sidebar", ""},
@@ -325,6 +372,9 @@ func (m Model) matches() []action {
 }
 
 func (m Model) modalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.modal == "copy" || m.modal == "rename" {
+		return m.copyKey(msg)
+	}
 	key := msg.String()
 	if key == "esc" || key == "ctrl+p" {
 		m.modal = ""
@@ -361,6 +411,9 @@ func (m Model) modalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "backspace", "ctrl+h":
 		m.query = dropRune(m.query)
+		m.choice = 0
+	case " ":
+		m.query += " "
 		m.choice = 0
 	default:
 		if msg.Type == tea.KeyRunes {
@@ -403,7 +456,19 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		m.choice = 0
 	case "quit":
 		return m, tea.Quit
-	case "copy", "preview":
+	case "copy":
+		if reason := m.copyDisabled(); reason != "" {
+			m.status = reason
+			return m, nil
+		}
+		i := m.active()
+		e, _ := m.copyEntry()
+		source, destination := m.panes[i].location, m.panes[1-i].location
+		source.Path = path.Join(source.Path, e.Name)
+		destination.Path = path.Join(destination.Path, e.Name)
+		m.pending = &copyState{source: source, destination: destination, size: e.Size}
+		return m.checkDestination()
+	case "preview":
 		for _, a := range m.actions() {
 			if a.id == id {
 				m.status = a.disabled

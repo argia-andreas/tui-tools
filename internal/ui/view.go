@@ -77,6 +77,23 @@ const paneControls = " ↑ Up  / Filter  ↻ Refresh"
 const paletteFooter = "  ↑↓ choose · Enter run · F1 shortcuts · Esc close"
 const helpFooter = "  ↑↓ / wheel scroll · Esc close"
 
+func (m Model) toolbar() string {
+	if m.transferer != nil {
+		return strings.Replace(toolbar, "[Actions]", "[Copy] [Actions]", 1)
+	}
+	return toolbar
+}
+
+func (m Model) navY(i int) int {
+	y := 3 + i
+	for j := 0; j <= i; j++ {
+		if m.locations[j].Remote == "" {
+			return y + 2
+		}
+	}
+	return y
+}
+
 // Rendering and mouse input share these dimensions, including responsive panels.
 type workspaceLayout struct{ nav, inspector, center, left, height, drawer int }
 
@@ -108,9 +125,19 @@ func (m Model) View() string {
 	centerWidth, leftWidth, drawerHeight := l.center, l.left, l.drawer
 	center := join(m.filePane(0, leftWidth, h-drawerHeight), m.filePane(1, centerWidth-leftWidth, h-drawerHeight))
 	if m.jobs {
-		center = append(center, m.block("TRANSFERS · demo", centerWidth, drawerHeight, []string{
+		jobLines := []string{
 			"", m.paint("  No real transfers yet", m.theme.Muted), "  Browse, select, and try Ctrl+P.",
-			"  FTP + Blob integration is next."}, m.focus == 4, m.theme.Success)...)
+			"  FTP + Blob integration is next."}
+		if m.transferer != nil {
+			jobLines = []string{"  No transfers yet — select a file and press c."}
+		}
+		if m.job != nil {
+			jobLines = []string{"  " + m.job.state, "  From: " + text(m.job.source.String()), "  To:   " + text(m.job.destination.String())}
+			if m.job.err != nil {
+				jobLines = append(jobLines, m.paint("  "+text(m.job.err.Error()), m.theme.Error))
+			}
+		}
+		center = append(center, m.block("TRANSFERS", centerWidth, drawerHeight, jobLines, m.focus == 4, m.theme.Success)...)
 	}
 	body := center
 	if navWidth > 0 {
@@ -123,7 +150,7 @@ func (m Model) View() string {
 	if m.width < 110 {
 		headerLeft = m.paint(" LAZYFTP", m.theme.Focus)
 	}
-	headerRight := toolbar
+	headerRight := m.toolbar()
 	if m.width >= 110 {
 		headerRight = m.theme.Name + " ·" + headerRight
 	}
@@ -243,9 +270,18 @@ func (m Model) filePane(i, w, h int) []string {
 func (m Model) navigationPane(w, h int) []string {
 	m.theme.Background = m.theme.Surface
 	lines := []string{m.paint("  REMOTES", m.theme.Muted)}
-	labels := []string{"demo-ftp /incoming", "demo-ftp /archive", "demo-blob /assets", "Project", "Downloads"}
-	for i, label := range labels {
-		if i == 3 {
+	for i, loc := range m.locations {
+		label := loc.Remote + " " + loc.Path
+		if loc.Remote == "" {
+			label = path.Base(loc.Path)
+			if label == "project" {
+				label = "Project"
+			}
+			if label == "downloads" {
+				label = "Downloads"
+			}
+		}
+		if loc.Remote == "" && (i == 0 || m.locations[i-1].Remote != "") {
 			lines = append(lines, "", m.paint("  PLACES", m.theme.Muted))
 		}
 		row := fit("  "+label, w-2)
@@ -258,7 +294,11 @@ func (m Model) navigationPane(w, h int) []string {
 	for len(lines) < h-5 {
 		lines = append(lines, "")
 	}
-	lines = append(lines, m.paint("  FIXTURE MODE", m.theme.Warning), "  Read-only demo", "")
+	if m.transferer == nil {
+		lines = append(lines, m.paint("  FIXTURE MODE", m.theme.Warning), "  Read-only demo", "")
+	} else {
+		lines = append(lines, m.paint("  LIVE MODE", m.theme.Warning), "  Confirm each copy", "")
+	}
 	return m.block("WORKSPACE", w, h, lines, m.focus == 0, m.theme.Local)
 }
 
@@ -287,7 +327,9 @@ func (m Model) overlay(background []string) []string {
 	h := min(20, m.height-4)
 	lines := []string{}
 	title := "ACTIONS · Ctrl+P"
-	if m.modal == "help" {
+	if m.modal == "copy" || m.modal == "rename" {
+		title, lines = m.copyLines(w, h)
+	} else if m.modal == "help" {
 		title = "KEYBOARD SHORTCUTS · F1"
 		guide := shortcutLines()
 		start := min(m.choice, max(0, len(guide)-(h-3)))
@@ -341,7 +383,7 @@ func (m Model) overlay(background []string) []string {
 func shortcutLines() []string {
 	return []string{
 		"  DISCOVER", "  Ctrl+P        Search every action", "  F1 / ?        Keyboard shortcuts", "  Esc           Close modal / clear filter", "",
-		"  BROWSE & SELECT", "  Tab/Shift+Tab Focus next/previous panel", "  ↑↓ or j/k     Move cursor", "  Enter         Open directory / run action", "  Backspace/h   Parent directory", "  Space         Toggle file selection", "  /             Filter current pane", "  Ctrl+R        Refresh / retry", "",
+		"  BROWSE & SELECT", "  Tab/Shift+Tab Focus next/previous panel", "  ↑↓ or j/k     Move cursor", "  Enter         Open directory / run action", "  Backspace/h   Parent directory", "  Space         Toggle file selection", "  c             Confirm single-file copy (live)", "  /             Filter current pane", "  Ctrl+R        Refresh / retry", "",
 		"  WORKSPACE", "  [ / ]         Toggle navigation / inspector", "  t             Toggle transfer drawer", "  q / Ctrl+C    Quit workspace", "",
 		"  COMMAND PALETTE", "  Type          Fuzzy-search actions", "  ↑↓ / Ctrl+N/K Choose action", "  Enter         Run selected action", "  F1            Show this guide", "",
 		"  MOUSE", "  Click row     Open directory / inspect file", "  Click marker  Toggle selection without opening", "  Wheel         Scroll list / guide / palette", "  Top buttons   Toggle panels / help / actions",

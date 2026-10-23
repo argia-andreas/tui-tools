@@ -1,0 +1,9 @@
+{
+  "name": "lazyftp-disposable-lab",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Pinned local Azurite Blob emulator for the lazyftp lab",
+  "dependencies": {
+    "azurite": "3.35.0"
+  }
+}

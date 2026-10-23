@@ -25,9 +25,23 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		outside := msg.X < x || msg.X >= x+w || msg.Y < y || msg.Y >= y+h
 		if click && (outside || (msg.Y == y && msg.X >= x+w-6)) {
 			m.modal = ""
+			m.pending = nil
 			return m, nil
 		}
 		if outside {
+			return m, nil
+		}
+		if m.modal == "copy" || m.modal == "rename" {
+			if click && m.modal == "copy" && msg.Y == y+h-2 {
+				start := x + 2
+				for i, label := range m.copyButtons() {
+					if msg.X >= start && msg.X < start+len(label)+4 {
+						m.choice = i
+						return key(tea.KeyEnter)
+					}
+					start += len(label) + 4
+				}
+			}
 			return m, nil
 		}
 		if wheel {
@@ -71,12 +85,13 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if click && msg.Y == 0 {
-		x := msg.X - (m.width - ansi.StringWidth(toolbar))
+		controls := m.toolbar()
+		x := msg.X - (m.width - ansi.StringWidth(controls))
 		for _, button := range []struct{ label, action string }{
-			{"[Nav]", "navigation"}, {"[Info]", "inspector"}, {"[Jobs]", "jobs"}, {"[?]", "help"}, {"[Actions]", "palette"},
+			{"[Nav]", "navigation"}, {"[Info]", "inspector"}, {"[Jobs]", "jobs"}, {"[?]", "help"}, {"[Copy]", "copy"}, {"[Actions]", "palette"},
 		} {
-			start := strings.Index(toolbar, button.label)
-			if x >= start && x < start+len(button.label) {
+			start := strings.Index(controls, button.label)
+			if start >= 0 && x >= start && x < start+len(button.label) {
 				if button.action == "palette" {
 					return key(tea.KeyCtrlP)
 				}
@@ -98,8 +113,8 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			}
 			return key(tea.KeyDown)
 		}
-		for i, y := range []int{3, 4, 5, 8, 9} {
-			if msg.Y == y {
+		for i := range m.locations {
+			if msg.Y == m.navY(i) {
 				m.navCursor = i
 				return key(tea.KeyEnter)
 			}

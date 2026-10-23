@@ -145,6 +145,17 @@ func TestFilteringConsumesShortcutsAndUnicode(t *testing.T) {
 	d.key("esc")
 	requireText(t, d, "README.md")
 	d.key("/")
+	d.key("project")
+	d.deliver(tea.KeyMsg{Type: tea.KeySpace})
+	d.key("notes")
+	d.key("enter")
+	requireText(t, d, "project notes.txt")
+	if strings.Contains(d.screen(), "README.md") {
+		t.Fatal("literal space was lost in filename filter")
+	}
+	d.key("/")
+	d.key("esc")
+	d.key("/")
 	d.key("q[]t")
 	if d.quit {
 		t.Fatal("filter input quit")
