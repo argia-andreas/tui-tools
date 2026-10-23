@@ -10,6 +10,7 @@ import signal
 import struct
 import subprocess
 import termios
+import tempfile
 import time
 
 import pyte
@@ -24,6 +25,9 @@ def main():
     rejected = subprocess.run(["./bin/sbx", "--fixture", "--emulator"], capture_output=True, text=True)
     assert rejected.returncode == 2
     master, slave = pty.openpty()
+    slave_name = os.ttyname(slave)
+    preferences = tempfile.TemporaryDirectory(prefix="sbx-terminal-")
+    config_path = os.path.join(preferences.name, "preferences.json")
     screen = pyte.Screen(160, 48)
     stream = pyte.Stream(screen)
     decoder = codecs.getincrementaldecoder("utf-8")("replace")
@@ -35,7 +39,8 @@ def main():
     resize(160, 48)
     env = dict(os.environ, TERM="xterm-256color", COLORTERM="truecolor", CLICOLOR="1")
     env.pop("NO_COLOR", None)
-    proc = subprocess.Popen(["./bin/sbx", "--emulator" if args.emulator else "--fixture"], stdin=slave, stdout=slave,
+    command = ["./bin/sbx", "--emulator" if args.emulator else "--fixture", "--config", config_path]
+    proc = subprocess.Popen(command, stdin=slave, stdout=slave,
                             stderr=slave, env=env, start_new_session=True)
     os.close(slave)
 
@@ -56,6 +61,11 @@ def main():
     def send(keys, want, absent=None):
         os.write(master, keys.encode())
         return wait(want, absent)
+
+    def action(query, want):
+        send("\x10", "Ctrl+P / ACTIONS")
+        send(query, "> " + query + "_")
+        return send("\r", want, "Ctrl+P / ACTIONS")
 
     try:
         if args.emulator:
@@ -89,7 +99,8 @@ def main():
             return
         # The footer arrives after the complete frame; matching the first card
         # could return while the PTY is still streaming the remaining rows.
-        text = wait("Offline sample data")
+        wait("Offline sample data")
+        text = wait("128 queued")
         assert "FIXTURE · OFFLINE" in text and "WORKSPACE" in text
         for label in ("orders", "payments", "notifications", "inventory", "shipping",
                       "invoices", "audit-log", "email-outbox", "webhook-dispatch",
@@ -127,6 +138,20 @@ def main():
         send("\r", "events/billing / ACTIVE")
         send("\x1b", "Topic subscriptions")
         send("\x1b", "128 queued")
+        send("\x10", "Ctrl+P / ACTIONS")
+        send("qjk", "No matching actions")
+        assert proc.poll() is None, "palette query q quit the process"
+        send("\x1b", "128 queued", "Ctrl+P / ACTIONS")
+        # Distinct palette colors are observable terminal output, not just names.
+        action("gruvbox", "128 queued")
+        row = next(y for y, text in enumerate(screen.display) if "128 queued" in text)
+        col = screen.display[row].index("128 queued")
+        assert screen.buffer[row][col].bg == "282828"
+        action("light", "128 queued")
+        row = next(y for y, text in enumerate(screen.display) if "128 queued" in text)
+        col = screen.display[row].index("128 queued")
+        assert screen.buffer[row][col].bg == "f6f8fb"
+        action("midnight", "128 queued")
         # A focused sidebar must not trap keys after it auto-hides on resize.
         send("\t", "WORKSPACE")
         resize(80, 24)
@@ -139,6 +164,15 @@ def main():
         resize(160, 48)
         os.kill(proc.pid, signal.SIGWINCH)
         wait("INSPECTOR")
+        action("settings", "Color theme: midnight")
+        send("\r", "Color theme: gruvbox")
+        # First watch row follows the five layout/save controls.
+        for index in range(5):
+            os.write(master, b"j")
+            time.sleep(0.04)
+        send("\r", "[ ] fixture / local-lab / orders")
+        send("s", "Preferences saved")
+        send("\x1b", "13 watched entities")
         os.write(master, b"q")
         deadline = time.monotonic() + 5
         while proc.poll() is None and time.monotonic() < deadline:
@@ -149,7 +183,20 @@ def main():
                     break
         proc.wait(timeout=2)
         assert proc.returncode == 0, proc.returncode
-        print("PASS: real PTY — 12 cards, table, sidebar, Active/DLQ, body, paging, topics, resize, clean exit")
+        # Reopen the actual binary against the saved file, not an in-memory model.
+        screen.reset()
+        decoder.reset()
+        slave = os.open(slave_name, os.O_RDWR | os.O_NOCTTY)
+        proc = subprocess.Popen(command, stdin=slave, stdout=slave, stderr=slave,
+                                env=env, start_new_session=True)
+        os.close(slave)
+        wait("13 watched entities", "128 queued")
+        action("settings", "Color theme: gruvbox")
+        wait("[ ] fixture / local-lab / orders")
+        os.write(master, b"q")
+        proc.wait(timeout=5)
+        assert proc.returncode == 0
+        print("PASS: real PTY — 12 cards, table/tree, Active/DLQ, paging, resize, fuzzy palette, three theme colors, save/restart watchlist, clean exit")
     finally:
         if proc.poll() is None:
             proc.terminate()
@@ -159,6 +206,7 @@ def main():
                 proc.kill()
                 proc.wait(timeout=2)
         os.close(master)
+        preferences.cleanup()
 
 
 if __name__ == "__main__":
