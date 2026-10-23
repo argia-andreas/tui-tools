@@ -35,6 +35,7 @@ func TestRcloneIntegration(t *testing.T) {
 	for _, remote := range []struct{ name, root string }{
 		{"lab-ftp", "/incoming"},
 		{"lab-blob", "/files/assets"},
+		{"lab-s3", "/files/assets"},
 	} {
 		t.Run(remote.name, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
@@ -133,6 +134,16 @@ func TestRcloneIntegration(t *testing.T) {
 				if size, ok := seen[name]; !ok || size != int64(len(payloads[i])) {
 					t.Errorf("List missing or incorrect metadata for %q", name)
 				}
+			}
+
+			// Object-store prefixes must behave as navigable directories, not
+			// flatten keys or lose Unicode names on a nested round trip.
+			nested := remoteFile("nested dir/deeper/雪 café.bin")
+			copyFile(localFile(names[2]), nested, false)
+			checkBytes(nested, payloads[2])
+			nestedEntries, err := client.List(ctx, remoteFile("nested dir/deeper"))
+			if err != nil || len(nestedEntries) != 1 || nestedEntries[0].Name != "雪 café.bin" || nestedEntries[0].Size != int64(len(payloads[2])) {
+				t.Fatalf("nested List: entries=%+v err=%v", nestedEntries, err)
 			}
 
 			original := payloads[1]

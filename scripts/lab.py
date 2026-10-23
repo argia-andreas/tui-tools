@@ -18,6 +18,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import zipfile
@@ -30,19 +31,30 @@ MARKER = LAB / ".lazyftp-lab-owner"
 RCLONE_VERSION = "1.70.3"
 RCLONE_SHA256 = "7d69057e69385f6514a9684c7eaa424d972096b130284bb34dd967c4ed4f9dad"
 RCLONE = Path.home() / ".local/bin/rclone"
+WEED_VERSION = "4.49"
+WEED_SHA256 = "3d10545b2317adc1587be02594f97e63420fe1aa7a5ba2af9c9760804574e397"
+WEED = Path.home() / f".local/toolchains/seaweedfs-{WEED_VERSION}/weed"
 PYTHON = ROOT / ".venv/bin/python"
 AZURITE = ROOT / "lab/node_modules/.bin/azurite-blob"
 FTP_SERVICE = "lazyftp-lab-ftp"
 BLOB_SERVICE = "lazyftp-lab-blob"
+S3_SERVICE = "lazyftp-lab-s3"
 FTP_PORT = 2121
 BLOB_PORT = 10000
+S3_PORT = 8333
+# SeaweedFS server also runs internal master, volume and filer HTTP/gRPC servers.
+S3_PORTS = (S3_PORT, 18333, 9333, 19333, 9340, 19340, 8888, 18888)
+S3_ACCESS_KEY = "lazyftp-dev"
+S3_SECRET_KEY = "lazyftp-public-development-secret"
+S3_ENDPOINT = f"http://127.0.0.1:{S3_PORT}"
 FTP_USER = "lab"
 FTP_PASSWORD = "public-lazyftp-development-only"
 ACCOUNT = "lazyftplab"
 # Public emulator-only key, not an Azure account credential.
 KEY = base64.b64encode(b"lazyftp-public-development-key!!!").decode()
 ENDPOINT = f"http://127.0.0.1:{BLOB_PORT}/{ACCOUNT}"
-REMOTES = {"local": str(LAB / "local"), "ftp": "lab-ftp:/incoming", "blob": "lab-blob:/files/assets"}
+REMOTES = {"local": str(LAB / "local"), "ftp": "lab-ftp:/incoming",
+           "blob": "lab-blob:/files/assets", "s3": "lab-s3:/files/assets"}
 FIXTURES = {
     "local": {
         "local only.txt": b"Only on the local side.\n",
@@ -64,6 +76,14 @@ FIXTURES = {
         "nested dir/deeper/blob notes.txt": b"Nested Blob notes.\n",
         "Unicode/naïve résumé.txt": "Blob naïve résumé notes.\n".encode(),
         "zero bytes.bin": b"",
+    },
+    "s3": {
+        "s3 only.txt": b"Only on S3, not FTP or Blob.\n",
+        "shared.txt": b"S3 version of shared.txt, deliberately asymmetric.\n",
+        "nested dir/deeper/s3 notes.txt": b"Nested S3 notes.\n",
+        "Unicode/雪 café.txt": "S3 雪 café notes.\n".encode(),
+        "zero bytes.bin": b"",
+        "asymmetric.bin": bytes((i * 73 + i // 251 + 19) % 256 for i in range(4233)),
     },
 }
 
@@ -106,6 +126,11 @@ def prereqs(supervisor=False):
     version = run([RCLONE, "version"], capture_output=True, text=True).stdout.splitlines()[0]
     if version != f"rclone v{RCLONE_VERSION}":
         fail(f"Expected rclone v{RCLONE_VERSION}, got {version}. Run .agents/setup.")
+    if not WEED.is_file():
+        fail("Pinned SeaweedFS is missing. Run .agents/setup.")
+    version = run([WEED, "version"], capture_output=True, text=True).stdout
+    if f" {WEED_VERSION} " not in version:
+        fail(f"Expected SeaweedFS {WEED_VERSION}. Run .agents/setup.")
     if not PYTHON.is_file() or not AZURITE.is_file():
         fail("Lab dependencies are missing. Run .agents/setup.")
     result = subprocess.run([str(PYTHON), "-c",
@@ -148,6 +173,16 @@ type = azureblob
 account = {ACCOUNT}
 key = {KEY}
 endpoint = {ENDPOINT}
+
+[lab-s3]
+type = s3
+provider = SeaweedFS
+env_auth = false
+access_key_id = {S3_ACCESS_KEY}
+secret_access_key = {S3_SECRET_KEY}
+endpoint = {S3_ENDPOINT}
+region = us-east-1
+force_path_style = true
 """)
     temporary.replace(path)
 
@@ -161,6 +196,9 @@ def check_config():
     expected = {
         "lab-ftp": {"type": "ftp", "host": "127.0.0.1", "port": str(FTP_PORT), "user": FTP_USER},
         "lab-blob": {"type": "azureblob", "account": ACCOUNT, "key": KEY, "endpoint": ENDPOINT},
+        "lab-s3": {"type": "s3", "provider": "SeaweedFS", "env_auth": "false",
+                   "access_key_id": S3_ACCESS_KEY, "secret_access_key": S3_SECRET_KEY,
+                   "endpoint": S3_ENDPOINT, "region": "us-east-1", "force_path_style": "true"},
     }
     for remote, values in expected.items():
         if remote not in config or any(config[remote].get(key) != value for key, value in values.items()):
@@ -181,34 +219,39 @@ def active(service):
 
 
 def ready():
-    for port, name in ((FTP_PORT, "FTP"), (BLOB_PORT, "Blob")):
+    for port, name in ((FTP_PORT, "FTP"), (BLOB_PORT, "Blob"), (S3_PORT, "S3")):
         if not listening(port):
             fail(f"{name} service unavailable on loopback port {port}; run make lab-up.")
     rclone("lsd", "lab-ftp:/", stdout=subprocess.DEVNULL)
     rclone("lsd", "lab-blob:/", stdout=subprocess.DEVNULL)
+    rclone("lsd", "lab-s3:/", stdout=subprocess.DEVNULL)
 
 
 def up():
     prereqs(supervisor=True)
     owned(create=True)
-    for directory in ("local", "ftp/incoming", "azurite"):
+    for directory in ("local", "ftp/incoming", "azurite", "seaweedfs"):
         lab_path(directory).mkdir(parents=True, exist_ok=True, mode=0o700)
     write_config()
-    for service, port, action in ((FTP_SERVICE, FTP_PORT, "_ftp"), (BLOB_SERVICE, BLOB_PORT, "_blob")):
-        if listening(port) and not active(service):
-            fail(f"Loopback port {port} is already occupied by something other than {service}.")
+    services = ((FTP_SERVICE, (FTP_PORT,), "_ftp"), (BLOB_SERVICE, (BLOB_PORT,), "_blob"),
+                (S3_SERVICE, S3_PORTS, "_s3"))
+    for service, ports, action in services:
+        for port in ports:
+            if listening(port) and not active(service):
+                fail(f"Loopback port {port} is already occupied by something other than {service}.")
         command = shlex.join([str(PYTHON), str(ROOT / "scripts/lab.py"), action])
         run(["amp", "orb", "service", "start", service, "--cwd", ROOT,
-             "--port", str(port), "--command", command])
-    deadline = time.monotonic() + 20
-    while not all(listening(port) for port in (FTP_PORT, BLOB_PORT)):
+             "--port", str(ports[0]), "--command", command])
+    deadline = time.monotonic() + 40
+    while not all(listening(port) for port in (FTP_PORT, BLOB_PORT, S3_PORT)):
         if time.monotonic() >= deadline:
-            fail("Lab startup timed out. Inspect amp orb service logs lazyftp-lab-{ftp,blob}.")
+            fail("Lab startup timed out. Inspect amp orb service logs lazyftp-lab-{ftp,blob,s3}.")
         time.sleep(0.2)
     ready()
     print(f"Lab ready; storage is loopback-only (no portals).\nRCLONE_CONFIG={CONFIG}")
     print(f"--rclone-config {CONFIG} --left {REMOTES['local']} --right {REMOTES['ftp']}")
-    print(f"Blob alternative: --right {REMOTES['blob']}\nRun make lab-seed to add missing fixtures.")
+    print(f"Blob alternative: --right {REMOTES['blob']}\nS3 alternative: --right {REMOTES['s3']}")
+    print("Run make lab-seed to add missing fixtures.")
 
 
 def seed():
@@ -236,7 +279,7 @@ def seed():
 def down():
     if not shutil.which("amp"):
         fail("amp orb service is required to stop the named lab services.")
-    for service in (FTP_SERVICE, BLOB_SERVICE):
+    for service in (FTP_SERVICE, BLOB_SERVICE, S3_SERVICE):
         # Stop only our exact names; never touch unrelated orb services or data.
         result = subprocess.run(["amp", "orb", "service", "stop", service], capture_output=True, text=True)
         if result.returncode == 0:
@@ -267,6 +310,57 @@ def serve_blob():
     os.environ["AZURITE_ACCOUNTS"] = f"{ACCOUNT}:{KEY}"
     os.execv(str(AZURITE), [str(AZURITE), "--blobHost", "127.0.0.1", "--blobPort", str(BLOB_PORT),
                           "--location", str(lab_path("azurite")), "--disableTelemetry", "--silent"])
+
+
+def serve_s3():
+    owned()
+    # A private config avoids ambient AWS/S3 credentials and anonymous S3 access.
+    config = lab_path("seaweedfs/s3.json")
+    with open(config, "w", opener=lambda p, flags: os.open(p, flags, 0o600)) as output:
+        os.chmod(config, 0o600)
+        json.dump({"identities": [{"name": "lazyftp-development", "credentials": [{
+            "accessKey": S3_ACCESS_KEY, "secretKey": S3_SECRET_KEY}],
+            "actions": ["Admin", "Read", "Write", "List", "Tagging"]}]}, output)
+    # Explicit local metadata storage takes precedence over user/system filer config.
+    metadata = lab_path("seaweedfs/filerldb2")
+    lab_path("seaweedfs/filer.toml").write_text(
+        f'[leveldb2]\nenabled = true\ndir = "{metadata}"\n')
+    # Disable optional listeners; even internal HTTP/gRPC listeners bind loopback.
+    os.chdir(lab_path("seaweedfs"))
+    env = {key: value for key, value in os.environ.items()
+           if not key.startswith(("WEED_", "AWS_", "S3_"))}
+    os.execve(str(WEED), [str(WEED), "-logtostderr=true", "server", f"-dir={lab_path('seaweedfs')}",
+                        "-filer", "-s3", "-volume.port=9340", "-master.volumeSizeLimitMB=128",
+                        "-ip=127.0.0.1", "-ip.bind=127.0.0.1", f"-s3.port={S3_PORT}",
+                        f"-s3.config={config}", "-s3.iam=false", "-s3.port.iceberg=0",
+                        "-s3.port.lance=0", "-webdav=false", "-filer.exposeDirectoryData=false",
+                        "-master.telemetry=false", "-volume.max=4"], env)
+
+
+def install_weed():
+    """Install the official standalone release, never an unpinned latest build."""
+    if sys.platform != "linux" or os.uname().machine != "x86_64":
+        fail("Pinned lab SeaweedFS installer supports linux/amd64 only.")
+    if WEED.is_file():
+        version = run([WEED, "version"], capture_output=True, text=True).stdout
+        if f" {WEED_VERSION} " not in version:
+            fail(f"Unexpected existing toolchain at {WEED}.")
+    else:
+        with tempfile.TemporaryDirectory(prefix="lazyftp-seaweedfs-") as temporary:
+            archive = Path(temporary) / "linux_amd64.tar.gz"
+            run(["curl", "--fail", "--silent", "--show-error", "--location", "--retry", "3",
+                 f"https://github.com/seaweedfs/seaweedfs/releases/download/{WEED_VERSION}/linux_amd64.tar.gz",
+                 "--output", archive])
+            if hashlib.sha256(archive.read_bytes()).hexdigest() != WEED_SHA256:
+                fail("Official SeaweedFS archive SHA256 verification failed.")
+            with tarfile.open(archive) as bundle:
+                binary = bundle.extractfile("weed").read()
+            WEED.parent.mkdir(parents=True, exist_ok=True)
+            WEED.write_bytes(binary)
+            WEED.chmod(0o755)
+        print(f"Verified official SHA256: {WEED_SHA256}")
+    run([WEED, "version"])
+    print(f"Pinned SeaweedFS: {WEED}")
 
 
 def install_rclone():
@@ -309,8 +403,9 @@ def install_rclone():
 
 def main():
     actions = {"up": up, "seed": seed, "down": down, "install-rclone": install_rclone,
+               "install-s3": install_weed,
                "check": lambda: (prereqs(), owned(), check_config(), ready()),
-               "_ftp": serve_ftp, "_blob": serve_blob}
+               "_ftp": serve_ftp, "_blob": serve_blob, "_s3": serve_s3}
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=actions)
     actions[parser.parse_args().command]()

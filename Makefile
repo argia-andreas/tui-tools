@@ -1,4 +1,7 @@
-.PHONY: build demo run run-lab test test-terminal test-terminal-live check lab-up lab-seed lab-down test-integration
+.PHONY: build demo run run-lab test test-terminal test-terminal-live check lab-up lab-seed lab-check lab-down test-integration
+
+# Open S3 with: make run-lab LAB_RIGHT=lab-s3:/files/assets
+LAB_RIGHT ?= lab-ftp:/incoming
 
 build:
 	go build -o bin/lazyftp ./cmd/lazyftp
@@ -18,7 +21,7 @@ test-terminal-live: build
 
 run-lab: build
 	python3 scripts/lab.py check
-	./bin/lazyftp --live --rclone-config .lab/rclone.conf --left "$(CURDIR)/.lab/local" --right lab-ftp:/incoming --blob lab-blob:/files/assets
+	./bin/lazyftp --live --rclone-config .lab/rclone.conf --left "$(CURDIR)/.lab/local" --right "$(LAB_RIGHT)" --blob lab-blob:/files/assets
 
 check:
 	@test -z "$$(gofmt -l $$(git ls-files --cached --others --exclude-standard '*.go'))" || { echo 'Run gofmt on the Go source files.'; exit 1; }
@@ -30,6 +33,9 @@ lab-up:
 
 lab-seed:
 	python3 scripts/lab.py seed
+
+lab-check:
+	python3 scripts/lab.py check
 
 lab-down:
 	python3 scripts/lab.py down
