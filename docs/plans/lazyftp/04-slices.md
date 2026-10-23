@@ -1,6 +1,6 @@
 # Vertical slices
 
-Status: proposed; awaiting Gate 4 approval. Build only one slice at a time. Each ends in a runnable application, executed checks, recorded evidence and a user opportunity to re-steer. Commit and push verified work to main under the user's existing authorization; do not deploy.
+Status: approved 2026-10-23. User explicitly waived further approval gates and asked for an iterative working proof of concept. Build in runnable increments with executed checks and recorded evidence. Commit and push verified work to main under the user's existing authorization; do not deploy.
 
 1. **Interactive tracer bullet:** runnable Go TUI over deterministic in-memory locations; dual-pane navigation/filter/selection, collapsible full-height sidebars, empty transfer drawer, Ctrl+P fuzzy action palette, theme/config switching and optional icons. Unsupported transfers/previews stay explicitly disabled. Exit: fast tests and PTY smoke pass, representative renders and interaction recording inspected, demo instructions work.
 2. **Real browsing:** validate rclone structured listings/progress/cancellation, establish seeded local FTP and Azurite services with direct-process and Compose startup paths, replace fixture data with real listings for one happy path on each service. Exit: application navigates both services, integration checks verify known fixture contents, unavailable dependencies fail explicitly. Extend the approved program design before real-storage implementation.
@@ -12,4 +12,4 @@ Status: proposed; awaiting Gate 4 approval. Build only one slice at a time. Each
 
 `make demo` must launch a genuinely interactive app without Docker, rclone, a cloud account or production files. It is not yet a file-transfer release. `make test` is the fast deterministic loop; `make test-terminal` exercises the actual executable; `make check` validates formatting, vet and tests. Service setup and transfer APIs belong to later slices, not a horizontal foundation built before anything runs.
 
-After slice 1, ask: **Continue to slice 2, or re-steer?** Repeat that checkpoint after each later slice. Keep `00-status.md` current so a fresh session can resume from these documents.
+Report runnable increments and invite feedback without requiring approval before continuing. Keep `00-status.md` current so a fresh session can resume from these documents.

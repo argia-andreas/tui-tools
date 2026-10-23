@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+started=$SECONDS
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+go_version=1.27.3
+go_sha256=65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40
+toolchain="$HOME/.local/toolchains/go$go_version"
+mkdir -p "$HOME/.local/toolchains" "$HOME/.local/bin"
+if [[ ! -x "$toolchain/bin/go" ]] || [[ "$("$toolchain/bin/go" version)" != "go version go$go_version linux/amd64" ]]; then
+  echo "Installing Go $go_version (linux-amd64)..."
+  temporary="$(mktemp -d)"
+  trap 'rm -rf "$temporary"' EXIT
+  curl --fail --location --retry 3 "https://go.dev/dl/go$go_version.linux-amd64.tar.gz" -o "$temporary/go.tar.gz"
+  echo "$go_sha256  $temporary/go.tar.gz" | sha256sum --check -
+  tar -xzf "$temporary/go.tar.gz" -C "$temporary"
+  rm -rf "$toolchain"
+  mv "$temporary/go" "$toolchain"
+fi
+for executable in go gofmt; do
+  ln -sfn "$toolchain/bin/$executable" "$HOME/.local/bin/$executable"
+  if command -v sudo >/dev/null && sudo -n true 2>/dev/null; then
+    sudo -n ln -sfn "$HOME/.local/bin/$executable" "/usr/local/bin/$executable"
+  fi
+done
+profile_marker='# lazyftp user-local toolchain'
+if ! grep -Fqx "$profile_marker" "$HOME/.bash_profile" 2>/dev/null; then
+  printf '\n%s\nexport PATH="$HOME/.local/bin:$PATH"\n' "$profile_marker" >> "$HOME/.bash_profile"
+fi
+export PATH="$HOME/.local/bin:$PATH"
+go version
+echo "Go ready after $((SECONDS - started))s: $toolchain/bin/go"
+
+if [[ -f go.mod ]]; then
+  echo 'Downloading Go module dependencies...'
+  go mod download
+fi
+
+echo 'Preparing terminal smoke-test dependencies...'
+if ! command -v uv >/dev/null; then
+  echo 'uv is required; install it from https://docs.astral.sh/uv/getting-started/installation/.' >&2
+  exit 1
+fi
+if [[ ! -x .venv/bin/python ]]; then
+  uv venv .venv
+fi
+uv pip install --python .venv/bin/python 'pyte==0.8.2'
+echo "Setup complete in $((SECONDS - started))s."
