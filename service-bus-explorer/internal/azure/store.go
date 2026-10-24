@@ -213,7 +213,7 @@ func (s *Store) ReceiveNextDLQ(ctx context.Context, r explorer.Resource) (explor
 	}
 	messages, err := receiver.ReceiveMessages(ctx, 1, nil)
 	if err != nil || len(messages) != 1 {
-		closeReceiver(receiver)
+		closeReceiver(ctx, receiver)
 		return nil, errors.New("no DLQ delivery acquired within receive deadline")
 	}
 	destination := r.Queue
@@ -221,7 +221,8 @@ func (s *Store) ReceiveNextDLQ(ctx context.Context, r explorer.Resource) (explor
 		destination = r.Topic
 	}
 	owned = true
-	return &delivery{message: messages[0], receiver: receiver, client: s.client, destination: destination, release: release}, nil
+	return &delivery{message: messages[0], receiver: receiver, release: release,
+		newSender: func() (deliverySender, error) { return s.client.NewSender(destination, nil) }}, nil
 }
 
 func (s *Store) Close(ctx context.Context) error { return s.client.Close(ctx) }

@@ -133,6 +133,7 @@ type settlementProbe struct {
 	complete, abandon, closed int
 	err                       error
 	deadline                  time.Time
+	closeDeadline             time.Time
 	message                   *sb.ReceivedMessage
 }
 
@@ -148,7 +149,11 @@ func (p *settlementProbe) AbandonMessage(ctx context.Context, m *sb.ReceivedMess
 	p.message = m
 	return p.err
 }
-func (p *settlementProbe) Close(context.Context) error { p.closed++; return nil }
+func (p *settlementProbe) Close(ctx context.Context) error {
+	p.closed++
+	p.closeDeadline, _ = ctx.Deadline()
+	return nil
+}
 
 func TestSettlementOnceClosesAndReleasesEvenOnFailure(t *testing.T) {
 	for _, complete := range []bool{false, true} {
@@ -162,7 +167,7 @@ func TestSettlementOnceClosesAndReleasesEvenOnFailure(t *testing.T) {
 			m.LockedUntil = ptr(time.Now().Add(2 * time.Second))
 			d := &delivery{message: m, receiver: p, release: func() { released++ }}
 			err := d.settle(context.Background(), complete)
-			if (err != nil) != fail || p.closed != 1 || released != 1 || p.message != m || p.deadline.After(*m.LockedUntil) {
+			if (err != nil) != fail || p.closed != 1 || released != 1 || p.message != m || p.deadline.After(*m.LockedUntil) || p.closeDeadline.After(*m.LockedUntil) {
 				t.Fatalf("settlement contract: %+v, %v", p, err)
 			}
 			if complete && p.complete != 1 || !complete && p.abandon != 1 {
@@ -226,6 +231,11 @@ func TestDeliveryDeadlineCancellationAndSingleFlight(t *testing.T) {
 	if deadline.After(caller) {
 		t.Fatal("operation extended caller deadline")
 	}
+	p := &settlementProbe{}
+	d = &delivery{message: standardDeliveryMessage(), receiver: p, release: func() {}}
+	if err := d.Abandon(ctx); err != nil || p.deadline.After(caller) || p.closeDeadline.After(caller) {
+		t.Fatal("settlement or close extended caller deadline")
+	}
 }
 
 type adminResponseTransport struct {
@@ -267,5 +277,74 @@ func TestMutationResourceBoundary(t *testing.T) {
 	s := &Store{held: true}
 	if _, err := s.ReceiveNextDLQ(context.Background(), resource("orders", "", "")); err == nil {
 		t.Fatal("acquired concurrent held delivery")
+	}
+}
+
+type sendProbe struct {
+	err           error
+	calls, closed int
+	message       *sb.Message
+	deadline      time.Time
+}
+
+func (p *sendProbe) SendMessage(ctx context.Context, message *sb.Message, _ *sb.SendMessageOptions) error {
+	p.calls++
+	p.message = message
+	p.deadline, _ = ctx.Deadline()
+	return p.err
+}
+
+func (p *sendProbe) Close(context.Context) error { p.closed++; return nil }
+
+func TestReplayOutcomesAreTerminalAndNeverSettleOriginal(t *testing.T) {
+	for _, test := range []struct {
+		name, state string
+		err         error
+	}{
+		{"acknowledged", "confirmed", nil},
+		{"lost acknowledgement", "unknown", context.DeadlineExceeded},
+		{"transport failure", "unknown", errors.New("sensitive SDK error")},
+		{"explicit size rejection", "rejected", sb.ErrMessageTooLarge},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			sender := &sendProbe{err: test.err}
+			receiver := &settlementProbe{}
+			opens, releases := 0, 0
+			m := standardDeliveryMessage()
+			d := &delivery{message: m, receiver: receiver, release: func() { releases++ }, newSender: func() (deliverySender, error) { opens++; return sender, nil }}
+			result, err := d.Resend(context.Background(), "replay")
+			if result.State != test.state || result.MessageID != "replay" || (err != nil) != (test.err != nil) {
+				t.Fatalf("result=%+v err=%v", result, err)
+			}
+			if err != nil && strings.Contains(err.Error(), "sensitive") {
+				t.Fatal("leaked SDK error")
+			}
+			if sender.calls != 1 || sender.closed != 1 || opens != 1 || releases != 0 || receiver.closed != 0 || receiver.complete != 0 || receiver.abandon != 0 {
+				t.Fatal("send retried or settled/released original")
+			}
+			if *sender.message.MessageID != "replay" || !bytes.Equal(sender.message.Body, m.Body) || sender.deadline.After(*m.LockedUntil) || sender.deadline.After(time.Now().Add(10*time.Second)) {
+				t.Fatal("wrong send body/identity/deadline")
+			}
+			if second, err := d.Resend(context.Background(), "another"); err == nil || second.State != "rejected" || sender.calls != 1 || opens != 1 {
+				t.Fatal("terminal send retried")
+			}
+			// Retaining the original still requires explicit bounded release,
+			// including after an ambiguous send. No second send is involved.
+			if err := d.Abandon(context.Background()); err != nil || receiver.abandon != 1 || receiver.closed != 1 || releases != 1 {
+				t.Fatalf("release after send: %v", err)
+			}
+		})
+	}
+}
+
+func TestReplaySenderOpenFailureIsRejectedWithoutRetry(t *testing.T) {
+	opens := 0
+	d := &delivery{message: standardDeliveryMessage(), newSender: func() (deliverySender, error) { opens++; return nil, errors.New("sensitive SDK error") }}
+	result, err := d.Resend(context.Background(), "replay")
+	if err == nil || result.State != "rejected" || opens != 1 || strings.Contains(err.Error(), "sensitive") {
+		t.Fatalf("open result=%+v err=%v", result, err)
+	}
+	if _, err := d.Resend(context.Background(), "another"); err == nil || opens != 1 {
+		t.Fatal("sender open failure retried")
 	}
 }

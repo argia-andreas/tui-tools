@@ -19,12 +19,16 @@ type deliveryReceiver interface {
 	Close(context.Context) error
 }
 
+type deliverySender interface {
+	SendMessage(context.Context, *sb.Message, *sb.SendMessageOptions) error
+	Close(context.Context) error
+}
+
 type delivery struct {
 	mu                     sync.Mutex
 	message                *sb.ReceivedMessage // full SDK delivery, never the display preview
 	receiver               deliveryReceiver
-	client                 *sb.Client
-	destination            string
+	newSender              func() (deliverySender, error) // captures only the validated origin queue/topic
 	release                func()
 	sendAttempted, settled bool
 }
@@ -156,12 +160,12 @@ func (d *delivery) Resend(ctx context.Context, id string) (explorer.SendResult, 
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
-	sender, err := d.client.NewSender(d.destination, nil)
+	sender, err := d.newSender()
 	if err != nil {
 		return result, errors.New("cannot open replay sender")
 	}
 	defer func() {
-		closeCtx, stop := context.WithTimeout(context.Background(), 2*time.Second)
+		closeCtx, stop := context.WithTimeout(ctx, 2*time.Second)
 		defer stop()
 		_ = sender.Close(closeCtx)
 	}()
@@ -178,8 +182,8 @@ func (d *delivery) Resend(ctx context.Context, id string) (explorer.SendResult, 
 	return result, nil
 }
 
-func closeReceiver(receiver deliveryReceiver) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+func closeReceiver(ctx context.Context, receiver deliveryReceiver) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	_ = receiver.Close(ctx)
 }
@@ -194,9 +198,12 @@ func (d *delivery) settle(ctx context.Context, complete bool) error {
 	}
 	d.settled = true
 	defer d.release()
-	defer closeReceiver(d.receiver)
 	ctx, cancel := d.operationContext(ctx)
 	defer cancel()
+	// SDK Close starts permanent local closure even with an expired context;
+	// broker detach confirmation may finish in the background. Do not extend
+	// the caller deadline or lock lifetime just to wait for that confirmation.
+	defer closeReceiver(ctx, d.receiver)
 	if err := ctx.Err(); err != nil {
 		return err
 	}
