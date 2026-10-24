@@ -2,7 +2,8 @@
 
 A terminal file-manager proof of concept with mouse/keyboard browsing and
 confirmed **file/folder upload/download for FTP, Azure Blob and S3 via rclone**.
-The default fixture demo is read-only; real operations require `--live`.
+Start with real local files and choose a destination when ready. Copies always
+require confirmation; `--demo` explicitly opens the read-only fixture workspace.
 
 ## Setup and run
 
@@ -12,7 +13,7 @@ daemon or cloud account is needed.
 
 ```sh
 ./.agents/setup
-make demo
+make run
 ```
 
 Setup installs checksum-verified Go **1.27.3** under
@@ -31,12 +32,13 @@ start storage servers, or require a Docker daemon. Start the disposable lab
 when needed with `make lab-up lab-seed`; no resume hook is required for these
 supervised services. The log viewer is design-only and has no runtime to install yet.
 
-`make build` writes `bin/lazyftp`; `make run` and `make demo` build and launch
-`bin/lazyftp --demo`. You can also launch the binary directly:
+`make build` writes `bin/lazyftp`; `make run` opens the files-first workspace.
+`make demo` explicitly launches the read-only fixtures. You can also launch the
+binary directly:
 
 ```sh
-./bin/lazyftp --demo --theme dracula
-./bin/lazyftp --demo --config /path/to/config.json
+./bin/lazyftp --theme dracula
+./bin/lazyftp --config /path/to/config.json
 ```
 
 Use `--theme` to select a theme and `--config` to select the local configuration
@@ -71,9 +73,10 @@ make lab-seed
 make run-lab
 ```
 
-The left pane is `.lab/local`; the right starts at FTP. Click Blob or S3 in the
-sidebar to browse Azurite or SeaweedFS. Select files/folders with Space or their
-leading markers, then press `c`, click Copy, or use Ctrl+P → Copy. A single file
+The left pane is `.lab/local`; the right starts at FTP. Press `[` to reveal the
+navigation sidebar, then click Blob or S3 to browse Azurite or SeaweedFS.
+Select files/folders with Space or their leading markers, then press `c` or use
+Ctrl+P → Copy. A single file
 opens a confirmation; multiple files or folders first produce a read-only plan
 and a batch confirmation. Both default to **Cancel**. A confirmed batch copies
 new files serially and pauses on each conflict for Skip, Overwrite or Rename.
@@ -112,8 +115,11 @@ For another existing rclone profile:
   --remote my-blob:/container/prefix --remote my-s3:/bucket/prefix
 ```
 
-Or launch `./bin/lazyftp --live` to pick a configured rclone remote, edit roots
-and explicitly save a non-secret bookmark. `--connections` selects a separate
+Or launch `./bin/lazyftp`, then choose **Connect a remote**. Use an existing
+connection or **New connection** to configure FTP/FTPS, Azure Blob or S3 in-app.
+The wizard tests a read-only listing before connecting; new credentials are
+session-only unless you explicitly choose to remember them. `--live` remains a
+compatible alias for real mode. `--connections` selects a separate non-secret
 bookmark JSON file. See [connections and authentication](docs/connections.md).
 
 The config path is optional when rclone's usual config/environment is set.
@@ -132,7 +138,7 @@ Do not use this prototype on valuable production files.
 | F1 / ? | Open the grouped, scrollable shortcut guide (F1 also works in the palette) |
 | Tab | Move focus between panes |
 | Arrow keys / j / k | Navigate lists |
-| Enter / Backspace | Open directory / go to parent |
+| Enter / Backspace | Open directory (including `..`) / go to parent |
 | Space | Toggle file selection |
 | c | Confirm copying selected files/folders to the opposite pane (live mode only) |
 | Ctrl+X / r | Cancel unfinished work / confirm retry of failed and canceled files |
@@ -152,7 +158,8 @@ the corresponding file pane. Local and remote selections remain independent.
 - Click a row's leading marker to toggle selection without opening it.
 - Click sidebar locations to switch endpoints. Up, Filter, and Refresh controls
   are available above each file list.
-- Use the top Nav, Info, Jobs, ?, and Actions buttons to control the workspace.
+- Use the top Actions button to find workspace controls; sidebars and the
+  transfer drawer start collapsed. The explicit demo retains its exploration toolbar.
 - Click palette results to run them; F1 shortcuts opens the keyboard guide.
 - Scroll the mouse wheel over lists, the palette, or the shortcut guide.
 - Close modals with ×, Esc, or an outside click. Outside clicks never activate

@@ -126,3 +126,29 @@ func TestGenericRemoteFlagsRetainAllBackends(t *testing.T) {
 		t.Fatal("inline backend accepted")
 	}
 }
+
+func TestPickerQuietFieldsAndExplicitHelp(t *testing.T) {
+	theme, _ := theme.Get("")
+	m := newPicker([]string{"ftp"}, nil, t.TempDir(), "", "", theme)
+	if strings.Contains(m.View(), "Credentials stay") || !strings.Contains(m.View(), "[ Connect ]") || !strings.Contains(m.View(), "[ Save bookmark ]") {
+		t.Fatalf("unexpected picker guidance: %s", m.View())
+	}
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyF1})
+	m = next.(picker)
+	if !strings.Contains(m.View(), "Credentials stay") {
+		t.Fatal("F1 did not expose detailed guidance")
+	}
+	// Hidden controls must not activate through the help screen.
+	next, _ = m.Update(tea.MouseMsg{X: 5, Y: 14, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = next.(picker)
+	if m.selected != nil {
+		t.Fatal("help click connected")
+	}
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyF1})
+	m = next.(picker)
+	m = key(m, "enter") // root field accepts a literal question mark
+	m = key(m, "?")
+	if !strings.Contains(m.View(), "Remote root    /?") || strings.Contains(m.View(), "Connection help") {
+		t.Fatal("help stole field typing")
+	}
+}

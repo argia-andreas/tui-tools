@@ -1,13 +1,15 @@
 # Live startup and saved connections
 
-Start the picker with `go run ./cmd/lazyftp --live`. It discovers **names only**
-using `rclone listremotes`; it does not open/dump the rclone config, show backend
-settings, contact the storage service, or validate authentication. rclone itself
-loads its own configuration as usual. No remote is accessed until Connect.
+Start with `go run ./cmd/lazyftp`: real local files appear immediately, with an
+unconnected destination. No bookmarks or remote discovery are read at startup.
+Choose **Connect a remote** (or Tab to the destination and press Enter) to open
+the picker. It discovers **names only** using `rclone listremotes`, without
+dumping configuration or testing authentication. No remote is accessed until
+Connect, or an explicit read-only test in the new-connection wizard.
 
 The picker uses the configured theme (Midnight by default): arrows select a
 connection, Tab/Shift+Tab move between controls, Enter selects/advances/activates,
-and Esc cancels startup. Click a connection, field, Connect or Save bookmark;
+and Esc returns to the workspace. Click a connection, field, Connect or Save bookmark;
 the wheel scrolls connections. Type to append in fields, Backspace to remove a
 character, Ctrl+U to replace the whole field. Root and local folder are editable
 paths, not directory-browser dialogs. The local folder must already exist.
@@ -23,11 +25,11 @@ go run ./cmd/lazyftp --live --left ./downloads --right work-ftp:/incoming
 go run ./cmd/lazyftp --live --right work-ftp:/incoming \
   --remote work-blob:/container/assets --remote work-s3:/bucket/prefix
 
-# Picker with a chosen rclone config and separate bookmark file
+# Files-first workspace with a chosen config; open the picker in-app
 go run ./cmd/lazyftp --live --rclone-config /private/rclone.conf \
   --connections /private/bookmarks.json
 
-# Fixture-only, unchanged; also the default without --live
+# Explicit fixture-only workspace; never accesses actual files or remotes
 go run ./cmd/lazyftp --demo
 ```
 
@@ -35,8 +37,9 @@ go run ./cmd/lazyftp --demo
 - Repeatable `--remote remote:path` adds navigation roots after the initial right
   location. `--blob remote:path` remains a compatible additional root (before
   `--remote` roots); despite its name it is not restricted to Azure.
-- Without `--right`, saved bookmarks appear first, then sorted discovered remote
-  names. A bookmark restores its root and local folder. An explicitly supplied
+- Without `--right`, the destination stays disconnected until requested. In the
+  picker, saved bookmarks appear first, then sorted discovered remote names.
+  A bookmark restores its root and local folder. An explicitly supplied
   `--left` overrides that local default; it can still be edited in the picker.
 - `--rclone-config` is passed to discovery and live storage. Otherwise rclone's
   normal environment/config-file rules apply, including `RCLONE_CONFIG` and
@@ -44,15 +47,51 @@ go run ./cmd/lazyftp --demo
 - `--config` remains theme/icons JSON only. Existing precedence is unchanged:
   `--theme` overrides its preset, JSON colors override preset roles, and explicit
   `--icons` overrides the JSON icon preference.
-- `--demo` and `--live` together are rejected. Merely supplying remote flags does
-  not switch the default read-only demo to live mode.
+- `--demo` and `--live` together are rejected. `--live` is now optional for
+  real mode; `--demo` is the only fixture-mode switch.
+
+## Create a connection in-app
+
+Choose **New connection** in the picker, select a storage type, then enter only
+the relevant fields. FTP defaults to explicit FTPS; choosing plain FTP displays
+an unencrypted-transport warning. Azure offers an existing Azure CLI session,
+managed identity, SAS URL or account key. CLI mode requires `az` and a prior
+`az login`; there is no embedded browser authentication. S3 supports an existing
+AWS profile/environment or explicit keys, plus a custom endpoint for compatible
+services. Cloud credentials still need appropriate provider permissions.
+
+**Test connection** only lists the chosen root. Successful listing does not
+verify write access or prove that an object-store prefix already exists: an
+unused prefix inside an accessible bucket/container can list successfully as
+empty. Editing details invalidates verification. Canceling or closing a test
+cancels the process, and stale results cannot connect the app.
+
+By default **Connect for this session** uses a temporary private 0600 rclone
+config, removed on normal exit. It contains a snapshot of existing remotes plus
+the proposed connection, so existing navigation roots keep working. A crash can
+leave a `lazyftp-session-*.conf` file in the OS temporary directory; treat it as
+sensitive and remove it after the process has stopped.
+
+Only the unchecked **Remember connection and credentials** option permits
+**Save and connect** to append the new remote to the selected rclone config.
+Existing names are rejected, not replaced. The config is a private file, **not a
+keychain and not encrypted at rest**; FTP password obscuring is reversible.
+Encrypted configs and symlink config paths are not modified by this wizard;
+choose a dedicated ordinary config file or manage those remotes with rclone.
+Cooperating saves use an exclusive sidecar lock and atomic replacement; an
+external writer that ignores the lock can still race the final rename.
+
+Saving a later connection never persists earlier session-only connections.
+Bookmarks remain separate and contain no credentials. New interactive
+connections never create or broaden [MCP grants](mcp.md).
 
 ## Explicit, non-secret bookmarks
 
 Enter a bookmark name and activate **Save bookmark**. This saves but does not
 connect. Connect does not save. Saving the same name explicitly replaces it and
-retains other bookmarks. Restart `--live` to reuse a saved bookmark. There is no
-automatic recent-history file and no credential form.
+retains other bookmarks. Open the picker again to reuse a saved bookmark. There
+is no automatic recent-history file. Credential setup is the separate wizard
+above, not the bookmark fields.
 
 Default storage is `lazyftp/connections.json` inside the OS user configuration
 directory (`$XDG_CONFIG_HOME`, otherwise `~/.config` on Linux). `--connections`

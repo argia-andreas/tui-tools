@@ -44,15 +44,18 @@ cd lazyftp_0.1.0-alpha.1_linux_amd64
 ```
 
 Choose the archive matching your operating system and architecture. Run in an
-interactive terminal; default demo mode uses fixtures and does not transfer files.
+interactive terminal. Default startup browses real local files with an
+unconnected destination; `--demo` explicitly selects read-only fixtures.
 macOS archives are unsigned/unnotarized; follow your organization's security
 policy rather than bypassing trust checks. No installer or privileged copy is
 required.
 
 ## Live mode and preview boundary
 
-Live mode additionally requires an installed `rclone` on `PATH` and existing
-user-managed remotes. rclone itself and credentials are **not** included. The
+Connecting and transferring require an installed `rclone` on `PATH`. Choose
+an existing remote or create one with the in-app connection wizard; see
+`docs/connections.md` in the source repository for credential-storage limits.
+rclone itself and credentials are **not** included. The
 local lab pins rclone 1.70.3; compatibility with other versions/backends is not
 established by packaging.
 

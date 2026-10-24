@@ -7,8 +7,11 @@ build:
 	go build -o bin/lazyftp ./cmd/lazyftp
 	go build -o bin/lazyftp-mcp ./cmd/lazyftp-mcp
 
-demo run: build
+demo: build
 	./bin/lazyftp --demo
+
+run: build
+	./bin/lazyftp
 
 test:
 	go test ./...
