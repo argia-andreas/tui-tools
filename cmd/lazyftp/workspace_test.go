@@ -66,9 +66,14 @@ func TestDefaultStartupOpensConnectionsAndEscapeBrowsesLocallyWithoutRclone(t *t
 	if !strings.Contains(view, "Open a connection") || !strings.Contains(view, "New connection") || strings.Contains(view, "real-local.txt") {
 		t.Fatalf("default did not show the connection chooser:\n%s", view)
 	}
+	if !strings.Contains(m.View(), "Could not load connections") || strings.Contains(m.View(), "Install rclone") {
+		t.Fatalf("discovery failure must be quiet until help opens: %s", m.View())
+	}
+	m, _ = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyF1})
 	if !strings.Contains(m.View(), "Install rclone") {
 		t.Fatalf("missing dependency guidance: %s", m.View())
 	}
+	m, _ = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyF1})
 	m, cmd := updateWorkspace(m, tea.KeyMsg{Type: tea.KeyEsc})
 	if cmd != nil || !strings.Contains(m.View(), "real-local.txt") {
 		t.Fatal("cancel lost local workspace or quit")
@@ -261,7 +266,7 @@ func TestWorkspaceConnectRestoresBookmarkAndPreservesExtraRoots(t *testing.T) {
 	theme, _ := theme.Get("")
 	local := t.TempDir()
 	path := filepath.Join(t.TempDir(), "bookmarks")
-	if err := connections.Save(path, connections.Bookmark{Name: "Saved", Remote: "ftp", Root: "/incoming", Local: local}); err != nil {
+	if err := connections.Save(path, connections.Bookmark{Name: "Saved folders", Remote: "ftp", Root: "/incoming", Local: local}); err != nil {
 		t.Fatal(err)
 	}
 	for _, override := range []string{"", t.TempDir()} {
@@ -269,10 +274,10 @@ func TestWorkspaceConnectRestoresBookmarkAndPreservesExtraRoots(t *testing.T) {
 			extra: []storage.Location{{Remote: "s3", Path: "/bucket"}, {Path: "/old-local"}}}
 		m, cmd := updateWorkspace(m, ui.ConnectRequested{Local: "/different-default"})
 		m = runWorkspace(m, cmd)
-		if !strings.Contains(m.View(), "Saved") {
+		if !strings.Contains(m.View(), "Saved folders") {
 			t.Fatal("bookmark not displayed")
 		}
-		m, _ = wizardClick(t, m, "Saved")
+		m, _ = wizardClick(t, m, "Saved folders")
 		m, cmd = wizardClick(t, m, "[ Connect ]")
 		if cmd == nil {
 			t.Fatal("workspace connection command discarded")
@@ -336,5 +341,41 @@ func TestDiscoveryIsDeferredAndUsesExplicitRcloneConfig(t *testing.T) {
 	m = runWorkspace(m, cmd)
 	if !strings.Contains(m.View(), "configured:") {
 		t.Fatalf("config was not passed to async discovery: %s", m.View())
+	}
+}
+
+func TestDiscoveryPreservesChosenActionAndHelp(t *testing.T) {
+	fakeRclone(t)
+	th, _ := theme.Get("")
+	for _, navigation := range [][]tea.KeyType{nil, {tea.KeyDown}, {tea.KeyDown, tea.KeyUp}} {
+		m := workspace{model: workspaceProbe{events: "local workspace"}, ctx: context.Background(), theme: th, bookmarkPath: filepath.Join(t.TempDir(), "bookmarks")}
+		m, discovery := updateWorkspace(m, ui.ConnectRequested{Local: t.TempDir()})
+		if !strings.Contains(m.View(), "Loading connections") || strings.Contains(m.View(), "No connections yet") {
+			t.Fatal("loading presented as empty")
+		}
+		for _, k := range navigation {
+			m, _ = updateWorkspace(m, tea.KeyMsg{Type: k})
+		}
+		m, _ = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyF1})
+		m = runWorkspace(m, discovery)
+		if !strings.Contains(m.View(), "Connection help") {
+			t.Fatal("discovery dismissed help")
+		}
+		m, _ = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyEsc})
+		m, _ = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyEnter})
+		switch len(navigation) {
+		case 0:
+			if !strings.Contains(m.View(), "Connection details") || !strings.Contains(m.View(), "blob:") {
+				t.Fatal("untouched startup did not select first connection")
+			}
+		case 1:
+			if m.View() != "local workspace" {
+				t.Fatal("discovery stole local browsing selection")
+			}
+		case 2:
+			if !strings.Contains(m.View(), "New connection") || !strings.Contains(m.View(), "FTP / FTPS") {
+				t.Fatal("discovery stole New connection selection")
+			}
+		}
 	}
 }

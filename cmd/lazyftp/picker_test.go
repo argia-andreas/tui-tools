@@ -18,10 +18,14 @@ func key(m picker, s string) picker {
 	switch s {
 	case "tab":
 		k.Type = tea.KeyTab
+	case "shift+tab":
+		k.Type = tea.KeyShiftTab
 	case "enter":
 		k.Type = tea.KeyEnter
 	case "down":
 		k.Type = tea.KeyDown
+	case "up":
+		k.Type = tea.KeyUp
 	case "ctrl+u":
 		k.Type = tea.KeyCtrlU
 	case "esc":
@@ -153,9 +157,7 @@ func TestPickerMouseScrollEmptyCancelAndSizes(t *testing.T) {
 		}
 	}
 	empty := newPicker(nil, nil, t.TempDir(), "", "", theme)
-	for i := 0; i < 4; i++ {
-		empty = key(empty, "tab")
-	}
+	empty = key(key(empty, "tab"), "shift+tab")
 	empty = key(empty, "enter")
 	if empty.selected != nil || !empty.newConnection {
 		t.Fatal("empty discovery connected")
@@ -246,7 +248,7 @@ func TestPickerConnectionFirstCardsAndNewConnection(t *testing.T) {
 			if !clicked.newConnection || clicked.selected != nil {
 				t.Fatal("New connection click did not request wizard")
 			}
-			if len(remotes) > 0 {
+			for range remotes {
 				m = key(m, "tab")
 			}
 			m = key(m, "enter")
@@ -277,5 +279,55 @@ func TestPickerDetailsBackAndChooserCancel(t *testing.T) {
 	}
 	if _, ok := cmd().(tea.QuitMsg); !ok || next.(picker).selected != nil {
 		t.Fatal("chooser Escape must cancel without selecting")
+	}
+}
+
+func TestPickerContinuousNavigation(t *testing.T) {
+	th, _ := theme.Get("")
+	for _, count := range []int{0, 1, 3, 12} {
+		remotes := []string{"alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel", "india", "juliet", "kilo", "lima"}[:count]
+		for _, keys := range [][2]string{{"down", "up"}, {"j", "k"}, {"tab", "shift+tab"}} {
+			m := newPicker(remotes, nil, t.TempDir(), "", "", th)
+			check := func(position int) {
+				t.Helper()
+				opened := key(m, "enter")
+				switch {
+				case position < count:
+					if !strings.Contains(opened.View(), "Connection details") || !strings.Contains(opened.View(), remotes[position]+":") || opened.selected != nil {
+						t.Fatalf("%d entries, %v, position %d did not open expected details", count, keys, position)
+					}
+					back := key(opened, "esc")
+					if ansi.Strip(back.View()) != ansi.Strip(m.View()) {
+						t.Fatal("details Back lost selection or scroll position")
+					}
+				case position == count:
+					if !opened.newConnection || opened.localFiles || opened.selected != nil {
+						t.Fatalf("%d entries, %v: New connection unreachable", count, keys)
+					}
+				default:
+					if !opened.localFiles || opened.newConnection || opened.selected != nil {
+						t.Fatalf("%d entries, %v: local files unreachable", count, keys)
+					}
+				}
+				if m.newConnection || m.localFiles || m.selected != nil {
+					t.Fatal("movement activated a choice")
+				}
+				if strings.Count(ansi.Strip(m.View()), "›") != 1 {
+					t.Fatal("chooser must have exactly one selection marker")
+				}
+			}
+			m = key(m, keys[1]) // clamp at the first choice
+			check(0)
+			for position := 1; position <= count+1; position++ {
+				m = key(m, keys[0])
+				check(position)
+			}
+			m = key(m, keys[0]) // clamp at local browsing
+			check(count + 1)
+			for position := count; position >= 0; position-- {
+				m = key(m, keys[1])
+				check(position)
+			}
+		}
 	}
 }

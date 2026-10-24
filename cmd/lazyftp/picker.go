@@ -26,6 +26,8 @@ type picker struct {
 	newConnection                bool
 	localFiles                   bool
 	frame                        int
+	scroll                       int
+	loading, navigated           bool
 	details                      bool
 	help                         bool
 	theme                        theme.Theme
@@ -61,6 +63,7 @@ func (m picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		m.scroll = m.offset()
 	case tea.MouseMsg:
 		if m.help || m.width < 60 || m.height < 21 {
 			return m, nil
@@ -82,6 +85,7 @@ func (m picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if row.choice >= 0 {
 					m.cursor = row.choice
 					m.choose()
+					m.navigated = true
 					m.details, m.focus = true, 1
 				} else if row.focus > 0 {
 					m.focus = row.focus
@@ -128,33 +132,21 @@ func (m picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			if m.details {
 				m.focus = m.focus%5 + 1
-			} else if m.focus == 0 || (m.focus == 7 && len(m.choices) == 0) {
-				m.focus = 6
-			} else if m.focus == 6 {
-				m.focus = 7
 			} else {
-				m.focus = 0
+				m.move(1)
 			}
 		case "shift+tab":
 			if m.details {
 				m.focus = (m.focus+3)%5 + 1
-			} else if m.focus == 0 || (m.focus == 6 && len(m.choices) == 0) {
-				m.focus = 7
-			} else if m.focus == 7 {
-				m.focus = 6
 			} else {
-				m.focus = 0
+				m.move(-1)
 			}
 		case "up":
-			if !m.details && m.focus == 7 {
-				m.focus = 6
-			} else if m.focus == 0 {
+			if !m.details {
 				m.move(-1)
 			}
 		case "down":
-			if !m.details && m.focus == 6 {
-				m.focus = 7
-			} else if m.focus == 0 {
+			if !m.details {
 				m.move(1)
 			}
 		case "enter":
@@ -205,21 +197,32 @@ func (m picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *picker) move(delta int) {
-	if len(m.choices) == 0 {
-		return
+	m.navigated = true
+	position := m.cursor
+	if m.focus >= 6 {
+		position = len(m.choices) + m.focus - 6
 	}
-	m.cursor = max(0, min(len(m.choices)-1, m.cursor+delta))
-	m.choose()
+	position = max(0, min(len(m.choices)+1, position+delta))
+	if position < len(m.choices) {
+		m.cursor, m.focus = position, 0
+		m.choose()
+	} else {
+		m.focus = 6 + position - len(m.choices)
+	}
+	m.scroll = m.offset()
 }
 
 func (m picker) visibleChoices() int {
-	if m.height >= 32 {
-		return min(3, max(1, (m.height-22)/2))
-	}
-	return min(4, max(1, m.height-21))
+	return min(4, max(1, m.height-18))
 }
 
-func (m picker) offset() int { return max(0, m.cursor-m.visibleChoices()+1) }
+func (m picker) offset() int {
+	offset := min(m.scroll, max(0, len(m.choices)-m.visibleChoices()))
+	if m.focus == 0 {
+		offset = max(0, min(m.cursor, max(offset, m.cursor-m.visibleChoices()+1)))
+	}
+	return offset
+}
 
 func (m picker) activate() (tea.Model, tea.Cmd) {
 	if m.connectError != "" && m.focus != 5 {
@@ -268,6 +271,7 @@ type pickerRow struct {
 	text          string
 	focus, choice int
 	logo          bool
+	metadata      int
 }
 
 type pickerLayout struct {
@@ -277,6 +281,9 @@ type pickerLayout struct {
 
 func (m picker) layout() pickerLayout {
 	l := pickerLayout{width: min(78, m.width-10)}
+	if !m.details && !m.help {
+		l.width = min(64, m.width-8)
+	}
 	spacious := m.height >= 32
 	add := func(s string, focus, choice int) {
 		l.rows = append(l.rows, pickerRow{text: s, focus: focus, choice: choice})
@@ -284,11 +291,8 @@ func (m picker) layout() pickerLayout {
 	center := func(s string) { add(lipgloss.PlaceHorizontal(l.width-6, lipgloss.Center, s), -1, -1) }
 	divider := func() { add(strings.Repeat("─", l.width-6), -1, -1) }
 	action := func(s string, focus int) {
-		// Every icon uses the same five-column gutter and three-row footprint.
+		// Preserve the existing details-screen Connect action.
 		icon := [3]string{"  ■  ", "■ ■ ■", "  ■  "}
-		if focus == 7 {
-			icon = [3]string{"■ ■  ", "■ ■ ■", "■ ■ ■"}
-		}
 		if spacious {
 			add(" "+icon[0], focus, -1)
 		}
@@ -304,19 +308,22 @@ func (m picker) layout() pickerLayout {
 	add("", -1, -1)
 	if m.help {
 		for _, s := range []string{
-			"Connection help", "", "Choose a bookmark or an existing rclone remote.",
-			"Tab / Shift+Tab focus; Enter selects or opens.",
+			"Connection help",
+			"↑↓ / j k move through connections and actions.",
+			"Tab / Shift+Tab move; Enter opens; details: Tab.",
 			"Type to append; Backspace delete; Ctrl+U clear.",
 			"Connect opens files. Copies need confirmation.",
 			"Save bookmark is explicit; same name replaces.",
-			"Saves name, remote name, root and local folder.",
-			"Credentials stay in rclone.",
-			"Never enter passwords or tokens here.",
-			"Discovery lists names, not authentication status.",
-			"New connection opens guided setup.",
-			"", "F1 / ? / Esc back · Ctrl+C quit",
+			"Saves name, remote, root and local folder only.",
+			"Credentials stay in rclone; no passwords here.",
+			"Discovery lists names, not connection health.",
+			"New connection opens setup; Esc browses locally.",
+			"F1 / ? / Esc back · Ctrl+C quit",
 		} {
 			add(s, -1, -1)
+		}
+		if m.message != "" {
+			add(m.message, -1, -1)
 		}
 	} else if m.details {
 		add("Connection details", -1, -1)
@@ -340,8 +347,6 @@ func (m picker) layout() pickerLayout {
 		add("", -1, -1)
 		add("‹  Back", 8, -1)
 	} else {
-		add("Open a connection", -1, -1)
-		add("", -1, -1)
 		// A fixed 4×3 square logo; only its accent tile changes, never its size.
 		for row := 0; row < 3; row++ {
 			var tiles []string
@@ -352,42 +357,69 @@ func (m picker) layout() pickerLayout {
 				}
 				tiles = append(tiles, tile)
 			}
-			center(strings.Join(tiles, " "))
+			label := []string{"Open a connection", "Choose where to work", ""}[row]
+			add("  "+strings.Join(tiles, " ")+"   "+label, -1, -1)
 			l.rows[len(l.rows)-1].logo = true
 		}
 		add("", -1, -1)
+		heading := "  Saved & configured"
+		if len(m.choices) > m.visibleChoices() {
+			heading += fmt.Sprintf("  %d–%d of %d", m.offset()+1, min(m.offset()+m.visibleChoices(), len(m.choices)), len(m.choices))
+		}
+		add(heading, -1, -1)
 		if len(m.choices) == 0 {
-			center("No connections yet")
-			center("Connect your first remote to get started.")
+			switch {
+			case m.loading:
+				add("  Loading connections…", -1, -1)
+				add("  You can create a connection or browse locally.", -1, -1)
+			case m.message != "":
+				add("  Could not load connections.", -1, -1)
+				add("  F1 for details. Local files remain available.", -1, -1)
+			default:
+				add("  No connections yet", -1, -1)
+				add("  Create one, or browse files on this computer.", -1, -1)
+			}
 		} else {
-			add(fmt.Sprintf("Bookmarks & remotes  ·  %d/%d", m.cursor+1, len(m.choices)), -1, -1)
 			for i := m.offset(); i < min(m.offset()+m.visibleChoices(), len(m.choices)); i++ {
 				b := m.choices[i]
 				s := b.Remote + ":"
 				if b.Name != "" {
 					s = b.Name
 				}
-				prefix := "  ▤  "
-				if i == m.cursor {
-					prefix = "› ▤  "
+				prefix := "     "
+				if m.focus == 0 && i == m.cursor {
+					prefix = " ›   "
+				}
+				metadata := 0
+				if m.width >= 80 && b.Name != "" {
+					s = ansi.Truncate(s, 22, "…")
+					s += strings.Repeat(" ", 22-ansi.StringWidth(s)) + " " + b.Remote + ":" + b.Root
+					metadata = 28
 				}
 				add(prefix+s, 0, i)
-				if spacious {
-					add("     "+b.Remote+":"+b.Root, 0, i)
-				}
+				l.rows[len(l.rows)-1].metadata = metadata
+			}
+			if m.message != "" {
+				add("  Could not load all connections. F1 for details.", -1, -1)
 			}
 		}
+		add("  "+strings.Repeat("─", l.width-6), -1, -1)
+		for _, a := range []struct {
+			label string
+			focus int
+		}{{"+ New connection", 6}, {"  Browse local files", 7}} {
+			prefix := "   "
+			if m.focus == a.focus {
+				prefix = " › "
+			}
+			add(prefix+a.label, a.focus, -1)
+		}
 		add("", -1, -1)
-		action("New connection", 6)
-		action("Browse local files", 7)
-		add("", -1, -1)
-		divider()
-		add("FTP / FTPS · Azure Blob · S3", -1, -1)
 	}
-	if m.message != "" {
+	if m.message != "" && m.details && !m.help {
 		add(m.message, -1, -1)
 	}
-	if spacious {
+	if spacious && (m.details || m.help) {
 		add("", -1, -1)
 	}
 	l.x, l.y = (m.width-l.width)/2, (m.height-len(l.rows)-2)/2
@@ -405,7 +437,7 @@ func (m picker) View() string {
 	var card []string
 	for i, row := range l.rows {
 		style := base
-		if i == 1 || row.focus == 6 {
+		if i == 1 && (m.details || m.help) {
 			style = style.Foreground(lipgloss.Color(m.theme.Focus)).Bold(true)
 		}
 		if row.focus < 0 && i > 1 {
@@ -414,7 +446,7 @@ func (m picker) View() string {
 		if row.focus >= 0 && m.focus == row.focus && (row.choice < 0 || row.choice == m.cursor) {
 			style = style.Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection))
 		}
-		if row.logo {
+		if row.logo && strings.Contains(row.text, "Open a connection") {
 			style = accent
 		}
 		s := strings.Map(func(r rune) rune {
@@ -423,7 +455,20 @@ func (m picker) View() string {
 			}
 			return r
 		}, row.text)
-		card = append(card, base.Render("  ")+style.Width(l.width-6).Render(ansi.Truncate(s, l.width-6, "…"))+base.Render("  "))
+		padding := 2
+		if !m.details && !m.help {
+			padding = 0
+		}
+		contentWidth := l.width - 2 - 2*padding
+		s = ansi.Truncate(s, contentWidth, "…")
+		content := style.Width(contentWidth).Render(s)
+		if row.logo {
+			content = style.Width(contentWidth).Render(strings.ReplaceAll(s, "■", accent.Render("■")))
+		}
+		if row.metadata > 0 && (m.focus != row.focus || m.cursor != row.choice) {
+			content = base.Render(ansi.Cut(s, 0, row.metadata)) + muted.Width(contentWidth-row.metadata).Render(ansi.Cut(s, row.metadata, contentWidth))
+		}
+		card = append(card, base.Render(strings.Repeat(" ", padding))+content+base.Render(strings.Repeat(" ", padding)))
 	}
 	box := base.Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color(m.theme.Border)).BorderBackground(lipgloss.Color(m.theme.Background)).Render(strings.Join(card, "\n"))
 	rows := make([]string, m.height)
@@ -436,7 +481,10 @@ func (m picker) View() string {
 		background := rows[l.y+i]
 		rows[l.y+i] = ansi.Cut(background, 0, l.x) + row + ansi.Cut(background, l.x+l.width, m.width)
 	}
-	footer := "↑↓ choose · Tab · Enter open · Esc local files · F1 help"
+	footer := "↑↓ / j k move   Enter open   Esc local files   F1 help"
+	if m.width < 80 {
+		footer = "↑↓ move  Enter open  Esc local files  F1 help"
+	}
 	if m.details {
 		footer = "Tab focus · Enter select · Esc connections · F1 help"
 	}

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LazyFTP — One continuous opening menu</title>
+<style>
+:root { color-scheme:dark; --bg:#14161a; --surface:#1c1f25; --text:#e7e9ee; --muted:#9ba3b1; --border:#2c313a; --accent:#8fb0ff; --line:#566070; }
+* { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--text); font:15px/1.55 system-ui,sans-serif; }
+main { max-width:1050px; margin:auto; padding:32px 24px 80px; } h1 { font-size:28px; line-height:1.2; margin:8px 0 12px; } h2 { font-size:19px; margin-top:32px; } p { max-width:76ch; } .muted,figcaption { color:var(--muted); } .chip { color:var(--accent); } button,select { font:inherit; color:var(--text); background:var(--surface); border:1px solid var(--line); border-radius:4px; padding:6px 10px; } button { cursor:pointer; } button:focus-visible,select:focus-visible { outline:2px solid var(--accent); outline-offset:2px; } .controls { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:16px 0; } figure { margin:0; } #terminal-wrap { overflow-x:auto; background:#0b1423; padding:16px; border:1px solid #4b6a89; }
+#terminal { --terminal-bg:#0b1423; --terminal-fg:#dce8f4; --terminal-muted:#91a6bb; --terminal-focus:#65c7f7; --terminal-border:#4b6a89; --terminal-selection:#8af0ce; --terminal-selected-text:#071a24; display:block; width:max-content; margin:auto; padding:0; white-space:pre; font:14px/21px 'DejaVu Sans Mono',monospace; color:var(--terminal-fg); background:var(--terminal-bg); outline:none; }
+#terminal:focus-visible { outline:1px solid #65c7f7; outline-offset:6px; } #terminal .row { display:block; height:21px; } #terminal .dim { color:var(--terminal-muted); } #terminal .edge { color:var(--terminal-border); } #terminal .accent { color:var(--terminal-focus); } #terminal .selected { color:var(--terminal-selected-text); background:var(--terminal-selection); } #terminal .choice { cursor:pointer; } #terminal .choice:hover { text-decoration:underline; }
+#notice { min-height:28px; padding:8px 0; color:var(--accent); } .rules { padding-left:20px; } .rules li { margin:8px 0; } code { font-family:monospace; } .tag { color:var(--accent); font-size:13px; } details { border-top:1px solid var(--border); padding-top:12px; margin-top:16px; } @media(max-width:600px) { main { padding:20px 12px 70px; } h1 { font-size:24px; } #terminal-wrap { padding:10px; } }
+</style>
+</head>
+<body><main>
+<header id="proposal"><span class="chip">Gate 1 · Awaiting approval · Design only · 24 October 2026</span>
+<h1>One continuous opening menu</h1>
+<p id="summary">Keep the centered terminal card; make saved connections and both actions feel like one menu. Up/Down crosses the separator without Tab. This browser simulation does not connect, save or read files.</p></header>
+<section id="decision"><h2><span class="tag">Q1</span> Approve the continuous-list direction?</h2><p>Recommended: equal row heights, shared gutters and only one mint highlight. Keep the small square logo beside the title. No separate action cards, oversized action icons or invented connection status.</p></section>
+<figure id="fig-opening">
+<div class="controls"><label for="scenario">State</label><select id="scenario"><option value="default">Default · 80 × 24</option><option value="new">New connection selected</option><option value="local">Local files selected</option><option value="empty">No saved connections</option><option value="many">Long list · last entry</option><option value="compact">Compact · 60 × 21</option><option value="loading">Loading connections</option><option value="error">Discovery failed</option></select><button id="up">↑ Previous</button><button id="down">↓ Next</button><button id="reset">Reset</button></div>
+<div id="terminal-wrap"><div id="terminal" tabindex="0" role="listbox" aria-label="LazyFTP opening menu prototype"></div></div>
+<figcaption id="caption">Click inside the terminal, then use Up/Down, j/k or Tab/Shift+Tab. Enter explains the destination; it never opens a real connection. The square logo is frozen at one animation frame.</figcaption>
+</figure><div id="notice" role="status" aria-live="polite"></div>
+<section id="navigation"><h2><span class="tag">F1</span> One selection, predictable boundaries</h2><ul class="rules">
+<li id="route">Work files → Team assets → Release archive → New connection → Browse local files. Up reverses this route. Stop at either end; do not wrap.</li>
+<li id="activation">Enter on a saved entry opens existing connection details, not an immediate connection. New connection opens existing guided setup. Browse local files and Esc open the local workspace; Ctrl+C quits.</li>
+<li id="restore">Back from details or canceled setup restores the launching row and scroll position. j/k navigate only here, not inside editable fields.</li>
+<li id="scrolling">With many entries, only saved rows scroll; both actions stay visible. Down from the last entry reaches New connection. Up from New returns to that last entry.</li>
+<li id="async">Loading and failure are distinct from an empty list. Both actions remain usable. A late discovery result must not steal selection after the user moves to an action.</li>
+</ul></section>
+<section id="tradeoff"><h2><span class="tag">R1</span> Use terminal space for choices</h2><p>Single-line entries show a muted remote/root beside the name at 80 columns. At 60 columns, keep names and actions readable and omit the inline path. If long names truncate, Enter still opens existing full details. This deliberately favors visible choices over multi-line decorative icons.</p></section>
+<details id="evidence"><summary>Inspection findings and limits</summary><p><code>cmd/lazyftp/picker.go</code> has separate focus targets for the saved list, New connection and local browsing. Its Up/Down handling cannot cross from the list to those actions. Its large-terminal action icons occupy three rows each, while saved items use a different gutter and footprint. <code>workspace.go</code> maps chooser Esc to returning to files and routes activation to the existing details/setup/workspace flows.</p><p>The chooser contains bookmarks plus configured remotes, so the heading says “Saved &amp; configured”, not “Saved” alone. Display data here is illustrative. Source theme colors come from Midnight in <code>internal/theme/theme.go</code>. Earlier approved boards 13–18 establish the centered card, small square logo and theme direction.</p><p>The generated comparison board is only visual exploration: numeric row labels, inconsistent icon gutters and glow are not part of the recommendation. This cell-aligned prototype and the product document take precedence. No Go application code has changed and this is not real-terminal validation.</p></details>
+<section id="scope"><h2>Approval boundary</h2><p id="approval">Approve Gate 1, or what should change?</p><p class="muted">Approval accepts this product direction only. Architecture, program design and slice planning remain separate future gates. File workspace, forms, credentials, persistence, MCP and the other applications are out of scope. Safe to resume from the saved plan documents.</p></section>
+</main><script>
+{
+const terminal=document.getElementById('terminal');
+const scenario=document.getElementById('scenario');
+const notice=document.getElementById('notice');
+const examples=[['Work files','work-ftp:/incoming'],['Team assets','team-blob:/assets'],['Release archive','releases:/stable']];
+const state={mode:'default',cursor:0,offset:0,entries:examples};
+const escape=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+const fit=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s.padEnd(n);
+function render(){
+ const compact=state.mode==='compact',w=compact?60:80,h=compact?21:24,cw=compact?52:64,x=(w-cw)/2,inside=cw-2;
+ const rows=[]; const push=(s='',css='')=>rows.push('<span class="row '+css+'">'+escape(fit(s,w))+'</span>');
+ push('  LAZYFTP','accent'); push('─'.repeat(w),'edge'); push();
+ const card=(s='',css='',choice=null,metadata=false)=>{const selected=choice===state.cursor;const klass=selected?'selected':css;const fitted=fit(s,inside);const content=metadata&&!selected?escape(fitted.slice(0,28))+'<span class="dim">'+escape(fitted.slice(28))+'</span>':escape(fitted);rows.push('<span class="row">'+' '.repeat(x)+'<span class="edge">│</span><span '+(choice!==null?'role="option" id="choice-'+choice+'" aria-selected="'+selected+'" data-choice="'+choice+'" ':'')+'class="'+klass+(choice!==null?' choice':'')+'">'+content+'</span><span class="edge">│</span>'+' '.repeat(w-x-cw)+'</span>');};
+ push(' '.repeat(x)+'┌'+'─'.repeat(inside)+'┐','edge');
+ card(); card('  □ □ □ □   Open a connection','accent'); card('  □ ■ □ □   Choose where to work','dim'); card('  □ □ □ □','dim'); card();
+ const n=state.entries.length,capacity=compact?3:4;
+ if(state.cursor<n){if(state.cursor<state.offset)state.offset=state.cursor;if(state.cursor>=state.offset+capacity)state.offset=state.cursor-capacity+1;}
+ const visible=state.entries.slice(state.offset,state.offset+capacity);
+ const range=n>capacity?'  '+(state.offset+1)+'–'+Math.min(state.offset+capacity,n)+' of '+n:'';
+ card('  Saved & configured'+range,'dim');
+ if(!n){card(state.mode==='loading'?'  Loading connections…':state.mode==='error'?'  Could not load connections.':'  No connections yet','dim');card(state.mode==='error'?'  F1 for details. Local files remain available.':state.mode==='loading'?'  You can create a connection or browse locally.':'  Create one, or browse files on this computer.','dim');}
+ else visible.forEach((entry,i)=>{const idx=state.offset+i;let text=' '+(idx===state.cursor?'›':' ')+'   '+fit(entry[0],compact?inside-5:22);if(!compact)text+=' '+entry[1];card(text,'',idx,!compact);});
+ card('  '+'─'.repeat(inside-4),'edge');
+ card(' '+(state.cursor===n?'›':' ')+' + New connection','',n);
+ card(' '+(state.cursor===n+1?'›':' ')+'   Browse local files','',n+1);
+ card();
+ push(' '.repeat(x)+'└'+'─'.repeat(inside)+'┘','edge');
+ while(rows.length<h-2)push();
+ push('─'.repeat(w),'edge');push(compact?' ↑↓ move  Enter open  Esc local  F1 help':' ↑↓ / j k move   Enter open   Esc local files   F1 help','dim');
+ terminal.innerHTML=rows.join('');terminal.setAttribute('aria-activedescendant','choice-'+state.cursor);
+}
+function selectMode(){state.mode=scenario.value;state.entries=['empty','loading','error'].includes(state.mode)?[]:state.mode==='many'?Array.from({length:12},(_,i)=>['Connection '+String(i+1).padStart(2,'0'),'remote-'+(i+1)+':/files']):examples;state.cursor=state.mode==='new'?3:state.mode==='local'?4:state.mode==='many'?11:0;state.offset=0;notice.textContent='';render();}
+function move(delta){state.cursor=Math.max(0,Math.min(state.entries.length+1,state.cursor+delta));notice.textContent='';render();}
+function activate(){const n=state.entries.length;notice.textContent=state.cursor<n?'Would open connection details for '+state.entries[state.cursor][0]+'. No connection starts yet.':state.cursor===n?'Would open existing guided connection setup. Nothing saved.':'Would open local files with no remote connection.';}
+terminal.addEventListener('keydown',e=>{if(['ArrowDown','ArrowUp','j','k','Tab'].includes(e.key)){e.preventDefault();move(e.key==='ArrowUp'||e.key==='k'||(e.key==='Tab'&&e.shiftKey)?-1:1);}else if(e.key==='Enter'){e.preventDefault();activate();}else if(e.key==='Escape'){notice.textContent='Would return to the local file workspace.';}else if(e.key==='F1'||e.key==='?'){e.preventDefault();notice.textContent='Would open existing help; closing it restores this selection.';}});
+terminal.addEventListener('click',e=>{const el=e.target.closest('[data-choice]');if(el){state.cursor=Number(el.dataset.choice);render();activate();}terminal.focus();});
+document.getElementById('up').onclick=()=>move(-1);document.getElementById('down').onclick=()=>move(1);document.getElementById('reset').onclick=selectMode;scenario.onchange=selectMode;render();
+}
+</script></body></html>

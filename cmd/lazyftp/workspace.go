@@ -138,7 +138,7 @@ func (m workspace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.closePicker()
 		m.pickerDestination = msg.Destination
 		p := newPicker(nil, nil, msg.Local, m.leftOverride, m.bookmarkPath, m.theme)
-		p.message = "Loading connections…"
+		p.loading = true
 		if m.size.Width > 0 {
 			p.width, p.height = m.size.Width, m.size.Height
 		}
@@ -180,6 +180,11 @@ func (m workspace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			p := msg.picker
 			p.width, p.height = m.picker.width, m.picker.height
 			p.frame = m.picker.frame
+			p.help = m.picker.help
+			if m.picker.navigated {
+				// Discovery must not steal an action the user already chose.
+				p.focus, p.navigated = m.picker.focus, true
+			}
 			m.picker = &p
 			if m.discoveryCancel != nil {
 				m.discoveryCancel()
