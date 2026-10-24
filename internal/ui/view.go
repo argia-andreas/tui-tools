@@ -276,6 +276,7 @@ func (m Model) filePane(i, w, h int) []string {
 		color := m.theme.Foreground
 		icon := "▤"
 		name := text(e.Name)
+		ext := strings.ToLower(path.Ext(e.Name))
 		size := fmt.Sprintf("%d B", e.Size)
 		if e.Size >= 1024 {
 			size = fmt.Sprintf("%.1f KB", float64(e.Size)/1024)
@@ -286,7 +287,7 @@ func (m Model) filePane(i, w, h int) []string {
 			icon = "▸"
 			size = "—"
 		} else {
-			switch strings.ToLower(path.Ext(e.Name)) {
+			switch ext {
 			case ".md", ".markdown":
 				icon, color = "≡", m.theme.Markdown
 			case ".json", ".csv", ".yaml", ".yml", ".toml", ".xml":
@@ -301,21 +302,35 @@ func (m Model) filePane(i, w, h int) []string {
 		}
 		if m.icons {
 			icon = "\uf15b"
-			switch {
-			case e.IsDir:
+			if e.IsDir {
 				icon = "\uf07b"
-			case path.Ext(e.Name) == ".md":
-				icon = "\ue73e"
-				color = m.theme.Markdown
-			case path.Ext(e.Name) == ".json":
-				icon = "\ue60b"
-				color = m.theme.Data
-			case path.Ext(e.Name) == ".png":
-				icon = "\uf03e"
-				color = m.theme.Image
-			case path.Ext(e.Name) == ".go":
-				icon = "\ue627"
-				color = m.theme.Local
+			} else {
+				switch ext {
+				case ".md", ".markdown":
+					icon, color = "\ue73e", m.theme.Markdown
+				case ".txt", ".rst", ".pdf":
+					icon, color = "\uf15c", m.theme.Markdown
+				case ".json", ".csv", ".yaml", ".yml", ".toml", ".xml":
+					icon, color = "\ue60b", m.theme.Data
+				case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".tif", ".tiff":
+					icon, color = "\uf03e", m.theme.Image
+				case ".go":
+					icon, color = "\ue627", m.theme.Local
+				case ".rs":
+					icon, color = "\ue7a8", m.theme.Local
+				case ".js", ".jsx", ".mjs", ".cjs":
+					icon, color = "\ue74e", m.theme.Local
+				case ".ts", ".tsx":
+					icon, color = "\ue628", m.theme.Local
+				case ".py", ".pyw":
+					icon, color = "\ue73c", m.theme.Local
+				case ".sh", ".bash", ".zsh", ".fish":
+					icon, color = "\uf489", m.theme.Local
+				case ".c", ".h", ".cpp", ".hpp", ".java", ".rb", ".php", ".html", ".htm", ".css", ".scss", ".sql":
+					icon, color = "\uf121", m.theme.Local
+				case ".zip", ".gz", ".tar", ".tgz", ".bz2", ".xz", ".7z", ".rar", ".zst":
+					icon, color = "\uf410", m.theme.Warning
+				}
 			}
 		}
 		if e.Name == ".." {
@@ -335,7 +350,7 @@ func (m Model) filePane(i, w, h int) []string {
 		if e.IsDir {
 			nameColor = m.theme.Folder
 		}
-		row := m.paint(marker+" ", m.theme.Focus) + m.paint(icon+" ", color) + m.paint(fit(name, max(1, w-17)), nameColor) + m.paint(fit(size, 10), m.theme.Muted)
+		row := m.paint(marker+" ", m.theme.Focus) + m.paint(fit(icon, 2), color) + m.paint(fit(name, max(1, w-17)), nameColor) + m.paint(fit(size, 10), m.theme.Muted)
 		row += m.paint(strings.Repeat(" ", max(0, w-2-lipgloss.Width(row))), m.theme.Foreground)
 		if j == p.cursor && m.focus == i+1 && m.modal == "" {
 			foreground, background := m.theme.SelectionText, m.theme.Selection

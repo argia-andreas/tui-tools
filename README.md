@@ -63,7 +63,11 @@ Configuration uses semantic color roles, not executable editor theme files:
 When neither specifies a preset, Midnight is used, including with custom colors.
 `--icons` enables Nerd Font glyphs if your terminal font supports them; the
 default uses portable filetype symbols with semantic colors, without requiring
-a special font. Unknown presets, roles, and invalid colors
+a special font. Select a Nerd Font (for example JetBrainsMono Nerd Font Mono)
+in your terminal settings, then use `--icons` or **Toggle filetype icons** in
+the command palette. Icons cover common code, document, data, image and archive
+extensions, including uppercase extensions; filenames share a fixed-width gutter.
+Unknown presets, roles, and invalid colors
 produce errors rather than silently falling back.
 
 ## Real local FTP + Blob + S3 lab

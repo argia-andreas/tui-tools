@@ -355,3 +355,83 @@ func TestMouseSelectsScrolledRow(t *testing.T) {
 	requireText(t, d, "● ▤ file-17")
 	requireText(t, d, "1 selected")
 }
+
+func TestFileIcons(t *testing.T) {
+	groups := []struct {
+		extensions, portable, nerd string
+	}{
+		{"md markdown", "≡", "\ue73e"},
+		{"txt rst pdf", "▤", "\uf15c"},
+		{"json csv yaml yml toml xml", "⌘", "\ue60b"},
+		{"png jpg jpeg gif svg webp", "◈", "\uf03e"},
+		{"bmp ico tif tiff", "▤", "\uf03e"},
+		{"go", "λ", "\ue627"},
+		{"rs", "λ", "\ue7a8"},
+		{"js", "λ", "\ue74e"},
+		{"jsx mjs cjs", "▤", "\ue74e"},
+		{"ts", "λ", "\ue628"},
+		{"tsx", "▤", "\ue628"},
+		{"py", "λ", "\ue73c"},
+		{"pyw", "▤", "\ue73c"},
+		{"sh", "λ", "\uf489"},
+		{"bash zsh fish", "▤", "\uf489"},
+		{"c h cpp hpp java rb php html htm css scss sql", "▤", "\uf121"},
+		{"zip gz tar", "▣", "\uf410"},
+		{"tgz bz2 xz 7z rar zst", "▤", "\uf410"},
+		{"unknown", "▤", "\uf15b"},
+	}
+	cases := []struct {
+		name, portable, nerd string
+		dir                  bool
+	}{
+		{"folder.json", "▸", "\uf07b", true},
+		{"..", "↑", "↑", true},
+		{"LICENSE", "▤", "\uf15b", false},
+	}
+	for _, group := range groups {
+		for _, ext := range strings.Fields(group.extensions) {
+			for _, suffix := range []string{ext, strings.ToUpper(ext)} {
+				cases = append(cases, struct {
+					name, portable, nerd string
+					dir                  bool
+				}{"file." + suffix, group.portable, group.nerd, false})
+			}
+		}
+	}
+	for _, tc := range cases {
+		for _, icons := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/icons=%t", tc.name, icons), func(t *testing.T) {
+				th, err := theme.Get("")
+				if err != nil {
+					t.Fatal(err)
+				}
+				b := browserFunc(func(context.Context, storage.Location) ([]storage.Entry, error) {
+					return []storage.Entry{{Name: tc.name, IsDir: tc.dir}}, nil
+				})
+				m := ui.New(ui.Options{Browser: b, Theme: th, Icons: icons, Left: storage.Location{Path: "/project"}})
+				d := &driver{model: m}
+				d.deliver(tea.WindowSizeMsg{Width: 160, Height: 20})
+				d.run(m.Init())
+				icon := tc.portable
+				if icons {
+					icon = tc.nerd
+				}
+				name := tc.name
+				if tc.dir && name != ".." {
+					name += "/"
+				}
+				requireText(t, d, icon+strings.Repeat(" ", 2-ansi.StringWidth(icon))+name)
+				for _, row := range strings.Split(d.screen(), "\n") {
+					if ansi.StringWidth(row) != 160 {
+						t.Fatalf("row width = %d, want 160: %q", ansi.StringWidth(row), row)
+					}
+					if at := strings.Index(row, icon+strings.Repeat(" ", 2-ansi.StringWidth(icon))+name); at >= 0 {
+						if column := ansi.StringWidth(row[:at]) + 2; column != 27 {
+							t.Fatalf("filename column = %d, want 27", column)
+						}
+					}
+				}
+			})
+		}
+	}
+}
