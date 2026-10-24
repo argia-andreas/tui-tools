@@ -3,9 +3,63 @@ package fixture
 import (
 	"bytes"
 	"context"
+	"reflect"
 	"testing"
 	"time"
+
+	"servicebusexplorer/internal/explorer"
 )
+
+func TestPeekMessageFullContentIndependentOfPreviews(t *testing.T) {
+	for _, dlq := range []bool{false, true} {
+		s, resources := newStore(t)
+		source := resources[0]
+		e := s.entries[source]
+		messages := e.active
+		if dlq {
+			messages = e.deadLetter
+		}
+		messages[1].Body = bytes.Repeat([]byte("full text é\n"), 9000)
+		messages[1].Properties["binary"] = []byte{0, 255}
+		messages[1].Properties["nested"] = map[string]any{"values": []any{[]byte{1, 2}}}
+		want := cloneMessage(messages[1])
+		s.entries[source] = e
+		var store explorer.Store = s
+		ctx := context.Background()
+		page, err := store.Peek(ctx, source, dlq, want.Sequence, 1)
+		if err != nil || len(page.Messages) != 1 || len(page.Messages[0].Body) != 64*1024 || !page.Messages[0].PreviewTruncated {
+			t.Fatalf("preview contract: %+v %v", page, err)
+		}
+		full, err := store.PeekMessage(ctx, source, dlq, want.Sequence)
+		if err != nil || full.PreviewTruncated || !reflect.DeepEqual(full, want) {
+			t.Fatalf("full content/metadata not preserved: %v", err)
+		}
+		full.Body[0] = '!'
+		full.Properties["binary"].([]byte)[0] = 42
+		full.Properties["nested"].(map[string]any)["values"].([]any)[0].([]byte)[0] = 42
+		full.Properties["region"] = "changed"
+		again, err := store.PeekMessage(ctx, source, dlq, want.Sequence)
+		if err != nil || !reflect.DeepEqual(again, want) || !reflect.DeepEqual(messages[1], want) || s.held != nil {
+			t.Fatal("full peek aliases source or acquired delivery")
+		}
+		if dlq {
+			delivery, err := store.ReceiveSelectedDLQ(ctx, source, want.Sequence)
+			if err != nil {
+				t.Fatal(err)
+			}
+			preview := delivery.Snapshot()
+			if len(preview.Body) != 64*1024 || !preview.PreviewTruncated {
+				t.Fatal("delivery preview contract changed")
+			}
+			// Reading full content must not expire a lock and increment counters.
+			s.now = func() time.Time { return delivery.LockedUntil().Add(time.Second) }
+			before := cloneMessage(s.entries[source].deadLetter[1])
+			if _, err := store.PeekMessage(ctx, source, dlq, want.Sequence); err != nil || !reflect.DeepEqual(s.entries[source].deadLetter[1], before) || s.held == nil {
+				t.Fatal("full peek expired delivery or changed its count")
+			}
+		}
+	}
+}
 
 func TestSelectedCopyPreservesFullPrivateContent(t *testing.T) {
 	s, resources := newStore(t)

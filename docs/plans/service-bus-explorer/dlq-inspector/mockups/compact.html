@@ -1,0 +1,52 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>80×24 — the same inspector, full width</title>
+<style>:root{color-scheme:dark;--bg:#0b1423;--text:#dce8f4;--muted:#91a6bb;--accent:#65c7f7;--border:#4b6a89;--ok:#8af0ce;--warn:#efc46f}*{box-sizing:border-box}body{margin:0;padding:28px;background:var(--bg);color:var(--text);font:15px/1.5 system-ui}main{max-width:1000px;margin:auto}a{color:var(--accent)}h1{font-size:26px}h2{font-size:18px}p,figcaption{color:var(--muted)}figure{margin:25px 0 35px}.scroll{overflow:auto}pre{font:14px/1.5 ui-monospace,'DejaVu Sans Mono',monospace;width:82ch;padding:1ch;border:2px solid var(--accent);margin:0;color:var(--text)}.muted{color:var(--muted)}.focus{color:var(--accent)}.sel{background:var(--ok);color:var(--bg)}.warn{color:var(--warn)}</style>
+<main><a href="index.html">← Product proposal</a><h1>Compact terminal: expand the inspector, not the workflow.</h1><p>80-column × 24-row content reference. Enter reveals this same inspector; Esc restores the list and its row. Static mockups, not terminal captures.</p>
+<figure id="compact"><h2>05 / Reading and selecting at 80×24</h2><div class="scroll"><pre><span class="focus">SBX / orders / DEAD-LETTER                         FIXTURE · OFFLINE</span>
+&gt; INSPECTOR / VISUAL CHAR                              message 2/12
+────────────────────────────────────────────────────────────────────────────
+ID orders-dlq-0002 · sequence 107 · deliveries 10
+<span class="warn">MaxDeliveryCountExceeded</span>
+Payment provider timed out after repeated delivery attempts.
+────────────────────────────────────────────────────────────────────────────
+BODY / application/json / complete text
+1 │ {
+2 │   "amount": 50.95,
+3 │   "currency": "EUR",
+4 │   "customer": "Northwind",
+5 │   "event": "order.created",
+6 │   "fixture": true,
+7 │   "id": "<span class="sel">orders-dlq-0002</span>"
+8 │ }
+
+<span class="muted">Properties continue below · PgDn to scroll</span>
+────────────────────────────────────────────────────────────────────────────
+<span class="focus">VISUAL CHAR · 15 chars · body 7:10–7:24 · lines 1–8/8</span>
+y Copy · Esc clear · h/j/k/l move · ? help
+Resend unavailable during selection
+────────────────────────────────────────────────────────────────────────────
+Ctrl+P actions · Tab focus · q quit</pre></div><figcaption>The list is temporarily hidden. Queue, source type, message identity, selection and escape path remain visible.</figcaption></figure>
+<figure id="failure"><h2>06 / Clipboard failure keeps the selection</h2><div class="scroll"><pre><span class="focus">SBX / orders / DEAD-LETTER                         FIXTURE · OFFLINE</span>
+&gt; INSPECTOR / VISUAL CHAR                              message 2/12
+────────────────────────────────────────────────────────────────────────────
+ID orders-dlq-0002 · sequence 107 · deliveries 10
+<span class="warn">MaxDeliveryCountExceeded</span>
+Payment provider timed out after repeated delivery attempts.
+────────────────────────────────────────────────────────────────────────────
+BODY / application/json / complete text
+1 │ {
+2 │   "amount": 50.95,
+3 │   "currency": "EUR",
+4 │   "customer": "Northwind",
+5 │   "event": "order.created",
+6 │   "fixture": true,
+7 │   "id": "<span class="sel">orders-dlq-0002</span>"
+8 │ }
+
+<span class="warn">Clipboard unavailable; selection kept.</span>
+<span class="warn">Use terminal copy; ? for help.</span>
+<span class="focus">VISUAL CHAR · 15 chars · body 7:10–7:24</span>
+y Retry copy · Esc clear · ? clipboard help
+Resend unavailable during selection
+────────────────────────────────────────────────────────────────────────────
+Ctrl+P actions · Tab focus · q quit</pre></div><figcaption>No success claim, no payload in feedback. Manual terminal copy may include gutters and wraps; help explains that limitation.</figcaption></figure>
+<p id="minimum">At 60×16: collapse reason details and properties, retain identity, at least four text rows, mode and action hints. Resend review requires 80×24. Below 60×16: resize guidance and safe exit only.</p><a href="resend.html">Next: safe resend inside the inspector →</a></main></html>

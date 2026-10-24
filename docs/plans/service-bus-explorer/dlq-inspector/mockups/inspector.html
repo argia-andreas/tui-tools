@@ -1,0 +1,48 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>One inspector — focus and copy states</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1423;--surface:#101d2f;--text:#dce8f4;--muted:#91a6bb;--border:#4b6a89;--line:#4b6a89;--accent:#65c7f7;--accent-soft:#101d2f;--ok:#8af0ce;--bad:#dc939b;--warn:#efc46f}
+*{box-sizing:border-box}body{margin:0;padding:28px;background:var(--bg);color:var(--text);font:15px/1.5 system-ui}main{max-width:1160px;margin:auto}a{color:var(--accent)}h1{font-size:26px}h2{font-size:18px;margin:28px 0 8px}.note,figcaption{color:var(--muted)}figure{margin:0 0 35px}.terminal{font:14px/1.55 ui-monospace,'DejaVu Sans Mono',monospace;background:var(--bg);border:1px solid var(--border);padding:12px;overflow:auto}.top{color:var(--accent);white-space:pre}.panes{display:grid;grid-template-columns:35% 65%;margin-top:12px}.pane{border:1px solid var(--border);min-width:0}.focused{border:2px solid var(--accent)}.title,.foot{padding:5px 10px;border-bottom:1px solid var(--border);color:var(--muted)}.focused .title{color:var(--accent)}pre{font:inherit;line-height:1.55;margin:0;padding:10px;white-space:pre-wrap;overflow-wrap:anywhere}.passive{background:var(--surface);color:var(--text);display:block}.muted{color:var(--muted)}.warn{color:var(--warn)}.select{background:var(--ok);color:var(--bg)}.cursor{outline:2px solid var(--accent);outline-offset:1px}.foot{border-top:1px solid var(--border);border-bottom:0;color:var(--accent)}.actions{padding:8px 10px;border-top:1px solid var(--border)}.chip{border:1px solid var(--border);padding:2px 5px;display:inline-block;margin-right:10px;color:var(--accent)}.small{max-width:800px}.state{color:var(--accent);font-weight:bold}.full-line{display:block;background:var(--ok);color:var(--bg)}@media(max-width:750px){body{padding:14px}.panes{grid-template-columns:1fr}.list{display:none}}
+</style><main><a href="index.html">← Product proposal</a><h1>One inspector. No second body preview.</h1><p class="note">Static design references, not the running TUI. Synthetic Orders data. Navigation sidebar collapsed to emphasize message work.</p>
+<figure id="normal"><h2>01 / Enter focuses the inspector; the selected row stays put</h2><div class="terminal"><div class="top">SBX / Service Bus Explorer                                  FIXTURE · OFFLINE
+[ Active [ ]  [ DLQ ] ]  [ Refresh r ]  [ Actions Ctrl+P ]</div><div class="panes"><section class="pane list"><div class="title">orders / DEAD-LETTER · 12 messages</div><pre><span class="muted">PEEK ONLY · no locks
+fixture / local-lab
+
+SEQ   MESSAGE ID</span>
+100   orders-dlq-0001
+<span class="passive">›107  orders-dlq-0002</span>114   orders-dlq-0003
+121   orders-dlq-0004
+128   orders-dlq-0005
+135   orders-dlq-0006
+
+<span class="muted">Selection pinned while reading.
+
+n next · p previous · r refresh
+Available when list has focus.</span></pre></section><section class="pane focused"><div class="title">&gt; INSPECTOR / NORMAL / text focused · message 2/12</div><pre><span class="muted">ID</span> orders-dlq-0002   <span class="muted">Seq</span> 107   <span class="muted">Deliveries</span> 10
+<span class="warn">MaxDeliveryCountExceeded</span>
+Payment provider timed out after repeated delivery attempts.
+
+<span class="muted">BODY / application/json / complete text</span>
+<span class="muted">1 │ </span><span class="cursor">{</span>
+<span class="muted">2 │ </span>  "amount": 50.95,
+<span class="muted">3 │ </span>  "currency": "EUR",
+<span class="muted">4 │ </span>  "customer": "Northwind",
+<span class="muted">5 │ </span>  "event": "order.created",
+<span class="muted">6 │ </span>  "fixture": true,
+<span class="muted">7 │ </span>  "id": "orders-dlq-0002"
+<span class="muted">8 │ </span>}
+
+<span class="muted">APPLICATION PROPERTIES</span>
+{"region":"eu-north","schema":"v1"}</pre><div class="foot">NORMAL · body 1:1 · lines 1–8/8 · wrap on</div><div class="actions"><span class="chip">Esc Back</span><span class="chip">Ctrl+R Resend to queue…</span><br><span class="muted">yy line · v/V select · Y full body · ? help</span></div></section></div><div class="foot">Tab focus / actions · Ctrl+P named actions · q quit</div></div><figcaption>The active border, pane name and block cursor identify focus; the list marker identifies the pinned message, not a second text selection.</figcaption></figure>
+<figure id="character"><h2>02 / v + movement selects just the identifier</h2><div class="terminal small"><div class="title state">&gt; INSPECTOR / VISUAL CHAR · orders-dlq-0002 · seq 107</div><pre><span class="muted">BODY / complete text</span>
+<span class="muted">5 │ </span>  "event": "order.created",
+<span class="muted">6 │ </span>  "fixture": true,
+<span class="muted">7 │ </span>  "id": "<span class="select">orders-dlq-000<span class="cursor">2</span></span>"
+<span class="muted">8 │ </span>}</pre><div class="foot">VISUAL CHAR · body 7:10–7:24 · 15 characters selected</div><div class="actions">y Copy selection · h/j/k/l move · Esc clear<br><span class="muted">Resend unavailable during selection · ? help</span></div></div><figcaption>Only the identifier is copied: no quotes, field name or gutter. Ctrl+R asks you to clear selection first.</figcaption></figure>
+<figure id="line"><h2>03 / V then j selects two logical lines; y copies them</h2><div class="terminal small"><div class="title state">&gt; INSPECTOR / VISUAL LINE · orders-dlq-0002 · seq 107</div><pre><span class="muted">BODY / complete text</span>
+<span class="muted">1 │ </span>{
+<span class="full-line">2 │   "amount": 50.95,</span><span class="full-line">3 │   "currency": "EUR",</span><span class="muted">4 │ </span>  "customer": "Northwind",</pre><div class="foot">VISUAL LINE · body lines 2–3 · 2 lines selected</div><div class="actions">y Copy selection · j/k extend · Esc clear</div></div><figcaption>Highlight spans complete logical lines. Copy preserves source newlines, not line numbers or soft wrapping.</figcaption></figure>
+<figure id="copied"><h2>04 / Success reports scope, never echoes the payload</h2><div class="terminal small"><div class="title state">&gt; INSPECTOR / NORMAL · body 3:1</div><pre>Copied 2 lines · body
+<span class="muted">Cursor and scroll preserved. Selection cleared.
+Feedback stays until the next command.</span></pre><div class="actions"><span class="chip">Esc Back</span><span class="chip">Ctrl+R Resend to queue…</span></div></div><figcaption>“Copied” is reserved for a confirmed clipboard write. Remote-terminal requests without confirmation use different wording.</figcaption></figure>
+<p><a href="compact.html">Next: compact widths and copy failure →</a></p></main></html>

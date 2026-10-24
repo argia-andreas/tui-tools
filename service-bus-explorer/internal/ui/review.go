@@ -127,11 +127,12 @@ func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			return finish(m.release())
 		}
 		snapshot := msg.replay.Snapshot()
-		if snapshot.Sequence != m.review.message.Sequence || snapshot.ID != m.review.message.ID {
+		if snapshot.Sequence != m.review.message.Sequence || snapshot.ID != m.review.message.ID ||
+			msg.message.Sequence != snapshot.Sequence || msg.message.ID != snapshot.ID || msg.message.PreviewTruncated {
 			m.review.outcome = "Selected identity changed; nothing sent or deleted."
 			return finish(m.release())
 		}
-		m.review.message, m.review.phase, m.review.choice = snapshot, "review", 0
+		m.review.message, m.review.phase, m.review.choice = msg.message, "review", 0
 		m.review.newID = "sbx-" + rand.Text()
 		m.status = "PEEK COPY · original retained · Cancel selected by default"
 		if msg.delivery != nil {
@@ -210,7 +211,7 @@ func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 			return finish(m.quit())
 		}
 		switch m.review.phase {
-		case "selected", "destination", "configure":
+		case "destination", "configure":
 			return finish(m.selectedKey(msg))
 		case "acquiring", "preparing":
 			if msg.String() == "esc" {
@@ -223,7 +224,13 @@ func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		case "result":
 			if msg.String() == "enter" || msg.String() == "esc" {
 				m.status = m.review.outcome
+				selected := m.review.selected
 				m.review = reviewState{}
+				if selected {
+					m.focus, m.reader.revealed = "inspector", true
+					m.status += " Snapshot retained; Esc then r refreshes the list."
+					return m, nil, true
+				}
 				return finish(m.peek(m.from))
 			}
 		}

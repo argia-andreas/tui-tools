@@ -245,11 +245,20 @@ func (m Model) messageView(width, height int) []string {
 	for i, line := range toolbar {
 		toolbar[i] = line + m.paint(strings.Repeat(" ", max(0, width-lipgloss.Width(line))), m.theme.Foreground)
 	}
+	if m.review.selected && (m.height < 35 || m.inspectorWidth() < 80) || m.compactReading() {
+		toolbar = nil
+	}
 	height -= len(toolbar)
 	listWidth := width
 	showInspector := m.hasInspector()
-	if showInspector {
-		listWidth = width * 48 / 100
+	if showInspector && m.splitInspector() {
+		listWidth = width * 40 / 100
+	}
+	if showInspector && (!m.splitInspector() || m.review.selected && (width-listWidth < 80 || m.height < 35)) {
+		if m.review.selected {
+			return append(toolbar, m.reviewView(width, height)...)
+		}
+		return append(toolbar, m.readerView(width, height)...)
 	}
 	lines := []string{m.paint("  PEEK ONLY · no locks or settlement", m.theme.Queued), m.paint("  "+clean(m.resource.Profile+" / "+m.resource.Namespace, false), m.theme.Muted)}
 	if m.loading {
@@ -266,8 +275,10 @@ func (m Model) messageView(width, height int) []string {
 			prefix = "› "
 		}
 		line := fmt.Sprintf("%s%-6d %s", prefix, msg.Sequence, clean(msg.ID, false))
-		if index == m.message {
+		if index == m.message && m.focus == "content" && m.review.phase == "" {
 			lines = append(lines, m.selectedLine(line, listWidth-2))
+		} else if index == m.message {
+			lines = append(lines, m.paint(line, m.theme.Focus))
 		} else {
 			lines = append(lines, m.paint(line, m.theme.Foreground))
 		}
@@ -284,38 +295,18 @@ func (m Model) messageView(width, height int) []string {
 	if !showInspector {
 		return append(toolbar, left...)
 	}
-	details := m.inspectorLines()
-	offset := min(m.offset, max(0, len(details)-(height-2)))
-	right := m.panel("INSPECTOR / Tab/Ctrl+H/L · j/k scroll", width-listWidth, height, details[offset:], m.focus == "inspector")
+	right := m.readerView(width-listWidth, height)
+	if m.review.selected {
+		right = m.reviewView(width-listWidth, height)
+	}
 	for i := range left {
 		left[i] += right[i]
 	}
 	return append(toolbar, left...)
 }
 
-func (m Model) inspectorLines() []string {
-	var details []string
-	if len(m.page.Messages) > 0 {
-		msg := m.page.Messages[m.message]
-		details = []string{"", m.paint("  MESSAGE", m.theme.Muted), m.paint("  "+clean(msg.ID, false), m.theme.Foreground), "", m.paint("  "+clean(msg.ContentType, false), m.theme.Focus), m.paint(fmt.Sprintf("  Sequence %d · deliveries %d", msg.Sequence, msg.DeliveryCount), m.theme.Muted), m.paint("  "+msg.EnqueuedAt.Format("2006-01-02 15:04 UTC"), m.theme.Muted)}
-		if m.dlq {
-			details = append(details, "", m.paint("  "+clean(msg.DeadLetterReason, false), m.theme.DeadLetter), m.paint("  "+clean(msg.DeadLetterDescription, false), m.theme.Muted))
-		}
-		details = append(details, "", m.paint("  BODY / read-only", m.theme.Muted), "")
-		body := msg.Body
-		truncated := len(body) > 64*1024 || msg.PreviewTruncated
-		if len(body) > 64*1024 {
-			body = body[:64*1024]
-		}
-		for _, line := range strings.Split(clean(string(body), true), "\n") {
-			details = append(details, m.paint("  "+line, m.theme.Foreground))
-		}
-		if truncated {
-			details = append(details, m.paint("  [body preview truncated]", m.theme.Warning))
-		}
-		details = append(details, "", m.paint("  Peek is safe. Enter opens selected DLQ; Ctrl+P offers actions.", m.theme.Muted))
-	}
-	return details
+func (m Model) compactReading() bool {
+	return m.review.phase == "" && m.inspectorFocused() && (!m.splitInspector() || m.height < 25)
 }
 
 func (m Model) View() string {
@@ -331,12 +322,16 @@ func (m Model) View() string {
 	}
 	lines := []string{m.paint(fit(header, m.width-lipgloss.Width(badge)), m.theme.Focus) + m.paint(badge, m.theme.Warning), m.paint(fit(subtitle, m.width), m.theme.Muted), m.paint(strings.Repeat("─", m.width), m.theme.Border)}
 	height, width := m.height-6, m.width
-	showSidebar := m.prefs.Sidebar && width >= 110 && m.review.phase == ""
+	if m.compactReading() {
+		lines = []string{m.paint(fit("  SBX / "+clean(m.resource.Name(), false)+" / "+map[bool]string{true: "DEAD-LETTER", false: "ACTIVE"}[m.dlq]+" · PEEK ONLY", m.width), m.theme.Focus)}
+		height = m.height - 2
+	}
+	showSidebar := m.showSidebar()
 	if showSidebar {
 		width -= 24
 	}
 	var content []string
-	if m.review.phase != "" {
+	if m.review.phase != "" && !m.review.selected {
 		content = m.reviewView(width, height)
 	} else if m.screen == "messages" {
 		content = m.messageView(width, height)
@@ -352,7 +347,7 @@ func (m Model) View() string {
 	lines = append(lines, content...)
 	keys := "  j/k move   Enter open   ] DLQ   g/t layout   Tab/Ctrl+H/L focus   b sidebar   Ctrl+P actions   q quit"
 	if m.screen == "messages" {
-		keys = "  j/k move/scroll   Enter open DLQ   [/] view   i inspector   n/p pages   Tab/Ctrl+H/L focus   Ctrl+P actions   Esc back   q quit"
+		keys = "  j/k move   Enter inspect   [/] view   i inspector   n/p pages   Tab/Ctrl+H/L focus   Ctrl+P actions   Esc back   q quit"
 	} else if m.screen == "settings" {
 		keys = "  j/k move   Enter change   s save   Tab/Ctrl+H/L focus   Ctrl+P actions   Esc back   q quit"
 	}
@@ -362,10 +357,13 @@ func (m Model) View() string {
 	if m.width < 110 {
 		keys = "  j/k move  Enter open  ] DLQ  Ctrl+P actions  q quit"
 		if m.screen == "messages" {
-			keys = "  j/k move  Enter open DLQ  [/] view  n/p pages  Ctrl+P  Esc back  q quit"
+			keys = "  j/k move  Enter inspect  [/] view  n/p pages  Ctrl+P  Esc back  q quit"
 		} else if m.screen == "settings" {
 			keys = "  j/k move  Enter change  s save  Ctrl+P  Esc back  q quit"
 		}
+	}
+	if m.inspectorFocused() {
+		keys = "  h/j/k/l cursor · yy line · v/V select · Y full body · Tab actions · Esc Back · Ctrl+P · ? help · q quit"
 	}
 	status := m.status
 	if m.review.phase != "" {
@@ -383,7 +381,10 @@ func (m Model) View() string {
 	if m.revision != m.persisted {
 		status += " · unsaved preferences"
 	}
-	lines = append(lines, m.paint(strings.Repeat("─", m.width), m.theme.Border), m.paint(fit(keys, m.width), m.theme.Focus), m.paint(fit("  "+clean(status, false), m.width), m.theme.Muted))
+	if !m.compactReading() {
+		lines = append(lines, m.paint(strings.Repeat("─", m.width), m.theme.Border), m.paint(fit(keys, m.width), m.theme.Focus))
+	}
+	lines = append(lines, m.paint(fit("  "+clean(status, false), m.width), m.theme.Muted))
 	if m.palette {
 		m.overlayPalette(lines)
 	}

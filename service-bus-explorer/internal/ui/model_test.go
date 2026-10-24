@@ -56,6 +56,20 @@ func key(m tea.Model, text string) (tea.Model, tea.Cmd) {
 		typeOf = tea.KeyCtrlP
 	case "ctrl+u":
 		typeOf = tea.KeyCtrlU
+	case "ctrl+r":
+		typeOf = tea.KeyCtrlR
+	case "ctrl+d":
+		typeOf = tea.KeyCtrlD
+	case "left":
+		typeOf = tea.KeyLeft
+	case "right":
+		typeOf = tea.KeyRight
+	case "home":
+		typeOf = tea.KeyHome
+	case "end":
+		typeOf = tea.KeyEnd
+	case "pgup":
+		typeOf = tea.KeyPgUp
 	case "down":
 		typeOf = tea.KeyDown
 	case "up":
@@ -234,7 +248,9 @@ func TestDirectionalFocusAcrossVisibleRegions(t *testing.T) {
 		{"sidebar disabled", 160, false, true, true},
 		{"sidebar auto hidden", 100, true, true, true},
 		{"inspector disabled", 160, true, false, true},
-		{"inspector auto hidden", 110, true, true, true},
+		{"sidebar hidden before squeezing inspector", 110, true, true, true},
+		{"sidebar below split boundary", 121, true, true, true},
+		{"sidebar at split boundary", 122, true, true, true},
 		{"only content", 80, true, true, true},
 		{"dashboard", 160, true, true, false},
 	} {
@@ -249,21 +265,22 @@ func TestDirectionalFocusAcrossVisibleRegions(t *testing.T) {
 			}
 			// Tab establishes the existing rendered focus states without inspecting internals.
 			left, right := base, base
-			if tc.sidebar && tc.width >= 110 {
+			sidebarVisible := tc.sidebar && tc.width >= 110 && (!tc.messages || tc.width >= 122)
+			if sidebarVisible {
 				left = press(base, "shift+tab")
 			}
 			contentWidth := tc.width
-			if tc.sidebar && tc.width >= 110 {
+			if sidebarVisible {
 				contentWidth -= 24
 			}
-			if tc.messages && tc.inspector && contentWidth >= 95 {
+			if tc.messages && tc.inspector && contentWidth >= 98 {
 				right = press(base, "tab")
 			}
 			m := press(press(base, "ctrl+h"), "ctrl+h")
 			if press(m, "j").View() != press(left, "j").View() {
 				t.Fatal("left navigation did not clamp at the first visible region")
 			}
-			if tc.sidebar && tc.width >= 110 {
+			if sidebarVisible {
 				m = press(m, "ctrl+l")
 				if press(m, "j").View() != press(base, "j").View() {
 					t.Fatal("right skipped content")
@@ -273,7 +290,7 @@ func TestDirectionalFocusAcrossVisibleRegions(t *testing.T) {
 			if press(m, "j").View() != press(right, "j").View() {
 				t.Fatal("right navigation did not clamp at the last visible region")
 			}
-			if tc.messages && tc.inspector && contentWidth >= 95 {
+			if tc.messages && tc.inspector && contentWidth >= 98 {
 				m = press(m, "ctrl+h")
 				if press(m, "j").View() != press(base, "j").View() {
 					t.Fatal("left skipped content")
@@ -522,13 +539,18 @@ func TestInspectorScrollIsIndependentAndBrokerControlsAreData(t *testing.T) {
 	m = press(m, "tab")
 	m = press(m, "pgdown")
 	m = press(m, "pgdown")
+	m = press(m, "pgdown")
 	view := ansi.Strip(m.View())
 	if !strings.Contains(view, "END OF BODY") || !strings.Contains(view, "› 100") {
 		t.Fatal("inspector scroll changed message or lost body tail")
 	}
 	m, _ = m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = press(m, "j")
+	if !strings.Contains(ansi.Strip(m.View()), "ID: orders-active-0001") {
+		t.Fatal("resize changed the inspected message")
+	}
+	m = press(press(m, "esc"), "j")
 	if !strings.Contains(ansi.Strip(m.View()), "› 107") {
-		t.Fatal("hidden inspector trapped keyboard focus")
+		t.Fatal("Esc did not return compact inspector focus to the list")
 	}
 }

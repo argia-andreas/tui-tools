@@ -3,6 +3,8 @@ package fixture_test
 import (
 	"bytes"
 	"context"
+	"errors"
+	"reflect"
 	"testing"
 
 	"servicebusexplorer/internal/explorer"
@@ -24,6 +26,63 @@ func selectedFixture(t *testing.T) (explorer.Store, explorer.Resource, explorer.
 		byName[r.Name()] = r
 	}
 	return s, byName["orders"], byName["empty"], byName["events/shipping"]
+}
+
+func TestPeekMessageExactReadOnlyPublicContract(t *testing.T) {
+	ctx := context.Background()
+	s, queue, _, subscription := selectedFixture(t)
+	for _, source := range []explorer.Resource{queue, subscription} {
+		for _, dlq := range []bool{false, true} {
+			before, err := s.Peek(ctx, source, dlq, 0, 20)
+			if err != nil || len(before.Messages) < 2 {
+				t.Fatalf("source previews: %v", err)
+			}
+			selected := before.Messages[1]
+			full, err := s.PeekMessage(ctx, source, dlq, selected.Sequence)
+			if err != nil || full.PreviewTruncated || !reflect.DeepEqual(full, selected) {
+				t.Fatalf("exact full message differs: %+v %v", full, err)
+			}
+			full.Body[0] = '!'
+			full.Properties["region"] = "changed"
+			again, err := s.PeekMessage(ctx, source, dlq, selected.Sequence)
+			if err != nil || !reflect.DeepEqual(again, selected) {
+				t.Fatalf("full copy aliases source: %v", err)
+			}
+			for _, missing := range []int64{-1, 0, selected.Sequence - 1, 999999} {
+				if _, err := s.PeekMessage(ctx, source, dlq, missing); err == nil {
+					t.Fatalf("substituted neighbor for missing sequence %d", missing)
+				}
+			}
+			after, err := s.Peek(ctx, source, dlq, 0, 20)
+			if err != nil || !reflect.DeepEqual(after, before) {
+				t.Fatal("full peeks modified messages or delivery counts")
+			}
+			canceled, cancel := context.WithCancel(ctx)
+			cancel()
+			if _, err := s.PeekMessage(canceled, source, dlq, selected.Sequence); !errors.Is(err, context.Canceled) {
+				t.Fatalf("canceled peek: %v", err)
+			}
+		}
+		page, _ := s.Peek(ctx, source, true, 0, 20)
+		selected := page.Messages[1]
+		delivery, err := s.ReceiveSelectedDLQ(ctx, source, selected.Sequence)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// A full peek neither acquires a new delivery nor hides a locked one.
+		if full, err := s.PeekMessage(ctx, source, true, selected.Sequence); err != nil || full.ID != selected.ID {
+			t.Fatalf("locked message unavailable to peek: %v", err)
+		}
+		if err := delivery.Complete(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.PeekMessage(ctx, source, true, selected.Sequence); err == nil {
+			t.Fatal("removed message replaced with neighbor")
+		}
+	}
+	if _, err := s.PeekMessage(ctx, explorer.Resource{}, false, 100); err == nil {
+		t.Fatal("accepted invalid resource")
+	}
 }
 
 func TestSelectedCopyIsReadOnlyAndRoutesOnlyToChosenQueue(t *testing.T) {

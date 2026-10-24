@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the real fixture or seeded-emulator binary through a PTY."""
 import argparse
+import base64
 import codecs
 import fcntl
 import os
@@ -39,11 +40,13 @@ def main():
 
     resize(160, 48)
     env = dict(os.environ, TERM="xterm-256color", COLORTERM="truecolor", CLICOLOR="1")
+    env["SSH_CONNECTION"] = "synthetic-terminal-test"  # Exercise OSC52, not the orb desktop clipboard.
     env.pop("NO_COLOR", None)
     command = ["./bin/sbx", "--emulator" if args.emulator else "--fixture", "--config", config_path]
     proc = subprocess.Popen(command, stdin=slave, stdout=slave,
                             stderr=slave, env=env, start_new_session=True)
     os.close(slave)
+    output = bytearray()
 
     def wait(want, absent=None):
         deadline = time.monotonic() + 8
@@ -53,6 +56,7 @@ def main():
                     data = os.read(master, 65536)
                 except OSError:
                     break
+                output.extend(data)
                 stream.feed(decoder.decode(data))
             text = "\n".join(screen.display)
             matched = want(text) if callable(want) else (want.search(text) if isinstance(want, re.Pattern) else want in text)
@@ -90,9 +94,21 @@ def main():
             previous_id = re.search(r"› \d+\s+(orders-dlq-\d{4})", text).group(1)
             text = send("j", re.compile(r"› \d+\s+(?!" + re.escape(previous_id) + r")orders-dlq-\d{4}"))
             selected_id = re.search(r"› \d+\s+(orders-dlq-\d{4})", text).group(1)
-            send("\r", "SELECTED MESSAGE / OPEN")
+            send("\r", "INSPECTOR / NORMAL")
             wait("ID: " + selected_id)
-            text = send("\t\r", "Destination queue: orders")
+            send("y", "y… press y")
+            send("y", "Copy requested")
+            copies = re.findall(rb"\x1b\]52;c;([^\x07\x1b]*)", output)
+            assert copies and base64.b64decode(copies[-1]) == b"{\n", "yy copied decorations or wrong logical line"
+            send("V", "VISUAL LINE")
+            send("j", "2 lines selected")
+            send("y", "Copy requested · 2 lines")
+            copies = re.findall(rb"\x1b\]52;c;([^\x07\x1b]*)", output)
+            assert base64.b64decode(copies[-1]).startswith(b'{\n  "amount":'), "visual-line copy lost source text"
+            send("Y", "Copy requested · full body")
+            copies = re.findall(rb"\x1b\]52;c;([^\x07\x1b]*)", output)
+            assert base64.b64decode(copies[-1]).endswith(b"}"), "Y did not copy the whole body"
+            text = send("\x12", "Destination queue: orders")
             assert "CHOOSE QUEUE" not in text and "Change queue" not in text
             wait("[ ] Delete original after confirmed resend")
             if cleanup:
@@ -109,7 +125,9 @@ def main():
                 assert "Lock until:" not in text
             send("\t", "› Resend copy")
             send("\r", "cleanup confirmed" if cleanup else "no cleanup requested")
-            send("\r", "orders / DEAD-LETTER")
+            send("\r", "Snapshot retained")
+            send("\x1b", "orders / DEAD-LETTER")
+            send("r", re.compile(r"› \d+\s+orders-dlq-0001"))
             wait("PEEK ONLY", selected_id if cleanup else None)
             if not cleanup:
                 wait(selected_id)

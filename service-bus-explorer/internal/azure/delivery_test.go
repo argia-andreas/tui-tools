@@ -90,6 +90,48 @@ func TestReplayPreviewCannotTruncateOrMutateRaw(t *testing.T) {
 	}
 }
 
+func TestFullSnapshotPreservesContentAndMetadataIndependently(t *testing.T) {
+	m := standardDeliveryMessage()
+	m.Body = bytes.Repeat([]byte("full text é\n"), 9000)
+	m.SequenceNumber = ptr(int64(123))
+	m.EnqueuedTime = ptr(time.Date(2026, 10, 24, 1, 2, 3, 0, time.UTC))
+	m.DeliveryCount = 7
+	want := (&delivery{message: m}).Snapshot()
+	want.Body = bytes.Clone(m.Body)
+	want.PreviewTruncated = false
+	full := snapshot(m, false)
+	if !reflect.DeepEqual(full, want) {
+		t.Fatal("full snapshot lost bytes, identity or metadata")
+	}
+	full.Body[0] = '!'
+	full.Properties["binary"].([]byte)[0] = 42
+	full.Properties["business"] = "changed"
+	if !reflect.DeepEqual(snapshot(m, false), want) || m.Body[0] != 'f' || m.ApplicationProperties["binary"].([]byte)[0] != 5 {
+		t.Fatal("full snapshot aliases source")
+	}
+	preview := (&delivery{message: m}).Snapshot()
+	if len(preview.Body) != 64*1024 || !preview.PreviewTruncated {
+		t.Fatal("full snapshot changed delivery preview contract")
+	}
+}
+
+func TestPeekMessageRejectsInvalidIdentityAndCancellationBeforeAMQP(t *testing.T) {
+	s := &Store{} // nil client: validation must not open a receiver
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := s.PeekMessage(ctx, resource("orders", "", ""), false, 123); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled full peek: %v", err)
+	}
+	for _, dlq := range []bool{false, true} {
+		if _, err := s.PeekMessage(context.Background(), explorer.Resource{}, dlq, 123); err == nil {
+			t.Fatal("accepted invalid resource")
+		}
+		if _, err := s.PeekMessage(context.Background(), resource("orders", "", ""), dlq, -1); err == nil {
+			t.Fatal("accepted negative sequence")
+		}
+	}
+}
+
 func TestReplayRejectsUnsupportedRepresentation(t *testing.T) {
 	for name, mutate := range map[string]func(*sb.ReceivedMessage){
 		"missing raw":            func(m *sb.ReceivedMessage) { m.RawAMQPMessage = nil },

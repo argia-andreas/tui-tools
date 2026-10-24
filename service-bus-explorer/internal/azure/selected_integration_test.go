@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -34,13 +35,15 @@ func testSelectedQueueReplay(t *testing.T, ctx context.Context, store *azure.Sto
 	}
 	defer destinationReceiver.Close(context.Background())
 	prefix := fmt.Sprintf("selected-%d", time.Now().UnixNano())
-	body := bytes.Repeat([]byte{0, 255, 65, 10, 27}, 18000)
+	body := bytes.Repeat([]byte("full text\n"), 9000)
 	ttl := 37 * time.Minute
 	for i, payload := range [][]byte{[]byte("left-neighbor"), body, []byte("right-neighbor")} {
 		id := fmt.Sprintf("%s-%d", prefix, i)
 		if err := sender.SendMessage(ctx, &sb.Message{MessageID: &id, Body: payload, TimeToLive: &ttl, ApplicationProperties: map[string]any{"business": "selected", "number": int64(42), "enabled": true}}, nil); err != nil {
 			t.Fatal(err)
 		}
+		active := awaitPeekID(t, ctx, store, source, false, id)
+		assertFullPeek(t, ctx, store, source, false, active, payload)
 		message := receiveOne(t, ctx, sourceReceiver)
 		if message.MessageID != id {
 			t.Fatal("source queue was not isolated; reseed lab")
@@ -56,6 +59,11 @@ func testSelectedQueueReplay(t *testing.T, ctx context.Context, store *azure.Sto
 	selected := page.Messages[1]
 	if selected.ID != prefix+"-1" || !selected.PreviewTruncated {
 		t.Fatal("expected non-first 90KB selection")
+	}
+	assertFullPeek(t, ctx, store, source, true, selected, body)
+	// The cursor precedes a real message, but must not return that neighbor.
+	if _, err := store.PeekMessage(ctx, source, true, page.Messages[0].Sequence-1); err == nil {
+		t.Fatal("full peek substituted next sequence for missing exact identity")
 	}
 	prepared, err := store.PrepareDLQCopy(ctx, source, selected.Sequence)
 	if err != nil {
@@ -109,6 +117,9 @@ func testSelectedQueueReplay(t *testing.T, ctx context.Context, store *azure.Sto
 	if err := delivery.Complete(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := store.PeekMessage(ctx, source, true, selected.Sequence); err == nil {
+		t.Fatal("full peek substituted right neighbor for removed selection")
+	}
 	assertCopy(cleanID)
 	// Independent SDK receives prove both neighbors are available and unchanged.
 	dead, err := client.NewReceiverForQueue(source.Queue, &sb.ReceiverOptions{SubQueue: sb.SubQueueDeadLetter})
@@ -133,6 +144,23 @@ func testSelectedQueueReplay(t *testing.T, ctx context.Context, store *azure.Sto
 		t.Fatalf("selected original or extra messages remain: %+v %v", remaining, err)
 	}
 	t.Log("PASS: non-first 90KB full-byte selected copy to different queue retained all originals without acquisition; selected cleanup deleted only target; independent receives verified both neighbors")
+}
+
+func assertFullPeek(t *testing.T, ctx context.Context, store explorer.Store, source explorer.Resource, dlq bool, preview explorer.Message, body []byte) {
+	t.Helper()
+	want := preview
+	want.Body = body
+	want.PreviewTruncated = false
+	full, err := store.PeekMessage(ctx, source, dlq, preview.Sequence)
+	if err != nil || !reflect.DeepEqual(full, want) {
+		t.Fatalf("full peek content/metadata mismatch: bytes=%d dlq=%v err=%v", len(full.Body), dlq, err)
+	}
+	full.Body[0] = '!'
+	full.Properties["business"] = "changed"
+	again, err := store.PeekMessage(ctx, source, dlq, preview.Sequence)
+	if err != nil || !reflect.DeepEqual(again, want) {
+		t.Fatalf("full peek mutated source bytes or metadata: %v", err)
+	}
 }
 
 func testSelectedSubscriptionToQueue(t *testing.T, ctx context.Context, store *azure.Store, client *sb.Client, source, destination explorer.Resource) {

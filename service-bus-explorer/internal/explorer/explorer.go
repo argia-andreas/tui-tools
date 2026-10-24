@@ -48,6 +48,10 @@ type Store interface {
 	Discover(context.Context) ([]Resource, error)
 	Counts(context.Context, Resource) (Counts, error)
 	Peek(ctx context.Context, target Resource, deadLetter bool, fromSequence int64, limit int) (Page, error)
+	// PeekMessage returns an independent, full-content copy of the exact sequence
+	// in Active or DLQ, without receiving, locking or granting replay authority.
+	// A missing sequence is an error; a later message must never be substituted.
+	PeekMessage(ctx context.Context, target Resource, deadLetter bool, sequence int64) (Message, error)
 	ReceiveNextDLQ(context.Context, Resource) (Delivery, error)
 	PrepareDLQCopy(ctx context.Context, source Resource, sequence int64) (Replay, error)
 	ReceiveSelectedDLQ(ctx context.Context, source Resource, sequence int64) (Delivery, error)

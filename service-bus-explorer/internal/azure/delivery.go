@@ -37,9 +37,14 @@ type delivery struct {
 func (d *delivery) LockedUntil() time.Time { return value(d.message.LockedUntil) }
 
 func (d *delivery) Snapshot() explorer.Message {
-	m := d.message
+	return snapshot(d.message, true)
+}
+
+// snapshot shares metadata and cloning between display previews and explicit
+// full-content peeks. Only previews may truncate the body.
+func snapshot(m *sb.ReceivedMessage, preview bool) explorer.Message {
 	body := m.Body
-	truncated := len(body) > 64*1024
+	truncated := preview && len(body) > 64*1024
 	if truncated {
 		body = body[:64*1024]
 	}

@@ -120,6 +120,31 @@ func (s *Store) Peek(ctx context.Context, r explorer.Resource, dlq bool, from in
 	return page, nil
 }
 
+func (s *Store) PeekMessage(ctx context.Context, r explorer.Resource, dlq bool, sequence int64) (explorer.Message, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return explorer.Message{}, err
+	}
+	e, ok := s.entries[r]
+	if !ok {
+		return explorer.Message{}, errors.New("fixture resource not found")
+	}
+	messages := e.active
+	if dlq {
+		messages = e.deadLetter
+	}
+	// Do not expire held deliveries here: copying is strictly read-only, even
+	// when an unrelated delivery's lock has expired.
+	for _, message := range messages {
+		if message.Sequence == sequence {
+			message.PreviewTruncated = false
+			return cloneMessage(message), nil
+		}
+	}
+	return explorer.Message{}, errors.New("selected message is no longer available")
+}
+
 func (s *Store) ReceiveNextDLQ(ctx context.Context, r explorer.Resource) (explorer.Delivery, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

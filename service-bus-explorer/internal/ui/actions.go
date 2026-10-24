@@ -27,6 +27,12 @@ func (m Model) actions() []action {
 	}
 	if m.screen == "messages" {
 		choices = append(choices, action{"inspector", "Toggle message inspector"}, action{"refresh", "Refresh this peek page (no receive)"})
+		if !m.loading && len(m.page.Messages) > 0 {
+			choices = append(choices, action{"copy-body", "Copy full body (Y)"}, action{"copy-report", "Copy message report (metadata, body, properties)"}, action{"copy-line", "Copy line (yy)"}, action{"copy-help", "Message navigation and clipboard help (?)"})
+			if m.reader.mode != "" {
+				choices = append(choices, action{"copy-selection", "Copy selection (y)"})
+			}
+		}
 		if m.dlq {
 			choices = append(choices, action{"receive", "Receive next DLQ message… (acquire lock, then review)"})
 			if !m.loading && len(m.page.Messages) > 0 {
@@ -90,8 +96,14 @@ func (m Model) paletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 	switch id {
+	case "copy-body", "copy-report", "copy-line", "copy-selection":
+		m.focus, m.reader.revealed = "inspector", true
+		return m.copyText(strings.TrimPrefix(id, "copy-"))
+	case "copy-help":
+		m.focus, m.reader.revealed, m.reader.help = "inspector", true, true
+		return m, nil
 	case "selected-copy":
-		return m.openSelected(true)
+		return m.openSelected()
 	case "receive":
 		return m.acquire()
 	case "dashboard", "queues", "topics", "settings":
@@ -100,6 +112,7 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		}
 		m.generation++
 		m.screen, m.focus, m.selected, m.loading = id, "content", 0, false
+		m.resetInspector()
 	case "sidebar":
 		m.prefs.Sidebar = !m.prefs.Sidebar
 		m.focus = "content"

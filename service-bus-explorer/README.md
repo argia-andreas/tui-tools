@@ -31,21 +31,25 @@ sidebar hides automatically. The full inspector appears when enough width exists
 | Key | Action |
 | --- | --- |
 | `j/k`, arrows | Move selected entity or message |
-| `Enter` | Open selected entity's Active preview |
+| `Enter` | Open entity's Active preview; in message list, focus its existing inspector |
 | `]` | Open selected entity's DLQ / switch to DLQ |
 | `[` | Switch to Active in message view |
 | `g` / `t` | Grid / table dashboard |
 | `Ctrl+P` | Open fuzzy actions; type to filter, arrows/Ctrl+N/P choose, Enter runs, Esc closes |
-| `Tab` / `Shift+Tab` | Cycle visible content, inspector and sidebar panes |
+| `Tab` / `Shift+Tab` | Cycle list, inspector text, Back, DLQ Resend and visible sidebar |
 | `Ctrl-H` / `Ctrl-L` | Focus left / right across visible sidebar, content and inspector; clamp at either edge (Ctrl-H still deletes in text inputs) |
 | `h` / `l` | Collapse / expand the selected sidebar group |
-| `b` | Collapse/expand sidebar |
+| `b` | Collapse/expand sidebar outside inspector; previous word inside text |
 | `i` | Toggle inspector in message view |
 | `n` / `p` / `r` | Next / previous / refresh peek page |
 | `r` on Dashboard | Refresh watched counts |
-| `j/k`, Page Up/Down in inspector | Scroll without changing selected message |
+| `h/j/k/l`, arrows in inspector | Move read-only text cursor without changing message |
+| `w/b/e`, `0/$`, `gg/G` | Words, logical line start/end, document start/end |
+| Page Up/Down, `Ctrl+U/D` | Page / half-page movement in inspector |
+| `yy`, `v`, `V`, `y`, `Y` | Copy logical line; character/line selection; copy selection; full body |
+| `?`, `Ctrl+R` in inspector | Copy/navigation help; configure DLQ resend (never sends immediately) |
 | `s` in Settings | Save preferences explicitly |
-| `Esc` | Return to resource list/dashboard |
+| `Esc` | Clear selection/operator, then return to list; list Esc leaves browser |
 | `q`, `Ctrl+C` | Quit |
 
 Settings and Ctrl+P provide Midnight, Gruvbox and Light themes, layout controls,
@@ -60,8 +64,10 @@ Below 110 columns or 35 rows, the held body moves to a separate read-only page
 
 ## Resend the selected DLQ message
 
-Highlight a DLQ message and press `Enter` to open it without acquiring a lock.
-For a queue's DLQ, choose **Resend to queue**, optionally enable deletion below,
+Highlight a DLQ message and press `Enter` to focus the same right-hand inspector
+without acquiring a lock. At compact widths it becomes full-width; reading and
+copying work down to 60×16. Resend confirmation requires 80×24.
+For a queue's DLQ, use `Ctrl+R` or Tab to **Resend to queue**, optionally enable deletion below,
 then choose **Review resend**. The destination is fixed to that same queue's
 Active messages; there is no queue picker. Ctrl+P also offers **Resend selected
 DLQ message to this queue…**.
@@ -87,6 +93,36 @@ a confirmed send permits the checked original cleanup. An unknown send retains
 the original; confirmed send with unconfirmed deletion is a partial result.
 This is not an atomic move or an exactly-once guarantee. The existing explicitly
 named receive-next workflow below remains available independently.
+
+Configuration, final review and outcomes replace the inspector's reading area,
+not the workspace. Returning keeps the same message snapshot and cursor; use
+Esc then `r` to explicitly refresh the list after an operation.
+
+## Precise read-only copying
+
+`yy` and `V` use original logical lines, not soft-wrapped terminal rows. `v`
+selects grapheme-safe characters with inclusive endpoints. Source UTF-8, tabs,
+CRLF/newlines and final-newline presence are preserved; gutters and wrapping
+are not copied. `Y` copies only the complete body. Ctrl+P separately offers
+**Copy message report** (labelled metadata, body and readable properties),
+**Copy line**, and **Copy selection**. Binary/non-text body copying is unavailable.
+
+Truncated previews are marked. Full-body/report copy offers a Cancel-default,
+read-only exact-message load; after loading, the size is shown and a second copy
+command is required. A missing or changed message never substitutes a neighbor.
+Full-load failures leave the clipboard unchanged. Clipboard errors keep visual
+selection for retry and never claim a successful copy.
+
+Clipboard transport uses local `pbcopy`, `wl-copy`, `xclip` or `xsel` where
+available. SSH/Mosh and terminals without a local writer use OSC52, with a 1 MiB
+limit and no silent trimming. Native utility success says **Copied**; OSC52 says
+**Copy requested · terminal confirmation unavailable**. No clipboard read-back
+occurs. Terminal permissions may block remote requests. tmux needs
+`set-clipboard on`; GNU screen wrapping is supported. `?` explains the explicit
+manual terminal-copy fallback, which may include gutters and soft wraps.
+Text labels, mode names, focus markers and help supplement theme colors;
+real screen-reader compatibility and native macOS clipboard execution remain
+unverified on this Linux orb.
 
 ## Slice 4 — reviewed single-message DLQ actions
 

@@ -1,0 +1,48 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Resend — deliberate review in the inspector</title>
+<style>:root{color-scheme:dark;--bg:#0b1423;--surface:#101d2f;--text:#dce8f4;--muted:#91a6bb;--accent:#65c7f7;--border:#4b6a89;--ok:#8af0ce;--warn:#efc46f}*{box-sizing:border-box}body{margin:0;padding:28px;background:var(--bg);color:var(--text);font:15px/1.5 system-ui}main{max-width:1160px;margin:auto}a{color:var(--accent)}h1{font-size:26px}h2{font-size:18px}p,figcaption{color:var(--muted)}figure{margin:28px 0 35px}.terminal{font:14px/1.55 ui-monospace,'DejaVu Sans Mono',monospace;border:1px solid var(--border);padding:12px}.top{color:var(--accent)}.panes{display:grid;grid-template-columns:30% 70%;margin-top:12px}.list{border:1px solid var(--border)}.inspector{border:2px solid var(--accent);min-width:0}.title,.actions{padding:6px 10px;border-bottom:1px solid var(--border);color:var(--accent)}pre{font:inherit;margin:0;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere}.muted{color:var(--muted)}.warn{color:var(--warn)}.passive{display:block;background:var(--surface)}.actions{border-top:1px solid var(--border);border-bottom:0}.chip{display:inline-block;padding:3px 7px;border:1px solid var(--border);margin-right:12px}.selected{background:var(--ok);color:var(--bg)}@media(max-width:750px){body{padding:14px}.panes{grid-template-columns:1fr}.list{display:none}}</style>
+<main><a href="index.html">← Product proposal</a><h1>Remove the redundant preview, not the safety review.</h1><p>Static queue-DLQ examples. No browser control here sends messages. The real terminal remains unchanged.</p>
+<figure id="configure"><h2>07 / Ctrl+R opens configuration in the inspector</h2><div class="terminal"><div class="top">SBX / orders / DEAD-LETTER · FIXTURE OFFLINE</div><div class="panes"><section class="list"><div class="title">MESSAGES / pinned</div><pre>100  orders-dlq-0001
+<span class="passive">›107 orders-dlq-0002</span>114  orders-dlq-0003
+
+<span class="muted">List cannot change during
+resend configuration.</span></pre></section><section class="inspector"><div class="title">&gt; INSPECTOR / CONFIGURE RESEND · no send yet</div><pre>ID: orders-dlq-0002 · sequence 107
+Source: fixture / local-lab / orders / DLQ
+Destination: orders / Active <span class="muted">(same queue; fixed)</span>
+
+<span class="warn">Creates a new copy. Duplicate processing is possible.</span>
+
+[ ] Delete original after confirmed resend
+<span class="muted">Off: original stays in DLQ; read-only preparation, no lock.</span>
+
+<span class="muted">If enabled: search up to 100 messages / 5 seconds.
+Other messages may be locked; release can increase delivery
+counts. Additional release time may be needed.</span></pre><div class="actions"><span class="chip selected">&gt; Cancel</span><span class="chip">Review resend</span><br>Tab choose · Space toggle focused checkbox · Enter select</div></section></div></div><figcaption>Cancel starts focused. For subscription DLQs only, a destination queue picker precedes this step. Preparing the exact message is not permission to send.</figcaption></figure>
+<figure id="review"><h2>08 / A distinct final review, still inside the same inspector</h2><div class="terminal"><div class="top">SBX / orders / DEAD-LETTER · FIXTURE OFFLINE</div><div class="panes"><section class="list"><div class="title">MESSAGES / pinned</div><pre>100  orders-dlq-0001
+<span class="passive">›107 orders-dlq-0002</span>114  orders-dlq-0003
+
+<span class="muted">Same selected row.
+One body, on the right.</span></pre></section><section class="inspector"><div class="title">&gt; INSPECTOR / FINAL REVIEW · Cancel focused</div><pre>ID: orders-dlq-0002 · sequence 107
+Source: fixture / local-lab / orders / DLQ
+Destination: fixture / local-lab / orders / Active
+New ID: sbx-example-new-id
+Original: RETAINED · no cleanup · no lock acquired
+<span class="warn">New copy, not an atomic move. Duplicate processing possible.</span>
+<span class="muted">Full prepared body / read-only · scroll for properties</span>
+{
+  "amount": 50.95,
+  "currency": "EUR",
+  "customer": "Northwind",
+  "event": "order.created",
+  "fixture": true,
+  "id": "orders-dlq-0002"
+}</pre><div class="actions"><span class="chip selected">&gt; Cancel</span><span class="chip">Resend copy</span><br>Tab choose · Enter confirm · Esc cancel · b Back to edit</div></section></div></div><figcaption>Identity, destination, original policy and Cancel remain visible. Body-only subviews cannot activate a hidden confirmation. Resizing too small disables confirmation.</figcaption></figure>
+<figure id="unknown"><h2>09 / Unknown means stop and check, not retry</h2><div class="terminal"><div class="top">SBX / orders / DEAD-LETTER · FIXTURE OFFLINE</div><div class="panes"><section class="list"><div class="title">MESSAGES / pinned</div><pre>100  orders-dlq-0001
+<span class="passive">›107 orders-dlq-0002</span>114  orders-dlq-0003</pre></section><section class="inspector"><div class="title">&gt; INSPECTOR / OUTCOME · cannot resend from this state</div><pre>ID: orders-dlq-0002 · sequence 107
+Destination: orders / Active
+
+<span class="warn">SEND OUTCOME UNKNOWN</span>
+The destination may have accepted the copy.
+Original retained. No cleanup attempted.
+
+<span class="warn">Check destination before trying again.</span>
+No automatic application retry.</pre><div class="actions"><span class="chip selected">&gt; Back to inspector</span><br>Enter / Esc returns to reading · no repeat submission</div></section></div></div><figcaption>Confirmed, rejected and partial-cleanup results use the same outcome area. Held-lock release status is a separate fact, never implied by “original retained”.</figcaption></figure><a href="index.html#approval">Return to approval request →</a></main></html>

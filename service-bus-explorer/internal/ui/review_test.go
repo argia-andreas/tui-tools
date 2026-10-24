@@ -361,8 +361,7 @@ func configureSelected(t *testing.T, m tea.Model, cleanup bool) tea.Model {
 	if !strings.Contains(m.View(), "ID: orders-dlq-0002") {
 		t.Fatal("open did not use selected row: " + ansi.Strip(m.View()))
 	}
-	m = press(m, "tab")
-	m = press(m, "enter")
+	m = press(m, "ctrl+r")
 	if !strings.Contains(m.View(), "Destination queue: orders") || !strings.Contains(m.View(), "[ ] Delete original after confirmed resend") || strings.Contains(m.View(), "Change queue") || strings.Contains(m.View(), "CHOOSE QUEUE") {
 		t.Fatal(ansi.Strip(m.View()))
 	}
@@ -563,8 +562,8 @@ func TestSelectedQueueShortcutAndSubscriptionDestinationFilter(t *testing.T) {
 		t.Fatal("queue shortcut did not configure a direct resend: " + ansi.Strip(m.View()))
 	}
 	m = press(m, "esc")
-	if !strings.Contains(m.View(), "SELECTED MESSAGE / OPEN") || !strings.Contains(m.View(), "Resend to queue") {
-		t.Fatal("back from queue configuration opened a picker")
+	if !strings.Contains(m.View(), "INSPECTOR / NORMAL") || !strings.Contains(m.View(), "Resend to queue") || strings.Contains(m.View(), "CHOOSE QUEUE") {
+		t.Fatal("back from queue configuration did not restore the inspector")
 	}
 	m = press(workspace(t), "tab")
 	for range 4 {

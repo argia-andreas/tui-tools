@@ -141,6 +141,40 @@ func (s *Store) Peek(ctx context.Context, r explorer.Resource, dlq bool, from in
 	return page, nil
 }
 
+func (s *Store) PeekMessage(ctx context.Context, r explorer.Resource, dlq bool, sequence int64) (explorer.Message, error) {
+	if err := ctx.Err(); err != nil {
+		return explorer.Message{}, err
+	}
+	if !validResource(r) || sequence < 0 {
+		return explorer.Message{}, errors.New("invalid emulator resource or sequence")
+	}
+	options := &sb.ReceiverOptions{ReceiveMode: sb.ReceiveModePeekLock}
+	if dlq {
+		options.SubQueue = sb.SubQueueDeadLetter
+	}
+	var receiver *sb.Receiver
+	var err error
+	if r.Queue != "" {
+		receiver, err = s.client.NewReceiverForQueue(r.Queue, options)
+	} else {
+		receiver, err = s.client.NewReceiverForSubscription(r.Topic, r.Subscription, options)
+	}
+	if err != nil {
+		return explorer.Message{}, fmt.Errorf("open full peek receiver: %w", err)
+	}
+	defer closeReceiver(context.Background(), receiver)
+	// Peek starts at or after the cursor. Require an exact match rather than
+	// copying a neighbor when the selected message has disappeared.
+	messages, err := receiver.PeekMessages(ctx, 1, &sb.PeekMessagesOptions{FromSequenceNumber: &sequence})
+	if err != nil {
+		return explorer.Message{}, fmt.Errorf("peek full emulator message: %w", err)
+	}
+	if len(messages) != 1 || messages[0].SequenceNumber == nil || *messages[0].SequenceNumber != sequence {
+		return explorer.Message{}, errors.New("selected message is no longer available")
+	}
+	return snapshot(messages[0], false), nil
+}
+
 func value[T any](p *T) (zero T) {
 	if p != nil {
 		return *p

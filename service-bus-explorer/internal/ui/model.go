@@ -6,6 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"servicebusexplorer/internal/clipboard"
 	"servicebusexplorer/internal/config"
 	"servicebusexplorer/internal/explorer"
 	"servicebusexplorer/internal/theme"
@@ -36,6 +37,7 @@ type Options struct {
 	Mode, ConfigPath string
 	Preferences      config.Preferences
 	ASCII            bool
+	Clipboard        func(string) (bool, error)
 }
 
 // Model is an offline-first workspace. Broker reads and disk writes are commands.
@@ -52,7 +54,7 @@ type Model struct {
 	screen, returnScreen string
 	focus                string
 	selected, nav        int
-	message, offset      int
+	message              int
 	setting              int
 	dlq                  bool
 	page                 explorer.Page
@@ -73,14 +75,20 @@ type Model struct {
 	status               string
 	review               reviewState
 	reviewID             uint64
+	reader               inspectorState
+	clipboard            func(string) (bool, error)
 }
 
 func New(store explorer.Store, options Options) Model {
 	t, _ := theme.Get(options.Preferences.Theme)
 	ctx, cancel := context.WithCancel(context.Background())
+	if options.Clipboard == nil {
+		options.Clipboard = clipboard.Write
+	}
 	return Model{store: store, mode: options.Mode, configPath: options.ConfigPath,
 		prefs: options.Preferences, ascii: options.ASCII, life: ctx, stop: cancel,
-		theme: t, width: 160, height: 48, screen: "dashboard", focus: "content",
+		clipboard: options.Clipboard,
+		theme:     t, width: 160, height: 48, screen: "dashboard", focus: "content",
 		collapsed: make(map[branch]bool), loading: true, status: "Discovering resources…"}
 }
 
@@ -170,8 +178,9 @@ func (m Model) peek(from int64) (tea.Model, tea.Cmd) {
 		m.cancel()
 	}
 	m.generation++
-	m.from, m.message, m.offset, m.loading = from, 0, 0, true
+	m.from, m.message, m.loading = from, 0, true
 	m.page = explorer.Page{}
+	m.resetInspector()
 	ctx, cancel := context.WithTimeout(m.life, 10*time.Second)
 	m.cancel = cancel
 	store, r, dlq, generation := m.store, m.resource, m.dlq, m.generation
@@ -192,26 +201,34 @@ func (m Model) open(r explorer.Resource, dlq bool) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) contentWidth() int {
-	if m.prefs.Sidebar && m.width >= 110 {
+	if m.showSidebar() {
 		return m.width - 24
 	}
 	return m.width
 }
 
 func (m Model) hasInspector() bool {
-	return m.screen == "messages" && m.prefs.Inspector && m.contentWidth() >= 95
+	return m.screen == "messages" && ((m.prefs.Inspector && m.splitInspector()) || m.reader.revealed || m.inspectorFocused() || m.review.selected)
+}
+
+func (m Model) showSidebar() bool {
+	return m.prefs.Sidebar && m.width >= 110 && (m.screen != "messages" || m.width >= 122) && (m.review.phase == "" || m.review.selected)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if next, cmd, handled := m.inspectorMessage(msg); handled {
+		return next, cmd
+	}
 	if next, cmd, handled := m.reviewUpdate(msg); handled {
 		return next, cmd
 	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		if m.focus == "navigation" && m.width < 110 || m.focus == "inspector" && !m.hasInspector() {
+		if m.focus == "navigation" && !m.showSidebar() {
 			m.focus = "content"
 		}
+		m.keepCursorVisible()
 	case loaded:
 		m.loading = false
 		if msg.err != nil {
@@ -270,6 +287,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 		m.page = msg.page
+		m.resetInspector()
 		m.status = "PEEK ONLY · no locks acquired · no messages removed"
 	case tea.KeyMsg:
 		key := msg.String()
@@ -279,6 +297,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.palette {
 			return m.paletteKey(msg)
 		}
+		if m.inspectorFocused() && (m.reader.help || m.reader.load != "") {
+			if key == "q" {
+				return m.quit()
+			}
+			return m.inspectorKey(key)
+		}
 		if key == "ctrl+p" {
 			m.palette, m.query, m.action = true, "", 0
 			return m, nil
@@ -287,32 +311,71 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.quit()
 		}
 		if key == "b" {
-			return m.execute("sidebar")
+			if !m.inspectorFocused() {
+				return m.execute("sidebar")
+			}
 		}
-		if key == "tab" || key == "shift+tab" || key == "ctrl+h" || key == "ctrl+l" {
+		if key == "ctrl+h" || key == "ctrl+l" {
 			panes := []string{}
-			if m.prefs.Sidebar && m.width >= 110 {
+			if m.showSidebar() {
 				panes = append(panes, "navigation")
 			}
 			panes = append(panes, "content")
 			if m.hasInspector() {
 				panes = append(panes, "inspector")
 			}
+			focus := m.focus
+			if m.inspectorFocused() {
+				focus = "inspector"
+			}
 			for index, pane := range panes {
-				if m.focus == pane {
+				if pane == focus {
 					step := 1
-					if key == "shift+tab" || key == "ctrl+h" {
+					if key == "ctrl+h" {
 						step = -1
 					}
-					if key == "ctrl+h" || key == "ctrl+l" {
-						m.focus = panes[min(len(panes)-1, max(0, index+step))]
-					} else {
-						m.focus = panes[(index+step+len(panes))%len(panes)]
+					next := panes[min(len(panes)-1, max(0, index+step))]
+					if next != focus {
+						m.focus = next
+						m.reader.mode, m.reader.pending = "", ""
+						if next != "inspector" {
+							m.reader.revealed = false
+						}
 					}
 					break
 				}
 			}
 			return m, nil
+		}
+		if key == "tab" || key == "shift+tab" {
+			panes := []string{"content"}
+			if m.hasInspector() {
+				panes = append(panes, "inspector", "inspector-back")
+				if m.dlq && len(m.page.Messages) > 0 {
+					panes = append(panes, "inspector-resend")
+				}
+			}
+			if m.showSidebar() {
+				panes = append(panes, "navigation")
+			}
+			for index, pane := range panes {
+				if m.focus == pane {
+					step := 1
+					if key == "shift+tab" {
+						step = len(panes) - 1
+					}
+					m.focus = panes[(index+step)%len(panes)]
+					m.reader.mode, m.reader.pending = "", ""
+					if m.focus == "content" || m.focus == "navigation" {
+						m.reader.revealed = false
+					}
+					break
+				}
+			}
+			return m, nil
+		}
+		if m.inspectorFocused() {
+			return m.inspectorKey(key)
 		}
 		if key == "esc" && m.screen != "dashboard" {
 			if m.cancel != nil {
@@ -334,30 +397,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.settingsKey(key)
 		}
 		if m.screen == "messages" {
-			if m.focus == "inspector" {
-				step := 0
-				switch key {
-				case "j", "down":
-					step = 1
-				case "k", "up":
-					step = -1
-				case "pgdown":
-					step = max(1, m.height-10)
-				case "pgup":
-					step = -max(1, m.height-10)
-				}
-				m.offset = min(max(0, len(m.inspectorLines())-(m.height-11)), max(0, m.offset+step))
-				if key != "i" && key != "[" && key != "]" && key != "r" {
-					return m, nil
-				}
-			}
 			switch key {
 			case "enter":
-				return m.openSelected(false)
+				if !m.loading && len(m.page.Messages) > 0 {
+					m.focus, m.reader.revealed = "inspector", true
+					m.keepCursorVisible()
+				}
 			case "j", "down":
-				m.message, m.offset = min(max(0, len(m.page.Messages)-1), m.message+1), 0
+				if next := min(max(0, len(m.page.Messages)-1), m.message+1); next != m.message {
+					m.message = next
+					m.resetInspector()
+				}
 			case "k", "up":
-				m.message, m.offset = max(0, m.message-1), 0
+				if next := max(0, m.message-1); next != m.message {
+					m.message = next
+					m.resetInspector()
+				}
 			case "i":
 				return m.execute("inspector")
 			case "[", "]":

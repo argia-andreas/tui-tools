@@ -16,23 +16,30 @@ import (
 type prepared struct {
 	replay   explorer.Replay
 	delivery explorer.Delivery
+	message  explorer.Message
 	err      error
 }
 
-func (m Model) openSelected(destination bool) (tea.Model, tea.Cmd) {
+func (m Model) openSelected() (tea.Model, tea.Cmd) {
 	if m.review.phase != "" || m.screen != "messages" || !m.dlq || m.loading || len(m.page.Messages) == 0 {
 		return m, nil
 	}
+	if m.reader.mode != "" {
+		m.status = "Esc clears selection before resend"
+		return m, nil
+	}
 	m.reviewID++
-	m.review = reviewState{phase: "selected", selected: true, message: m.page.Messages[m.message]}
+	m.reader.epoch++
+	m.reader.copying = false
+	m.reader.load, m.reader.loading = "", ""
+	if m.reader.cancel != nil {
+		m.reader.cancel()
+	}
+	m.focus, m.reader.revealed = "inspector", true
+	m.review = reviewState{phase: "destination", selected: true, message: m.page.Messages[m.message]}
 	if m.resource.Queue != "" {
 		m.review.destination = m.resource
-	}
-	if destination {
-		m.review.phase = "destination"
-		if m.resource.Queue != "" {
-			m.review.phase = "configure"
-		}
+		m.review.phase = "configure"
 	}
 	m.status = "SELECTED DLQ MESSAGE · read-only peek · no lock acquired"
 	return m, nil
@@ -60,27 +67,31 @@ func (m Model) prepareSelected() (tea.Model, tea.Cmd) {
 	m.status = "Preparing exact selected message · no send until final confirmation"
 	return m, func() tea.Msg {
 		defer cancel()
+		var replay explorer.Replay
+		var delivery explorer.Delivery
+		var err error
 		if cleanup {
-			d, err := store.ReceiveSelectedDLQ(ctx, source, sequence)
-			return prepared{replay: d, delivery: d, err: err}
+			delivery, err = store.ReceiveSelectedDLQ(ctx, source, sequence)
+			replay = delivery
+		} else {
+			replay, err = store.PrepareDLQCopy(ctx, source, sequence)
 		}
-		r, err := store.PrepareDLQCopy(ctx, source, sequence)
-		return prepared{replay: r, err: err}
+		if err != nil {
+			return prepared{replay: replay, delivery: delivery, err: err}
+		}
+		message, err := store.PeekMessage(ctx, source, true, sequence)
+		return prepared{replay: replay, delivery: delivery, message: message, err: err}
 	}
 }
 
 func (m Model) selectedKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	if key == "esc" {
-		if m.review.phase == "configure" {
+		if m.review.phase == "configure" && m.resource.Queue == "" {
 			m.review.phase, m.review.query, m.review.queueIndex, m.review.choice = "destination", "", 0, 0
-			if m.resource.Queue != "" {
-				m.review.phase = "selected"
-			}
-		} else if m.review.phase == "destination" {
-			m.review.phase, m.review.choice = "selected", 0
 		} else {
 			m.review = reviewState{}
+			m.focus = "inspector"
 			m.status = "PEEK ONLY · no locks acquired · no messages removed"
 		}
 		return m, nil
@@ -143,16 +154,10 @@ func (m Model) selectedKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch m.review.choice {
 		case 0:
 			m.review = reviewState{}
+			m.focus = "inspector"
 			m.status = "Cancelled; no send, deletion or acquisition requested."
 		case 1:
-			if m.review.phase == "selected" {
-				m.review.phase, m.review.query, m.review.queueIndex, m.review.choice = "destination", "", 0, 0
-				if m.resource.Queue != "" {
-					m.review.phase = "configure"
-				}
-			} else {
-				return m.prepareSelected()
-			}
+			return m.prepareSelected()
 		case 2:
 			m.review.cleanup = !m.review.cleanup
 		case 3:
@@ -210,39 +215,16 @@ func (m Model) selectedView(width, height int) []string {
 	add("SELECTED DLQ MESSAGE · read-only peek · no locks acquired", m.theme.Focus)
 	add("ID: "+r.message.ID, m.theme.Foreground)
 	add(fmt.Sprintf("Sequence: %d · source: %s / %s / %s / DLQ", r.message.Sequence, m.resource.Profile, m.resource.Namespace, m.resource.Name()), m.theme.Muted)
-	barHeight := 6
-	title := "SELECTED MESSAGE / OPEN"
-	label := "Send copy to…"
-	if m.resource.Queue != "" {
-		label = "Resend to queue"
-	}
-	if r.phase == "configure" {
-		title, label, barHeight = "CONFIGURE SELECTED RESEND", "Review resend", 8
-		add("Destination queue: "+r.destination.Queue, m.theme.Focus)
-		add("Resend creates a new copy; duplicate processing is possible.", m.theme.Warning)
-		if r.cleanup {
-			add("Cleanup searches up to 100 messages / 5s before sending. Other messages may be locked temporarily; releasing can increase delivery counts.", m.theme.Warning)
-		} else {
-			add("Copy-only uses peek. Original stays in the DLQ; no lock or scan.", m.theme.Muted)
-		}
+	barHeight := 8
+	title, label := "CONFIGURE SELECTED RESEND", "Review resend"
+	add("Destination queue: "+r.destination.Queue, m.theme.Focus)
+	add("Resend creates a new copy; duplicate processing is possible.", m.theme.Warning)
+	if r.cleanup {
+		add("Cleanup searches up to 100 messages / 5s before sending.", m.theme.Warning)
+		add("Other messages may be locked temporarily.", m.theme.Warning)
+		add("Releasing can increase delivery counts; release may take extra time.", m.theme.Warning)
 	} else {
-		add("Reason: "+r.message.DeadLetterReason+" · "+r.message.DeadLetterDescription, m.theme.Warning)
-		body := strings.Split(clean(string(r.message.Body), true), "\n")
-		props, _ := json.MarshalIndent(r.message.Properties, "", "  ")
-		body = append(body, "", "APPLICATION PROPERTIES")
-		body = append(body, strings.Split(string(props), "\n")...)
-		if r.message.PreviewTruncated {
-			body = append(body, "[preview truncated; replay fetches full content]")
-		}
-		var wrapped []string
-		for _, line := range body {
-			wrapped = append(wrapped, strings.Split(ansi.Wrap(line, max(1, width-6), ""), "\n")...)
-		}
-		capacity := max(1, height-barHeight-len(rows)-2)
-		offset := min(r.scroll, max(0, len(wrapped)-capacity))
-		for _, line := range wrapped[offset:min(len(wrapped), offset+capacity)] {
-			add(line, m.theme.Foreground)
-		}
+		add("Copy-only uses peek. Original stays in the DLQ; no lock or scan.", m.theme.Muted)
 	}
 	buttons := lipgloss.JoinHorizontal(lipgloss.Top, m.button("Cancel", r.choice == 0, m.theme.Focus),
 		m.paint(" \n \n ", m.theme.Foreground), m.button(label, r.choice == 1, m.theme.Focus))
@@ -265,4 +247,86 @@ func (m Model) selectedView(width, height int) []string {
 	}
 	actions = append(actions, m.paint("  Tab/arrows choose · Enter select · Esc back · PgUp/PgDn scroll", m.theme.Muted))
 	return append(m.panel(title, width, height-barHeight, rows, true), m.panel("ACTIONS / no send yet", width, barHeight, actions, true)...)
+}
+
+// Selected-message operations replace the inspector's contents, not its owner.
+// Keep the existing lifecycle, but one body and one explicit confirmation surface.
+func (m Model) selectedReviewView(width, height int) []string {
+	r := m.review
+	if width < 80 || height < 18 {
+		return m.panel("INSPECTOR / RESEND", width, height, []string{"", "  Resize to at least 80×24 to review or confirm.", "  Esc cancels · Ctrl+C quits safely"}, true)
+	}
+	if r.phase == "configure" || r.phase == "destination" || r.phase == "preparing" {
+		return m.selectedView(width, height)
+	}
+	var rows []string
+	add := func(text, color string) {
+		for _, line := range strings.Split(ansi.Wrap(clean(text, false), width-6, ""), "\n") {
+			rows = append(rows, m.paint("  "+line, color))
+		}
+	}
+	add("ID: "+r.message.ID+fmt.Sprintf(" · Sequence: %d", r.message.Sequence), m.theme.Foreground)
+	add("Source: "+m.resource.Profile+" / "+m.resource.Namespace+" / "+m.resource.Name()+" / DLQ", m.theme.Muted)
+	add("Resend destination: "+r.destination.Queue, m.theme.Focus)
+	if r.phase == "result" || r.phase == "releasing" {
+		add(strings.ToUpper(r.phase), m.theme.Focus)
+		add(r.outcome, m.theme.Warning)
+		if r.phase == "releasing" {
+			add("Releasing retained original… cancellation is not rollback.", m.theme.Warning)
+		} else {
+			add("Enter / Esc Back to inspector · this result cannot resend again.", m.theme.Focus)
+			add("Reading keeps this snapshot; Esc then r refreshes the list.", m.theme.Muted)
+		}
+		return m.panel("INSPECTOR / OUTCOME", width, height, rows, true)
+	}
+	if r.delivery == nil {
+		add("SELECTED PEEK COPY · original retained · no lock acquired", m.theme.Focus)
+	} else {
+		add("EXACT SELECTED ORIGINAL · locked for optional cleanup", m.theme.Warning)
+		add("Lock until: "+r.deadline.UTC().Format("15:04:05 UTC")+fmt.Sprintf(" · %ds left · no renewal", max(0, int(time.Until(r.deadline).Seconds()))), m.theme.Warning)
+	}
+	add("New MessageID: "+r.newID, m.theme.Foreground)
+	add("New copy; duplicate processing is possible. Not an atomic move.", m.theme.Warning)
+	var body []string
+	props, err := json.MarshalIndent(r.message.Properties, "", "  ")
+	if err != nil {
+		props = []byte("[properties cannot be represented as JSON]")
+	}
+	for _, line := range strings.Split(clean(string(r.message.Body), true)+"\n\nAPPLICATION PROPERTIES\n"+string(props), "\n") {
+		for _, part := range strings.Split(ansi.Wrap(line, width-6, ""), "\n") {
+			body = append(body, m.paint("  "+part, m.theme.Foreground))
+		}
+	}
+	if r.message.PreviewTruncated {
+		body = append(body, m.paint("  [preview truncated; outgoing bytes are full]", m.theme.Warning))
+	}
+	if !m.splitReview() && r.scroll > 0 {
+		top := min(max(0, r.scroll-1), max(0, len(body)-(height-4)))
+		return m.panel("COPY BODY / read-only · PgUp return · Esc cancel", width, height, append([]string{m.paint("  Confirmations hidden; Enter cannot submit.", m.theme.Warning)}, body[top:]...), true)
+	}
+	if r.phase != "review" {
+		add(strings.ToUpper(r.phase)+"… no repeat submission", m.theme.Warning)
+		add("Cancellation cannot roll back broker acceptance. Await outcome.", m.theme.Warning)
+		return m.panel("INSPECTOR / "+strings.ToUpper(r.phase), width, height, rows, true)
+	}
+	barHeight := 7
+	capacity := height - barHeight - 2 - len(rows) - 1
+	if capacity > 0 {
+		rows = append(rows, m.paint("  FULL PREPARED BODY / PgUp/PgDn · properties below", m.theme.Muted))
+		top := min(r.scroll, max(0, len(body)-capacity))
+		rows = append(rows, body[top:min(len(body), top+capacity)]...)
+	}
+	mark := "[ ]"
+	if r.cleanup {
+		mark = "[x]"
+	}
+	actions := []string{m.paint("  "+mark+" Delete original after confirmed resend (fixed)", m.theme.Muted)}
+	buttons := lipgloss.JoinHorizontal(lipgloss.Top, m.button("Cancel", r.choice == 0, m.theme.Focus), m.paint(" \n \n ", m.theme.Foreground), m.button("Resend copy", r.choice == 1, m.theme.Focus))
+	actions = append(actions, strings.Split(buttons, "\n")...)
+	back := "  b Back to edit"
+	if r.delivery != nil {
+		back += " (releases lock)"
+	}
+	actions = append(actions, m.paint(back+" · PgUp/PgDn body · Esc cancel", m.theme.Muted))
+	return append(m.panel("INSPECTOR / FINAL REVIEW", width, height-barHeight, rows, true), m.panel("ACTIONS / Cancel default · Tab choose · Enter confirm", width, barHeight, actions, true)...)
 }
