@@ -51,6 +51,12 @@ Settings and Ctrl+P provide Midnight, Gruvbox and Light themes, layout controls,
 watchlist editing and Save preferences. Printable keys—including `q`, `j`, and
 `k`—belong to the palette query while it is open.
 
+The compact bordered toolbar exposes Active, DLQ, Refresh and Actions shortcuts.
+These are keyboard-first controls, not mouse targets. Review uses horizontal
+Cancel / release, Resend copy and Delete original buttons with visible focus.
+Below 110 columns or 35 rows, the held body moves to a separate read-only page
+(`PgDn` / `PgUp`); Enter cannot submit a hidden confirmation from that page.
+
 ## Slice 4 — reviewed single-message DLQ actions
 
 “Receive next DLQ message…” acquires one message for review; it does **not** act

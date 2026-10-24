@@ -117,6 +117,9 @@ func TestReviewControlsRemainVisibleAcrossThemesAndSizes(t *testing.T) {
 					if !strings.Contains(m.View(), "HELD BODY / read-only") || strings.Contains(m.View(), "Resend copy") {
 						t.Fatal("body page exposed hidden confirmations")
 					}
+					if _, cmd := key(m, "enter"); cmd != nil {
+						t.Fatal("body page submitted a hidden confirmation")
+					}
 					m = press(m, "pgup")
 				}
 			}

@@ -20,6 +20,7 @@ SIGNAL is a provisional mockup label, not an approved product name.
 - [x] Slice 2 — real local Elasticsearch happy path, verified 2026-10-24.
 - [x] Slice 3 — app/time/level/message search, history and saved searches, verified 2026-10-24.
 - [ ] Slice 4 — field yank, inspector and command palette.
+  - [x] Command palette only, verified 2026-10-24; remaining Slice 4 work is not claimed.
 - [ ] Slice 5 — context, trace and follow/pause/resume.
 - [ ] Slice 6 — default-deny read-only MCP.
 
@@ -240,3 +241,73 @@ locally but not tracked. The preview/browser are stopped after verification.
   for command palette in parallel. Its owner is
   https://ampcode.com/threads/T-01a16ebc-d13a-7286-b3a8-29fb6f28b215
   and must pull this checkpoint before implementation. Full Slice 4 is not complete.
+
+## Slice 4 — command-palette checkpoint
+
+- Pulled the pushed Slice 3 checkpoint before implementation. Ctrl+P now opens
+  a fuzzy, contextual action picker using the approved fuzzy v0.1.1 dependency
+  and existing editor boundary. Arrows/Tab select; Enter dispatches the existing
+  action; Esc restores the previous visible focus. Ordinary text, including
+  q/y/Space, cannot dispatch global actions. No field yank, follow, MCP, panel
+  toggles, help screen, sidebar or inspector redesign is included.
+- Only implemented actions appear. Missing selected event/history/find and an
+  embedded UI without a saved-search path show disabled reasons. Availability
+  is recomputed on rendering and execution, including asynchronous reads/resize.
+  Save still requires separate explicit editor submission; no automatic writes.
+  Palette text passes the same input/output cleanup as the existing editors.
+- `make -C log-viewer check test-terminal`: PASS (format, vet, race, actual
+  executable fixture PTY and existing search workflow). Decisive output:
+  `PASS: palette PTY — modal q/y/Space, fuzzy field action, disabled history,
+  find handoff, focus restore and narrow resize, safe output`. Unit behavior
+  checks cover available older-history dispatch with anchor retention, disabled
+  event/save actions, and reachability/bounds at 7 widths × 3 heights (60×16 min).
+  Real Elasticsearch integration was not rerun for this UI-only checkpoint.
+- Inspected real 2× ttyd screenshots: [wide palette](../../../.amp/in/artifacts/log-viewer/palette/01-palette.png),
+  [unavailable history](../../../.amp/in/artifacts/log-viewer/palette/02-unavailable.png),
+  [no matches](../../../.amp/in/artifacts/log-viewer/palette/03-no-match.png),
+  [80×24 palette](../../../.amp/in/artifacts/log-viewer/palette/04-narrow.png),
+  [80×24 inspector-origin actions](../../../.amp/in/artifacts/log-viewer/palette/05-contextual.png).
+  Same private ttyd/xterm DOM fallback method as Slice 3. Resized once after
+  renderer preparation to remove stale initial cells, and waited for ttyd's
+  resize badge to disappear before final narrow captures. No preview changes
+  enter the app. All palette renders reuse the existing full-screen modal style.
+- Inspected the 5-fps contact sheet of the 14.6-second real keyboard/moving-pointer
+  [clip](../../../.amp/in/artifacts/log-viewer/palette/06-keyboard.mp4): open palette,
+  select unavailable history, printable q/y/Space no-match query, cancel back to
+  logs, inspect, reopen contextual palette, Enter into field picker, cancel back
+  to inspector. PTY independently verifies resulting focus and safe output.
+- Shared-file overlap for the next visual revision: only Ctrl+P dispatch in
+  `model.go`, palette switch hooks in `editor.go`, and Ctrl+P footer hints in
+  `view.go`; palette behavior is owned by `actions.go`. Pull this checkpoint before
+  editing these files. No LazyFTP/Service Bus code/docs changed; no deployment or
+  publishing. Field yank and the rest of Slice 4 remain pending.
+
+### Palette visual correction requested by Andreas
+
+- Andreas rejected the initial full-screen-editor appearance in favor of a real
+  command-palette modal like the other apps. Reused the actual LazyFTP compositor
+  method and Midnight styling: dim/recolor the existing workspace, center an
+  opaque raised surface, cyan outline, mint selected row, right-aligned shortcuts,
+  selected-action availability and concise keyboard footer. Geometry caps at
+  82 columns / nine visible actions, shrinks with matches, and respects 60×16.
+  All actions, modal input/focus, disabled reasons and output policy are unchanged.
+- The only shared rendering hook is a palette-only branch before the generic
+  editor branch in `View`; filter facets/sidebar/inspector revisions remain owned
+  by the source thread. `actions.go` owns the ANSI-cell-aware overlay. No imports
+  across app internals or edits to the other applications.
+- `make -C log-viewer check test-terminal`: PASS, including real fixture palette
+  and search PTYs, race/vet and existing 21-size bounds/focus cases. Extended the
+  palette regression to require workbench panels remain visible behind the modal.
+  Real Elastic integration was not rerun for this rendering-only correction.
+- Inspected final real 2× screenshots: [default modal](../../../.amp/in/artifacts/log-viewer/palette-modal/01-modal.png),
+  [filtered unavailable action](../../../.amp/in/artifacts/log-viewer/palette-modal/02-unavailable.png),
+  [no matches](../../../.amp/in/artifacts/log-viewer/palette-modal/03-no-match.png),
+  [80×24 modal](../../../.amp/in/artifacts/log-viewer/palette-modal/04-narrow.png),
+  [80×24 inspector context](../../../.amp/in/artifacts/log-viewer/palette-modal/05-inspector.png).
+  These supersede the initial full-screen palette images for current appearance.
+- Inspected the entire 14.4-second real keyboard/moving-pointer
+  [clip](../../../.amp/in/artifacts/log-viewer/palette-modal/06-keyboard.mp4)
+  at 5 fps: unavailable history, query-driven shrinking/recentering, cancel,
+  inspector, contextual palette, field picker and return to inspector. Private
+  ttyd preview/browser stopped after review; temporary helpers removed. No
+  deployment, publishing, clipboard, follow or MCP behavior added.

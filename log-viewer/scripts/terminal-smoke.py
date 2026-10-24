@@ -204,14 +204,26 @@ def main():
         assert "token: [REDACTED]" in text
         send("g", "POLICY-SAFE EVENT")
         send("y", "Field yank is not available")
-        send("\x10", "Command palette is not available")
+        send("\x10", "COMMAND PALETTE")
+        send("q y \r", "No matching implemented actions")
+        send("\x15fltfld", "› Filter from selected event field")
+        send("\r", "FILTER FROM EVENT")
+        send("\x1b", "● INSPECTOR")
+        send("\x10older\r", "No older history available")
+        send("\x1b", "● INSPECTOR")
+        send("\x10literal\r", "LOCAL LITERAL FIND")
+        send("q y ", "> q y ")
+        send("\x1b", "● INSPECTOR")
         send(" ", "Live follow is not available")
         send("\x1b", "● LOGS", "● INSPECTOR")
         send("j", "Retry queued with backoff", "Order 8042 remains pending;")
         send("k", "Order 8042 remains pending;")
         send("\x1b[Z", "● WORKSPACE", "● LOGS")
         # Narrowing while a disappearing panel owns focus must repair it.
+        send("\x10", "COMMAND PALETTE")
         resize(80, 24); os.kill(proc.pid, signal.SIGWINCH)
+        wait("COMMAND PALETTE")
+        send("\x1b", "● LOGS", "WORKSPACE")
         wait("● LOGS", "WORKSPACE")
         assert "INSPECTOR" not in "\n".join(screen.display)
         send("j", "› 14:26:03.039")
@@ -241,6 +253,7 @@ def main():
         for forbidden in (b"fixture-secret-", b"\x1b]52;", b"https://invalid.example", "\u202e".encode(), b"Q0FOQVJZ"):
             assert forbidden not in transcript, repr(forbidden)
         print(f"PASS: {'local Elastic TLS' if lab else 'fixture'} PTY — explicit mode, 22 safe events, multiline inspector, focus, navigation, resize recovery, unavailable actions, clean exit")
+        print("PASS: palette PTY — modal q/y/Space, fuzzy field action, disabled history, find handoff, focus restore and narrow resize, safe output")
         if search:
             print("PASS: search PTY — exact app OR, WARN+/UNKNOWN, offset validation, phrase/empty, safe structured literal find/case/n/N, inspector trace+typed field AND, explicit private save/restore, anchored older history, narrow editor")
     finally:

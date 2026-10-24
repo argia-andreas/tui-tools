@@ -47,7 +47,7 @@ func (d *driver) run(cmd tea.Cmd) {
 }
 func (d *driver) key(key string) { d.run(d.apply(keyMsg(key))) }
 func keyMsg(key string) tea.KeyMsg {
-	keys := map[string]tea.KeyType{"enter": tea.KeyEnter, "esc": tea.KeyEsc, "tab": tea.KeyTab, "ctrl+s": tea.KeyCtrlS, "ctrl+u": tea.KeyCtrlU, "ctrl+t": tea.KeyCtrlT, "ctrl+x": tea.KeyCtrlX, "ctrl+r": tea.KeyCtrlR, "down": tea.KeyDown}
+	keys := map[string]tea.KeyType{"enter": tea.KeyEnter, "esc": tea.KeyEsc, "tab": tea.KeyTab, "ctrl+s": tea.KeyCtrlS, "ctrl+u": tea.KeyCtrlU, "ctrl+t": tea.KeyCtrlT, "ctrl+x": tea.KeyCtrlX, "ctrl+r": tea.KeyCtrlR, "ctrl+p": tea.KeyCtrlP, "down": tea.KeyDown}
 	if k, ok := keys[key]; ok {
 		return tea.KeyMsg{Type: k}
 	}
@@ -75,6 +75,104 @@ func fixtureDriver(t *testing.T, size int) (*driver, string) {
 	d.apply(tea.WindowSizeMsg{Width: 160, Height: 48})
 	d.run(d.m.Init())
 	return d, path
+}
+
+func TestPaletteOwnsInputDispatchesExistingActionsAndRestoresFocus(t *testing.T) {
+	d, path := fixtureDriver(t, 3)
+	d.key("enter")
+	before := d.view()
+	d.key("ctrl+p")
+	if !strings.Contains(d.view(), "WORKSPACE") || !strings.Contains(d.view(), "INSPECTOR") {
+		t.Fatal("palette replaced the workbench instead of floating above it")
+	}
+	d.key("q y ")
+	d.key("enter") // No match must not quit, yank or follow.
+	if !strings.Contains(d.view(), "No matching implemented actions") {
+		t.Fatal(d.view())
+	}
+	d.key("esc")
+	if d.view() != before {
+		t.Fatal("palette cancel lost inspector focus, selection or results")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatal("palette typing wrote a saved search")
+	}
+	d.key("ctrl+p")
+	if !strings.Contains(d.view(), "Filter from selected event field") || strings.Contains(d.view(), "Live follow") || strings.Contains(d.view(), "Yank") {
+		t.Fatal("palette does not reflect implemented contextual actions")
+	}
+	d.key("fltfld") // Non-contiguous fuzzy match, not substring matching.
+	d.key("enter")
+	if !strings.Contains(d.view(), "FILTER FROM EVENT") {
+		t.Fatal(d.view())
+	}
+	d.key("esc")
+	d.key("ctrl+p")
+	d.key("older")
+	d.key("enter")
+	if !strings.Contains(d.view(), "6 fictional events") || !strings.Contains(d.view(), "● INSPECTOR") || !strings.Contains(d.view(), "Settlement batch completed") {
+		t.Fatal("palette older action lost history anchor or focus: " + d.view())
+	}
+	d.key("ctrl+p")
+	d.key("literal")
+	d.key("enter")
+	d.key("q y ")
+	if !strings.Contains(d.view(), "LOCAL LITERAL FIND") || !strings.Contains(d.view(), "> q y ") {
+		t.Fatal(d.view())
+	}
+	d.key("esc")
+	d.key("ctrl+p")
+	d.apply(tea.WindowSizeMsg{Width: 80, Height: 24})
+	d.key("esc")
+	if !strings.Contains(d.view(), "● LOGS") || strings.Contains(d.view(), "INSPECTOR") {
+		t.Fatal("palette restored hidden focus after resize")
+	}
+}
+
+func TestPaletteAvailabilityAndNarrowBounds(t *testing.T) {
+	d, _ := fixtureDriver(t, 500)
+	d.key("ctrl+p")
+	d.key("older")
+	d.key("enter")
+	if !strings.Contains(d.view(), "COMMAND PALETTE") || !strings.Contains(d.view(), "No older history available") {
+		t.Fatal("unavailable history action ran")
+	}
+	for _, width := range []int{60, 80, 119, 120, 139, 140, 160} {
+		for _, height := range []int{16, 24, 48} {
+			d.apply(tea.WindowSizeMsg{Width: width, Height: height})
+			d.key("ctrl+u")
+			for i := 0; i < 12; i++ {
+				d.key("down")
+			}
+			if !strings.Contains(d.view(), "› Quit log viewer") {
+				t.Fatal("last action not reachable: " + d.view())
+			}
+			lines := strings.Split(d.view(), "\n")
+			if len(lines) > height {
+				t.Fatalf("%dx%d palette overflows height", width, height)
+			}
+			for _, line := range lines {
+				if ansi.StringWidth(line) > width {
+					t.Fatalf("%dx%d palette overflows width", width, height)
+				}
+			}
+		}
+	}
+	// An embedded UI without a persistence path must not infer a writable default.
+	d.m = ui.New(ui.Options{Theme: theme.Midnight()})
+	d.apply(tea.WindowSizeMsg{Width: 80, Height: 24})
+	d.key("ctrl+p")
+	d.key("save named")
+	d.key("enter")
+	if !strings.Contains(d.view(), "Requires explicit --searches path") || !strings.Contains(d.view(), "COMMAND PALETTE") {
+		t.Fatal(d.view())
+	}
+	d.key("ctrl+u")
+	d.key("inspect")
+	d.key("enter")
+	if !strings.Contains(d.view(), "No selected event") || !strings.Contains(d.view(), "COMMAND PALETTE") {
+		t.Fatal(d.view())
+	}
 }
 
 func TestEditorsOwnTextAndCancelWithoutWritesOrFocusChanges(t *testing.T) {

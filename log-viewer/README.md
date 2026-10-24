@@ -97,6 +97,7 @@ cursors. Saving an existing name replaces that search.
 | Ctrl+T | Toggle case sensitivity inside find |
 | `o`, `r` | Load older snapshot history / reload a fresh snapshot |
 | `S`, `R` | Name/save current query / restore a saved query |
+| Ctrl+P | Fuzzy command palette; arrows/Tab choose, Enter runs, Esc returns |
 | `q`, Ctrl+C | Quit and restore the terminal |
 
 The workspace auto-hides below 140 columns, and the inspector below 120. Enter
@@ -104,7 +105,19 @@ still opens details at narrow widths. Minimum size is 60×16. Resizing cannot le
 focus in a hidden panel. The log row shows a one-line summary; the inspector wraps
 the full retained message and displays multiline strings and typed structure.
 
-`y/Y`, Ctrl+P, and follow currently explain that they are unavailable.
+The compact centered palette floats above a dimmed workbench, with a raised
+surface, highlighted selection and right-aligned shortcuts. It shrinks with the
+match count and scrolls within terminal bounds instead of replacing the screen.
+It lists only implemented actions, reusing their existing behavior.
+Its filter action is contextual: source filters from logs/workspace, exact field
+filtering from inspector. Disabled actions show the current reason (for example,
+no selected event, no older history, or no local find yet); Enter cannot run them.
+Typing `q`, `y` or Space in the palette is input, not a global shortcut. Ctrl+U
+clears the fuzzy query. Esc restores the originating panel, repairing hidden focus
+on resize; results and selection are retained. The palette does not save anything
+until the separate named-save editor is explicitly submitted.
+
+`y/Y`, keyboard help and follow currently explain that they are unavailable.
 No fake “copied,” “connected,” or “following” success is displayed. The provider
 names under “PROVIDERS · PLANNED” are not working connections. Local Elasticsearch
 is a working source in lab mode, not follow/streaming.

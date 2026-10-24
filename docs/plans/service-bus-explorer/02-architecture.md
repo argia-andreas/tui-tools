@@ -66,3 +66,37 @@ Apple Silicon execution has not been tested. The SQL dependency's multi-architec
 ## Approval scope
 
 Approving Gate 2 selects the independent Go/TUI/direct-SDK shape, isolated reproducible lab, layered testing and honest unavailable-count handling. It does not approve program signatures, implementation slices, Azure writes, deployments or changes to LazyFTP. Gate 3 must specify the file boundaries, operations, resource limits and tests before implementation.
+
+## Selected-message resend amendment — Gate 2 approved, 2026-10-24
+
+Andreas approved this narrow amendment after clarification that peek suffices
+for copy-only, but deletion requires acquiring the exact selected original.
+Prior delivered slices and their approvals remain intact. The extension selects
+a peeked DLQ message and a destination queue, with optional original cleanup.
+
+- Copy-only: use full selected-message bytes/properties, not truncated display
+  text; choose an existing queue in the connected namespace; original remains.
+- Cleanup checked: bounded PeekLock receive-and-match search for the exact source
+  entity and selected sequence before sending. Verify the acquired identity;
+  never silently substitute the next message. Review the acquired content and
+  chosen destination before final confirmation. If missing, locked elsewhere,
+  timed out or expired, stop without sending/deleting. Exact bounds belong in
+  the program-design amendment, not an unbounded scan.
+- Searching temporarily locks unrelated messages. Release every nonmatch on
+  success/cancel/failure; disclose delivery-count effects and possible uncertain
+  release. No unrelated completion or deferral. This approved amendment replaces
+  the earlier deliberate prohibition on receive-and-scan only for this flow.
+- After confirmed send only, complete the held original if cleanup was checked.
+  Unknown send retains the original; confirmed send with failed/unknown cleanup
+  is partial, not success. No atomic move, automatic application retry or SDK
+  patch. Default Cancel and unchecked cleanup remain.
+- Preserve existing emulator-only/network guards, unsupported-session restrictions
+  and separately gated MCP/cloud scope. No new cloud access is authorized.
+
+Evidence: pinned Go azservicebus 1.11.0 `receiver.go` documents
+`ReceiveDeferredMessages` only for previously deferred messages. The conventional
+[ServiceBusExplorer implementation](https://github.com/paolosalvatori/ServiceBusExplorer/blob/3d0afb6dbadeda8b644d88d33e8db55ee3ae010c/src/Common/Helpers/DeadLetterMessageHandler.cs#L188-L295)
+uses ordinary receive-and-match for selected-message move, sends before Complete,
+and abandons nonmatches. Source research is not emulator validation of our future
+implementation. A deferred-receive shortcut for ordinary DLQ messages is not
+assumed or authorized.
