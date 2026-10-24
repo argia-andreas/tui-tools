@@ -73,13 +73,13 @@ def main():
         text = wait("› Cancel / release original")
         assert re.search(r"ID: orders-dlq-\d{4}", text)
         assert "[ ] Remove original" in text
-        send("\r", "Original release confirmed")
+        send("\r", "Lock release confirmed")
         send("\r", "orders / DEAD-LETTER")
         action("receive next", "ACTUAL RECEIVED MESSAGE")
         retained_id = re.search(r"ID: (orders-dlq-\d{4})", wait("New MessageID:")).group(1)
         send("\t", "› Resend new copy to origin")
         send("\r", "no cleanup requested")
-        wait("Original release confirmed")
+        wait("Lock release confirmed")
         send("\r", "orders / DEAD-LETTER")
         wait(retained_id)  # resend must not implicitly delete the acquired original
         action("receive next", "ACTUAL RECEIVED MESSAGE")
@@ -194,9 +194,9 @@ def main():
         action("settings", "Color theme: midnight")
         send("\r", "Color theme: gruvbox")
         # First watch row follows the five layout/save controls.
-        for index in range(5):
-            os.write(master, b"j")
-            time.sleep(0.04)
+        for label in ("Navigation sidebar:", "Message inspector:", "Dashboard layout:",
+                      "Save preferences", "[x] fixture / local-lab / orders"):
+            send("j", "› " + label)
         send("\r", "[ ] fixture / local-lab / orders")
         send("s", "Preferences saved")
         send("\x1b", "13 watched entities")

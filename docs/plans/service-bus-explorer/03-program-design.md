@@ -39,10 +39,14 @@ cleanup defaults off and typed `delete` authorizes deletion. Session-enabled
 mutation and advanced AMQP replay representations remain unsupported. Fixture
 held deliveries, reviewed-action UI, late-acquisition release and terminal
 outcomes, Azure conversion/acquisition/settlement and serial integration checks
-are present, but implementation verification and final evidence remain pending.
-Slice 4 remains unchecked: this retry decision is not delivery approval, a cloud
-or MCP implementation, or end-to-end proof. The main implementation owner will
-update verification evidence separately.
+are present. Race/vet/Python guard and fixture PTY checks pass; after fresh seed,
+real broker integration and emulator PTY also pass (2026-10-24). The 90 KB body,
+supported scalar properties, source/replay 37-minute TTL, new ID/correlation,
+original retention, separate cleanup and topic fan-out were executed. Binary
+application-property rejection is tested separately as an emulator limitation.
+Final review/theme/compact/error-state visual evidence remains pending in the
+new continuation thread. Slice 4 remains unchecked until that final verification;
+no cloud or MCP implementation is implied. See `00-status.md` for the handoff.
 
 ## Boundaries and dependency baseline
 

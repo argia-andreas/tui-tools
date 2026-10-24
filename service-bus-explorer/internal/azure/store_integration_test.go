@@ -5,6 +5,7 @@ package azure_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -167,16 +168,32 @@ func testQueueReplay(t *testing.T, ctx context.Context, store *azure.Store, clie
 	}
 	defer receiver.Close(context.Background())
 	id, correlation, subject, contentType := fmt.Sprintf("slice4-original-%d", time.Now().UnixNano()), "slice4-correlation", "binary-preservation", "application/octet-stream"
-	ttl := 90 * time.Minute
+	// The lab queue's default one-hour lifetime caps a longer requested TTL.
+	// Use an asymmetric value below that cap and verify it on the source too.
+	ttl := 37 * time.Minute
 	pastSchedule := time.Now().Add(-time.Hour)
 	body := bytes.Repeat([]byte{0, 255, 65, 10, 27}, 18000)
+	// Emulator 2.0.1 rejects AMQP binary application properties during broker
+	// serialization, mapped by the SDK to ErrMessageTooLarge (even for 1 byte).
+	// Assert that boundary explicitly; binary-property cloning remains unit-tested.
+	unsupportedID := id + "-unsupported"
+	if err := sender.SendMessage(ctx, &sb.Message{MessageID: &unsupportedID, Body: []byte{65}, ApplicationProperties: map[string]any{"binary": []byte{0, 255}}}, nil); !errors.Is(err, sb.ErrMessageTooLarge) {
+		t.Fatalf("expected emulator binary application-property rejection, got %v", err)
+	}
+	rejected, err := store.Peek(ctx, target, false, 0, 20)
+	if err != nil || len(rejected.Messages) != 0 {
+		t.Fatalf("rejected property probe was enqueued: %+v, %v", rejected, err)
+	}
 	if err := sender.SendMessage(ctx, &sb.Message{MessageID: &id, CorrelationID: &correlation, Subject: &subject, ContentType: &contentType, TimeToLive: &ttl,
-		ScheduledEnqueueTime: &pastSchedule, Body: body, ApplicationProperties: map[string]any{"business": "preserve", "binary": []byte{0, 255}, "number": int64(42)}}, nil); err != nil {
+		ScheduledEnqueueTime: &pastSchedule, Body: body, ApplicationProperties: map[string]any{"business": "preserve", "enabled": true, "number": int64(42)}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	active := receiveOne(t, ctx, receiver)
 	if active.MessageID != id {
 		t.Fatal("expected isolated empty queue; reseed lab before this test")
+	}
+	if active.TimeToLive == nil || *active.TimeToLive != ttl {
+		t.Fatalf("source TTL changed before replay: %v", active.TimeToLive)
 	}
 	reason, description := "slice4-reason", "slice4-description"
 	if err := receiver.DeadLetterMessage(ctx, active, &sb.DeadLetterOptions{Reason: &reason, ErrorDescription: &description}); err != nil {
@@ -192,7 +209,7 @@ func testQueueReplay(t *testing.T, ctx context.Context, store *azure.Store, clie
 		t.Fatalf("held delivery preview: %+v", preview)
 	}
 	preview.Body[0] = 99
-	preview.Properties["binary"].([]byte)[0] = 99
+	preview.Properties["business"] = "changed"
 	if _, err := store.ReceiveNextDLQ(ctx, target); err == nil {
 		t.Fatal("store allowed another held delivery")
 	}
@@ -205,8 +222,8 @@ func testQueueReplay(t *testing.T, ctx context.Context, store *azure.Store, clie
 		t.Fatal("repeated send was allowed")
 	}
 	copy := receiveOne(t, ctx, receiver)
-	if copy.MessageID != replayID || !bytes.Equal(copy.Body, body) || valueString(copy.CorrelationID) != correlation || valueString(copy.Subject) != subject || valueString(copy.ContentType) != contentType || copy.TimeToLive == nil || *copy.TimeToLive != ttl || copy.ApplicationProperties["business"] != "preserve" || copy.ApplicationProperties["number"] != int64(42) || !bytes.Equal(copy.ApplicationProperties["binary"].([]byte), []byte{0, 255}) {
-		t.Fatal("replay lost full body, correlation, TTL or application fields")
+	if copy.MessageID != replayID || !bytes.Equal(copy.Body, body) || valueString(copy.CorrelationID) != correlation || valueString(copy.Subject) != subject || valueString(copy.ContentType) != contentType || copy.TimeToLive == nil || *copy.TimeToLive != ttl || copy.ApplicationProperties["business"] != "preserve" || copy.ApplicationProperties["number"] != int64(42) || copy.ApplicationProperties["enabled"] != true {
+		t.Fatalf("replay mismatch: id=%q len=%d bytesEqual=%v correlation=%q subject=%q contentType=%q TTL=%v properties=%#v", copy.MessageID, len(copy.Body), bytes.Equal(copy.Body, body), valueString(copy.CorrelationID), valueString(copy.Subject), valueString(copy.ContentType), copy.TimeToLive, copy.ApplicationProperties)
 	}
 	if _, ok := copy.ApplicationProperties["DeadLetterReason"]; ok {
 		t.Fatal("replay retained DLQ reason")
@@ -243,7 +260,7 @@ func testQueueReplay(t *testing.T, ctx context.Context, store *azure.Store, clie
 	if err != nil || len(page.Messages) != 0 {
 		t.Fatalf("repeated submission made another copy: %+v, %v", page, err)
 	}
-	t.Log("PASS: full 90KB body and binary properties preserved independently of preview; new ID/correlation/TTL, no schedule/DLQ fields; original retained until separate Complete")
+	t.Log("PASS: full 90KB binary body and scalar properties preserved independently of preview; new ID/correlation/TTL, no schedule/DLQ fields; original retained until separate Complete; unsupported binary property explicitly rejected")
 }
 
 func testTopicReplay(t *testing.T, ctx context.Context, store *azure.Store, billing, shipping explorer.Resource) {

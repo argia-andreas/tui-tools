@@ -3,8 +3,9 @@
 An independent keyboard-first terminal workspace, alongside—but not part of—LazyFTP.
 **Two explicit modes:** deterministic offline fixtures, or the independent local
 Service Bus emulator. Browsing is read-only; the current Slice 4 implementation
-also includes explicitly reviewed DLQ actions, with implementation verification
-still pending (not a completed slice). No cloud connection or MCP access exists.
+also includes explicitly reviewed DLQ actions. Automated, PTY and real-emulator
+checks pass; final visual verification remains pending (not a completed slice).
+No cloud connection or MCP access exists.
 Layout, theme and dashboard
 watchlists can be saved explicitly; credentials and MCP grants cannot.
 Fixture counts are sample data. Emulator counts are **unavailable**, never zero
@@ -50,7 +51,7 @@ Settings and Ctrl+P provide Midnight, Gruvbox and Light themes, layout controls,
 watchlist editing and Save preferences. Printable keys—including `q`, `j`, and
 `k`—belong to the palette query while it is open.
 
-## Slice 4 DLQ actions — verification pending
+## Slice 4 DLQ actions — final visual verification pending
 
 “Receive next DLQ message…” acquires one message for review; it does **not** act
 on the highlighted peek row. Review shows the actual received message, source,
@@ -63,7 +64,11 @@ topic replay can reach other matching subscriptions. Removing the original after
 a confirmed send defaults **off** and is a separate authorized settlement.
 Delete requires typing `delete` for the actual held message. Session-enabled
 mutation and advanced AMQP replay representations are unsupported, not silently
-converted. These controls do not establish completed end-to-end verification.
+converted. Race/fixture/PTY and seeded real-broker checks pass, including the
+90 KB body and supported scalar properties, TTL/correlation, retained original,
+separate cleanup and topic fan-out. Emulator binary application properties are
+explicitly rejected by the broker; cloning them is unit-tested, not a successful
+broker round trip. Final rendered states/recording remain to be reviewed.
 
 **Gate 3 retry adjustment approved by Andreas on 2026-10-24:** trust the pinned
 SDK's internal retry/recovery, without an SDK patch. The application submits each

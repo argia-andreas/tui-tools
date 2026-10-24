@@ -28,7 +28,7 @@ func (m Model) reviewView(width, height int) []string {
 			rows = append(rows, m.paint("  "+line, m.theme.Foreground))
 		}
 		if r.phase == "releasing" {
-			rows = append(rows, "", m.paint("  Releasing retained original… (bounded, no automatic retry)", m.theme.Warning))
+			rows = append(rows, "", m.paint("  Releasing retained original… (bounded; SDK recovery allowed)", m.theme.Warning))
 		} else {
 			rows = append(rows, "", m.paint("  Enter / Esc return to safe peek · q quit", m.theme.Focus), m.paint("  This result cannot resend again.", m.theme.Muted))
 		}
@@ -66,6 +66,7 @@ func (m Model) reviewView(width, height int) []string {
 	if split {
 		add("Body/properties/correlation preserved; fresh original TTL; immediate enqueue; broker DLQ fields stripped.", m.theme.Muted)
 		add("Unsupported sessions/AMQP formats are rejected, never silently converted.", m.theme.Muted)
+		add("No app-level retries; SDK recovery may repeat wire attempts. Not exactly-once.", m.theme.Muted)
 		rows = append(rows, "")
 	}
 	if r.phase == "review" {

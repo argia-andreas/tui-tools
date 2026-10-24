@@ -211,6 +211,10 @@ func TestDeleteRequiresExactTypedAuthorization(t *testing.T) {
 	if c.DeadLetter != 11 || c.Active != 128 {
 		t.Fatalf("delete had wrong effects: %+v", c)
 	}
+	_, quit := key(m, "q")
+	if quit == nil {
+		t.Fatal("delete result retained text-field ownership of q")
+	}
 }
 
 func TestCancelledLateAcquisitionIsReleasedAndQuitWaits(t *testing.T) {

@@ -149,7 +149,7 @@ func (d *delivery) Resend(ctx context.Context, id string) (explorer.SendResult, 
 	if d.settled || d.sendAttempted {
 		return result, errors.New("delivery is settled or resend already attempted")
 	}
-	// Even validation failure is terminal for this review: no automatic retry.
+	// Even validation failure is terminal for this review: no app-level retry.
 	d.sendAttempted = true
 	message, err := replayMessage(d.message, id)
 	if err != nil {
@@ -171,8 +171,8 @@ func (d *delivery) Resend(ctx context.Context, id string) (explorer.SendResult, 
 	}()
 	// One application invocation, not a wire-level no-retry guarantee: SDK
 	// v1.11.0 internal/amqpLinks.go can reset its attempt counter for a quick
-	// link-error retry even with MaxRetries=-1. A dependency fix is required
-	// before claiming strictly one transfer attempt under link failures.
+	// link-error retry even with MaxRetries=-1. SDK recovery is accepted;
+	// neither a single wire attempt nor exactly-once delivery is promised.
 	if err := sender.SendMessage(ctx, message, nil); err != nil {
 		// No transport error proves rejection. A lost acknowledgement may hide
 		// broker acceptance. The SDK's explicit message-size rejection is known.

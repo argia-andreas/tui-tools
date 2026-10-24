@@ -93,6 +93,9 @@ func (m Model) quit() (tea.Model, tea.Cmd) {
 		m.status = "Quitting after final outcome/release · cancellation is not rollback"
 		return m, nil
 	default:
+		if m.review.phase == "review" {
+			m.review.outcome = "Quit requested; no resend or delete requested."
+		}
 		return m.release()
 	}
 }
@@ -139,9 +142,9 @@ func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		m.review.delivery = nil
 		m.review.phase = "result"
 		if msg.err == nil {
-			m.review.outcome += " Original release confirmed (delivery count may increase)."
+			m.review.outcome += " Lock release confirmed (delivery count may increase)."
 		} else {
-			m.review.outcome += " Original release unknown; it may remain locked until expiry."
+			m.review.outcome += " Lock release unknown; original may remain locked until expiry."
 		}
 		m.status = m.review.outcome
 		if m.review.quitting {
@@ -162,7 +165,7 @@ func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		if m.review.phase == "" {
 			return m, nil, false
 		}
-		if msg.String() == "ctrl+c" || (msg.String() == "q" && m.review.choice != 3) {
+		if msg.String() == "ctrl+c" || (msg.String() == "q" && (m.review.phase != "review" || m.review.choice != 3)) {
 			return finish(m.quit())
 		}
 		switch m.review.phase {
@@ -252,7 +255,7 @@ func (m Model) operate(deleting bool) (tea.Model, tea.Cmd) {
 	if deleting {
 		m.review.phase = "deleting"
 	}
-	m.status = "Operation in flight · no automatic retry · cancellation cannot roll back broker acceptance"
+	m.status = "Operation in flight · no app-level retry (SDK recovery may retry) · cancellation is not rollback"
 	return m, func() tea.Msg {
 		ctx, cancel := context.WithDeadline(context.Background(), minTime(deadline, time.Now().Add(10*time.Second)))
 		defer cancel()

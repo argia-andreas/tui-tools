@@ -212,7 +212,7 @@ func send(client *azservicebus.Client, destination string, messages []explorer.M
 		messages = messages[n:]
 		// The development broker throttles bursts during a large seed. Pace
 		// acknowledged batches instead of retrying an ambiguous send result.
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 	return nil
 }
