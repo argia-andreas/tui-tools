@@ -2,6 +2,32 @@
 
 All PNGs are Painter-generated design references with fictional offline sample data. They are not working screenshots, Azure connectivity evidence, tested keyboard interactions or exact theme implementations. Images were inspected during the source conversation; generated copy, hierarchy and icons remain illustrative. The product document takes precedence over accidental image details.
 
+## Button-like actions — new exploration, 2026-10-24
+
+Andreas requested a nicer UI with actions that almost look like buttons after
+Slice 4 completion. These three alternatives explore action placement and visual
+hierarchy, not new broker behavior. No direction has been selected or implemented.
+All use padded, bordered terminal controls, a distinct focused Cancel state,
+outlined resend, separate destructive action and cleanup unchecked by default.
+Keyboard focus must remain visible without color; exact cell geometry and all
+theme/compact variants require real-terminal validation after selection.
+
+| Reference | Direction and trade-off |
+| --- | --- |
+| [H — Docked action bar](h-actions-docked.png) | Browse toolbar plus full-width bottom review controls; best body width and natural compact-layout fallback. |
+| [I — Focused review dialog](i-actions-dialog.png) | Review sits over inactive browsing context; explicit separate typed-delete state, but adds overlay/navigation complexity. |
+| [J — Action rail](j-actions-rail.png) | Strongest button affordance and clearest action hierarchy beside the held body; consumes width and needs a stacked/footer fallback at 80 columns. |
+
+Recommendation: J's action styling with H's compact footer fallback. This is a
+recommendation for discussion, not approval to implement it or start Slice 5.
+Delete still requires typing `delete`; ellipsis controls propose opening that
+confirmation rather than deleting immediately. Receiving next is never a peek
+and may acquire a different message from the highlighted preview. Navigation
+remains held while acquiring/reviewing/releasing. Generated sidebar labels,
+sample counts, dates and incidental preview IDs are not new product contracts.
+The layouts deliberately leave space for long message content; large-screen
+blank space is not a promise that all content fits without scrolling.
+
 ## Latest dashboard direction
 
 Use expanded collapsible navigation by default (board G). Keep grid/table selection independent of sidebar state. Grid targets 12 visible boxes, not a 12-queue configuration limit. Table fits more rows. Both show green queued and red DLQ counts with labels; edit watched entities only behind Settings.
@@ -37,3 +63,10 @@ Use expanded collapsible navigation by default (board G). Keep grid/table select
 ## Provenance
 
 Generated in https://ampcode.com/threads/T-01a16a8a-2a84-7615-ae4e-5cd2d7fd57f1 using Painter prompts and targeted image-reference corrections. Saved via `amp files get`, inspected with `view_media`, then copied into this independent project directory without modifying LazyFTP assets. Reuse the saved boards for continuation; no live preview is provided.
+
+H–J were generated and refined in
+https://ampcode.com/threads/T-01a16e75-df92-720e-b3c2-4052f34bb7f5
+with Painter, using actual Slice 4 terminal screenshots plus earlier boards as
+references. Inspected and corrected misleading receive/peek wording, invented
+mutation hotkeys, background lock metadata and queue/topic hierarchy. Saved via
+`amp files get`. They remain design references, not test evidence.
