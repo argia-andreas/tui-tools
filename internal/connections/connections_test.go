@@ -44,6 +44,28 @@ func TestBookmarkSaveReuseReplace(t *testing.T) {
 	}
 }
 
+func TestBookmarkOptionalCompanionLocal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "connections.json")
+	b := connections.Bookmark{Name: "Independent", Remote: "ftp", Root: "/incoming"}
+	if err := connections.Save(path, b); err != nil {
+		t.Fatal(err)
+	}
+	got, err := connections.Load(path)
+	if err != nil || !reflect.DeepEqual(got, []connections.Bookmark{b}) {
+		t.Fatalf("no-local bookmark round trip: %+v %v", got, err)
+	}
+	for _, local := range []string{"relative", "./folder", "../folder", "/folder\nunsafe"} {
+		b.Local = local
+		if err := b.Validate(); err == nil {
+			t.Fatalf("accepted unsafe companion local %q", local)
+		}
+	}
+	b.Local = "/absolute/missing-is-metadata"
+	if err := b.Validate(); err != nil {
+		t.Fatalf("valid historical metadata rejected: %v", err)
+	}
+}
+
 func TestRemotePaths(t *testing.T) {
 	for _, value := range []string{"ftp:/incoming", "azure:container/assets", "s3:bucket/a:b", "team space:/å file"} {
 		loc, err := connections.ParseRemote(value)

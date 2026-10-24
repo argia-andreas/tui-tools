@@ -428,6 +428,7 @@ func TestMouseBrowsingAndShortcutGuide(t *testing.T) {
 			clickText("src/")
 			requireText(t, d, "browser.go")
 			if size[0] == 160 {
+				clickText("orders.csv") // Sidebar locations target the last focused pane.
 				clickText("demo-blob /assets")
 				requireText(t, d, "hero image.png")
 				clickText("icons/")

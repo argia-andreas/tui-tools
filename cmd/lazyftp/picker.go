@@ -22,6 +22,9 @@ type picker struct {
 	root, local, name, message   string
 	bookmarkPath                 string
 	leftOverride                 string
+	startLocal                   string
+	destination                  bool
+	pane                         int
 	connectError                 string
 	newConnection                bool
 	localFiles                   bool
@@ -35,7 +38,7 @@ type picker struct {
 }
 
 func newPicker(remotes []string, bookmarks []connections.Bookmark, local, leftOverride, path string, t theme.Theme) picker {
-	m := picker{choices: append([]connections.Bookmark(nil), bookmarks...), local: local, root: "/", bookmarkPath: path, leftOverride: leftOverride, theme: t, width: 80, height: 24}
+	m := picker{choices: append([]connections.Bookmark(nil), bookmarks...), local: local, startLocal: local, root: "/", bookmarkPath: path, leftOverride: leftOverride, theme: t, width: 80, height: 24}
 	for _, remote := range remotes {
 		m.choices = append(m.choices, connections.Bookmark{Remote: remote, Root: "/", Local: local})
 	}
@@ -52,6 +55,9 @@ func (m *picker) choose() {
 	}
 	b := m.choices[m.cursor]
 	m.root, m.local, m.name = b.Root, b.Local, b.Name
+	if m.local == "" {
+		m.local = m.startLocal
+	}
 	if m.leftOverride != "" {
 		m.local = m.leftOverride
 	}
@@ -132,12 +138,18 @@ func (m picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab":
 			if m.details {
 				m.focus = m.focus%5 + 1
+				if m.destination && m.focus == 2 {
+					m.focus = 3
+				}
 			} else {
 				m.move(1)
 			}
 		case "shift+tab":
 			if m.details {
 				m.focus = (m.focus+3)%5 + 1
+				if m.destination && m.focus == 2 {
+					m.focus = 1
+				}
 			} else {
 				m.move(-1)
 			}
@@ -162,6 +174,9 @@ func (m picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.details, m.focus = true, 1
 			} else if m.focus < 4 {
 				m.focus++
+				if m.destination && m.focus == 2 {
+					m.focus = 3
+				}
 			} else {
 				return m.activate()
 			}
@@ -238,20 +253,25 @@ func (m picker) activate() (tea.Model, tea.Cmd) {
 		m.message = err.Error()
 		return m, nil
 	}
-	local, err := filepath.Abs(m.local)
-	if strings.TrimSpace(m.local) == "" {
-		err = fmt.Errorf("choose a local folder")
-	}
-	if err == nil {
-		var info os.FileInfo
-		info, err = os.Stat(local)
-		if err == nil && !info.IsDir() {
-			err = fmt.Errorf("not a directory")
+	local := m.choices[m.cursor].Local
+	if !m.destination {
+		local, err = filepath.Abs(m.local)
+		if strings.TrimSpace(m.local) == "" {
+			err = fmt.Errorf("choose a local folder")
 		}
-	}
-	if err != nil {
-		m.message = "Local folder must be an existing directory"
-		return m, nil
+		if err == nil {
+			var info os.FileInfo
+			info, err = os.Stat(local)
+			if err == nil && !info.IsDir() {
+				err = fmt.Errorf("not a directory")
+			}
+		}
+		if err != nil {
+			m.message = "Local folder must be an existing directory"
+			return m, nil
+		}
+	} else if m.choices[m.cursor].Name == "" {
+		local = ""
 	}
 	b := connections.Bookmark{Name: m.name, Remote: loc.Remote, Root: loc.Path, Local: local}
 	if m.focus == 5 {
@@ -326,7 +346,11 @@ func (m picker) layout() pickerLayout {
 			add(m.message, -1, -1)
 		}
 	} else if m.details {
-		add("Connection details", -1, -1)
+		heading := "Connection details"
+		if m.destination {
+			heading += " · " + paneHeading(m.pane) + " pane"
+		}
+		add(heading, -1, -1)
 		add("", -1, -1)
 		center("▤  " + m.choices[m.cursor].Remote + ":")
 		add("", -1, -1)
@@ -334,14 +358,20 @@ func (m picker) layout() pickerLayout {
 		if spacious {
 			add("", -1, -1)
 		}
-		add("Local folder   "+m.local, 2, -1)
-		if spacious {
-			add("", -1, -1)
+		if !m.destination {
+			add("Local folder   "+m.local, 2, -1)
+			if spacious {
+				add("", -1, -1)
+			}
 		}
 		add("Bookmark name  "+m.name, 3, -1)
 		add("", -1, -1)
 		divider()
-		action("[ Connect ]", 4)
+		label := "[ Connect ]"
+		if m.destination {
+			label = "[ Open in " + strings.ToLower(paneHeading(m.pane)) + " pane ]"
+		}
+		action(label, 4)
 		add("■  [ Save bookmark ]", 5, -1)
 		add("Saves folders and name only. Does not connect.", -1, -1)
 		add("", -1, -1)
@@ -358,6 +388,9 @@ func (m picker) layout() pickerLayout {
 				tiles = append(tiles, tile)
 			}
 			label := []string{"Open a connection", "Choose where to work", ""}[row]
+			if m.destination && row == 0 {
+				label = "Choose connection · " + paneHeading(m.pane) + " pane"
+			}
 			add("  "+strings.Join(tiles, " ")+"   "+label, -1, -1)
 			l.rows[len(l.rows)-1].logo = true
 		}
@@ -446,7 +479,7 @@ func (m picker) View() string {
 		if row.focus >= 0 && m.focus == row.focus && (row.choice < 0 || row.choice == m.cursor) {
 			style = style.Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection))
 		}
-		if row.logo && strings.Contains(row.text, "Open a connection") {
+		if row.logo && (strings.Contains(row.text, "Open a connection") || strings.Contains(row.text, "Choose connection")) {
 			style = accent
 		}
 		s := strings.Map(func(r rune) rune {
@@ -485,10 +518,20 @@ func (m picker) View() string {
 	if m.width < 80 {
 		footer = "↑↓ move  Enter open  Esc local files  F1 help"
 	}
+	if m.destination {
+		footer = strings.Replace(footer, "Esc local files", "Esc back", 1)
+	}
 	if m.details {
 		footer = "Tab focus · Enter select · Esc connections · F1 help"
 	}
 	rows[m.height-1] = muted.Width(m.width).Render(" " + ansi.Truncate(footer, m.width-2, "…"))
 	rows[m.height-2] = muted.Render(strings.Repeat("─", m.width))
 	return strings.Join(rows, "\n")
+}
+
+func paneHeading(pane int) string {
+	if pane == 0 {
+		return "LEFT"
+	}
+	return "RIGHT"
 }

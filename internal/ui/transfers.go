@@ -72,7 +72,10 @@ func (m Model) copyDisabled() string {
 	if m.transferer == nil {
 		return "Transfers arrive in live mode; demo is read-only"
 	}
-	if m.disconnected {
+	if m.panes[m.active()].detached {
+		return "Choose a source before copying"
+	}
+	if m.panes[1-m.active()].detached {
 		return "Choose a destination before copying"
 	}
 	if m.panes[1-m.active()].loading || m.panes[1-m.active()].err != nil {

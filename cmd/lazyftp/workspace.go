@@ -32,6 +32,7 @@ type workspace struct {
 	request              int
 	connectOnStart       string
 	pickerDestination    bool
+	pickerPane           int
 	discoveryCancel      context.CancelFunc
 }
 
@@ -49,7 +50,7 @@ func tickConnection(request int) tea.Cmd {
 func (m workspace) Init() tea.Cmd {
 	if m.connectOnStart != "" {
 		return tea.Batch(m.model.Init(), func() tea.Msg {
-			return ui.ConnectRequested{Local: m.connectOnStart}
+			return ui.ConnectRequested{Local: m.connectOnStart, Pane: 1}
 		})
 	}
 	return m.model.Init()
@@ -117,33 +118,44 @@ func (m workspace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			w.message = msg.err.Error()
 			return m, nil
 		}
-		left := storage.Location{Path: w.local}
 		right := storage.Location{Remote: msg.candidate.Remote, Path: w.root()}
 		m.config = msg.candidate.ConfigPath
 		backend := storage.NewRclone(m.config)
 		locations := []storage.Location{right}
 		for _, loc := range m.extra {
-			if loc.Remote != "" && loc != right {
+			if (m.pickerDestination || loc.Remote != "") && loc != right {
 				locations = append(locations, loc)
 			}
 		}
-		locations = append(locations, left)
+		local := ""
+		if !m.pickerDestination {
+			local = w.local
+			locations = append(locations, storage.Location{Path: local})
+		}
 		m.extra = locations
 		w.candidate = nil // Now owned by the active workspace until program exit.
 		m.closePicker()
 		var cmd tea.Cmd
-		m.model, cmd = m.model.Update(ui.ConnectionOpened{Left: left, Right: right, Locations: locations, Browser: backend, Transferer: backend})
+		m.model, cmd = m.model.Update(ui.ConnectionOpened{Pane: m.pickerPane, Location: right, Local: local, Locations: locations, Browser: backend, Transferer: backend})
 		return m, cmd
 	case ui.ConnectRequested:
 		m.closePicker()
 		m.pickerDestination = msg.Destination
+		m.pickerPane = 1
+		if msg.Destination {
+			m.pickerPane = msg.Pane
+		}
 		p := newPicker(nil, nil, msg.Local, m.leftOverride, m.bookmarkPath, m.theme)
 		p.loading = true
+		p.destination, p.pane = msg.Destination, m.pickerPane
 		if m.size.Width > 0 {
 			p.width, p.height = m.size.Width, m.size.Height
 		}
 		visible := p // The async command must not mutate the visible picker.
 		m.picker = &visible
+		if msg.New {
+			return m.startWizard()
+		}
 		ctx, cancel := context.WithCancel(m.ctx)
 		m.discoveryCancel = cancel
 		request, config := m.request, m.config
@@ -171,6 +183,7 @@ func (m workspace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			loaded := newPicker(names, saved, p.local, p.leftOverride, p.bookmarkPath, p.theme)
+			loaded.destination, loaded.pane = p.destination, p.pane
 			loaded.message, loaded.connectError = strings.Join(messages, "; "), p.connectError
 			return connectionsLoaded{request: request, picker: loaded}
 		}
@@ -252,7 +265,7 @@ func (m workspace) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if p.localFiles {
 		m.closePicker()
 		if m.pickerDestination {
-			m.model, cmd = m.model.Update(ui.OpenLocalFolderRequested{})
+			m.model, cmd = m.model.Update(ui.OpenLocalFolderRequested{Pane: m.pickerPane})
 			return m, cmd
 		}
 		return m, nil
@@ -264,36 +277,50 @@ func (m workspace) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if p.newConnection {
-		if m.discoveryCancel != nil {
-			m.discoveryCancel()
-			m.discoveryCancel = nil
-		}
-		m.request++
-		p.newConnection = false
-		if m.sessions == nil {
-			m.sessions = &connectionSessions{}
-		}
-		m.wizard = newWizard(m.ctx, m.theme, p.local, m.config, m.persistentConfig, m.sessions, m.request)
-		m.wizard.width, m.wizard.height = p.width, p.height
-		return m, nil
+		return m.startWizard()
 	}
 	if p.selected == nil {
 		return m, cmd
 	}
 	choice := p.selected
-	left := storage.Location{Path: choice.Local}
 	right := storage.Location{Remote: choice.Remote, Path: choice.Root}
 	locations := []storage.Location{right}
 	for _, loc := range m.extra {
-		if loc.Remote != "" && loc != right {
+		if (m.pickerDestination || loc.Remote != "") && loc != right {
 			locations = append(locations, loc)
 		}
 	}
-	locations = append(locations, left)
+	local := ""
+	if !m.pickerDestination {
+		local = choice.Local
+		locations = append(locations, storage.Location{Path: local})
+	}
+	m.extra = locations
 	m.closePicker()
 	// Discard the standalone picker's Quit command on successful selection.
-	m.model, cmd = m.model.Update(ui.ConnectionOpened{Left: left, Right: right, Locations: locations})
+	m.model, cmd = m.model.Update(ui.ConnectionOpened{Pane: m.pickerPane, Location: right, Local: local, Locations: locations})
 	return m, cmd
+}
+
+func (m workspace) startWizard() (tea.Model, tea.Cmd) {
+	if m.discoveryCancel != nil {
+		m.discoveryCancel()
+		m.discoveryCancel = nil
+	}
+	m.request++
+	p := m.picker
+	p.newConnection, p.message = false, ""
+	p.loading = false
+	if m.sessions == nil {
+		m.sessions = &connectionSessions{}
+	}
+	m.wizard = newWizard(m.ctx, m.theme, p.startLocal, m.config, m.persistentConfig, m.sessions, m.request)
+	if !m.pickerDestination {
+		m.wizard.local = p.local
+	}
+	m.wizard.destination, m.wizard.pane = m.pickerDestination, m.pickerPane
+	m.wizard.width, m.wizard.height = p.width, p.height
+	return m, nil
 }
 
 func (m workspace) wizardOverlay() string {

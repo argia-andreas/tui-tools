@@ -5,7 +5,7 @@ bookmarks, existing remotes and **New connection**. It discovers **names only**
 using `rclone listremotes`, without dumping configuration or testing
 authentication. No remote is accessed until Connect, or an explicit read-only
 test in the new-connection wizard. Esc opens local browsing; from the file
-workspace, **Connect a remote** reopens the chooser.
+workspace, **Saved connection in left/right pane** reopens a pane-targeted chooser.
 
 The picker uses the configured theme (Midnight by default): arrows select a
 connection, Tab/Shift+Tab move between controls, and Enter selects or activates.
@@ -16,6 +16,43 @@ connections. Type to append in fields, Backspace to remove a character, Ctrl+U
 to replace the whole field. Root and local folder are editable paths, not
 directory-browser dialogs. The local folder must already exist.
 The supported picker size is at least 60 columns × 21 rows.
+
+## Independent pane sources
+
+Left and right are positions, not source types. Click **Detach** in either
+pane header, or focus the pane and use Ctrl+P → **Detach left/right pane**.
+Detaching a local folder is supported just like detaching a remote. The pane
+shows **Local files**, **Saved connection**, and **New connection**. Up/Down or
+j/k and Enter select an option; all three also support mouse clicks. Tab changes
+pane focus, including when both are detached. Esc closes a folder prompt,
+connection chooser or wizard without implicitly choosing a source.
+
+Local files prompts for an existing directory, starting with that pane's last
+local folder or the app's starting folder. Saved connection shows bookmarks and
+existing remote names; details contain a remote root and optional bookmark name,
+with separate **Open in left/right pane** and **Save bookmark** actions. No
+companion local folder is required. Existing bookmark companion-local metadata
+is preserved on save but never moves the opposite pane. Newly created bookmarks
+may have an empty `local`; startup then uses the starting local folder.
+
+New connection reuses the existing guided setup and read-only test, with the
+target pane named in its heading. In-workspace source choices, including sidebar
+locations, always target the last focused pane; cancel preserves an existing
+attachment, and successful Open changes only that pane. Connection-first startup
+and existing CLI meanings below remain unchanged.
+
+Copies require two attached panes with successful listings. Local/local and
+either direction of local/remote work with the existing confirmations. Two
+remote panes can browse, preview and edit independently, but remote-to-remote
+copying (including within one remote) is explicitly unavailable. Detach and
+source replacement are blocked while transfer planning or execution is active;
+finish or explicitly cancel first. Retried work uses its captured endpoints.
+
+Detaching is not a delete, credential erase or server-side logout. Session-only
+configs retain earlier remotes and remain owned until application exit so the
+opposite pane and captured operations keep working. New setup cannot replace an
+existing remote name. Listing failures leave an attached pane with Retry and
+Detach available; late results cannot repopulate a detached pane.
 
 ## CLI compatibility and precedence
 

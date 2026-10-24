@@ -76,8 +76,15 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.modal == "folder" {
-			if click && msg.Y == y+h-2 && msg.X >= x+2 && msg.X < x+12 {
+			if click && msg.Y == y+h-2 && msg.X >= x+3 && msg.X < x+13 {
+				return key(tea.KeyEsc)
+			}
+			if click && msg.Y == y+h-2 && msg.X >= x+15 && msg.X < x+23 {
+				m.choice = 2
 				return key(tea.KeyEnter)
+			}
+			if click && msg.Y == y+3 {
+				m.choice = 0
 			}
 			return m, nil
 		}
@@ -214,22 +221,30 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		i, origin = 1, l.nav+l.left
 	}
 	m.focus, m.endpoint = i+1, i
-	if i == 1 && m.disconnected {
+	paneWidth := l.left
+	if i == 1 {
+		paneWidth = l.center - l.left
+	}
+	if m.panes[i].detached {
 		if click {
-			connect, folder := destinationRows(l.height - l.drawer)
-			w := l.center - l.left
-			for choice, button := range []struct {
-				row           int
-				label, action string
-			}{{connect, connectButton, "connect"}, {folder, folderButton, "folder"}} {
-				x := origin + 1 + max(0, (w-2-len(button.label))/2)
-				if msg.Y == 2+button.row && msg.X >= x && msg.X < x+len(button.label) {
-					m.destinationChoice = choice
+			first := destinationRows(l.height - l.drawer)
+			for choice, button := range sourceButtons {
+				x := origin + 1 + max(0, (paneWidth-2-len(button.label))/2)
+				if msg.Y == 2+first+2*choice && msg.X >= x && msg.X < x+len(button.label) {
+					m.panes[i].sourceChoice = choice
 					return m.execute(button.action)
 				}
 			}
+		} else if wheel {
+			if msg.Button == tea.MouseButtonWheelUp {
+				return key(tea.KeyUp)
+			}
+			return key(tea.KeyDown)
 		}
 		return m, nil
+	}
+	if click && msg.Y == 1 && m.transferer != nil && msg.X >= origin+paneWidth-len(detachButton)-2 && msg.X < origin+paneWidth-2 {
+		return m.execute("detach")
 	}
 	if wheel {
 		p := &m.panes[i]
@@ -257,10 +272,6 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	start := max(0, p.cursor-available+1)
 	row := msg.Y - 4
 	entries := p.visible()
-	paneWidth := l.left
-	if i == 1 {
-		paneWidth = l.center - l.left
-	}
 	if x >= 0 && x < paneWidth-2 && row >= 0 && row < available && start+row < len(entries) {
 		p.cursor = start + row
 		if x < 2 {

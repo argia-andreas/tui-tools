@@ -25,16 +25,19 @@ type Options struct {
 }
 
 type pane struct {
-	location   storage.Location
-	entries    []storage.Entry
-	cursor     int
-	selected   map[string]bool
-	filter     string
-	generation int
-	loading    bool
-	err        error
-	parent     bool
-	revealName string
+	location     storage.Location
+	entries      []storage.Entry
+	cursor       int
+	selected     map[string]bool
+	filter       string
+	generation   int
+	loading      bool
+	err          error
+	parent       bool
+	revealName   string
+	detached     bool
+	sourceChoice int
+	lastLocal    string
 }
 
 type listed struct {
@@ -67,7 +70,7 @@ type Model struct {
 	theme                       theme.Theme
 	icons                       bool
 	width, height               int
-	focus                       int // 0 navigation, 1 local, 2 remote, 3 inspector, 4 jobs
+	focus                       int // 0 navigation, 1 left, 2 right, 3 inspector, 4 jobs
 	endpoint                    int // last focused file pane, retained while inspecting
 	navigation, inspector, jobs bool
 	modal                       string
@@ -76,9 +79,8 @@ type Model struct {
 	filtering                   bool
 	status                      string
 	navCursor                   int
-	disconnected                bool
-	destinationChoice           int
 	folderPath                  string
+	folderPane                  int
 }
 
 func New(o Options) Model {
@@ -96,16 +98,18 @@ func New(o Options) Model {
 		m.navigation = false
 		m.status = ""
 	}
-	m.disconnected = o.Disconnected
-	if m.disconnected {
+	if o.Disconnected {
 		m.navigation = false
 		if len(o.Locations) == 0 {
 			m.locations = []storage.Location{o.Left}
 		}
 	}
-	m.panes[0] = pane{location: o.Left, selected: map[string]bool{}, loading: true, parent: o.Transferer != nil}
-	m.panes[1] = pane{location: o.Right, selected: map[string]bool{}, loading: !m.disconnected, parent: o.Transferer != nil}
+	m.panes[0] = pane{location: o.Left, selected: map[string]bool{}, loading: true, parent: o.Transferer != nil, lastLocal: o.Left.Path}
+	m.panes[1] = pane{location: o.Right, selected: map[string]bool{}, loading: !o.Disconnected, detached: o.Disconnected, parent: o.Transferer != nil, lastLocal: o.Left.Path}
 	for i := range m.panes {
+		if m.panes[i].location.Remote == "" && m.panes[i].location.Path != "" {
+			m.panes[i].lastLocal = m.panes[i].location.Path
+		}
 		if m.panes[i].hasParent() {
 			m.panes[i].cursor = 1
 		}
@@ -118,7 +122,7 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) list(i int) tea.Cmd {
-	if i == 1 && m.disconnected {
+	if m.panes[i].detached {
 		return nil
 	}
 	p := m.panes[i]
@@ -129,10 +133,11 @@ func (m Model) list(i int) tea.Cmd {
 }
 
 func (m *Model) navigate(i int, loc storage.Location) tea.Cmd {
-	if i == 1 {
-		m.disconnected = false
-	}
 	p := &m.panes[i]
+	p.detached = false
+	if loc.Remote == "" {
+		p.lastLocal = loc.Path
+	}
 	p.location, p.cursor, p.filter = loc, 0, ""
 	p.revealName = ""
 	if p.hasParent() {
@@ -156,10 +161,13 @@ func (m Model) active() int {
 }
 
 func (p pane) hasParent() bool {
-	return p.parent && p.location.Path != "" && path.Clean(p.location.Path) != "/"
+	return !p.detached && p.parent && p.location.Path != "" && path.Clean(p.location.Path) != "/"
 }
 
 func (p pane) visible() []storage.Entry {
+	if p.detached {
+		return nil
+	}
 	var entries []storage.Entry
 	if p.hasParent() && p.filter == "" {
 		entries = append(entries, storage.Entry{Name: "..", IsDir: true})
@@ -199,18 +207,22 @@ func (m *Model) fixFocus() {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case OpenLocalFolderRequested:
+		m.focus, m.endpoint = msg.Pane+1, msg.Pane
 		return m.execute("folder")
 	case ConnectionOpened:
+		if reason := m.connectionDisabled(); reason != "" {
+			m.status = reason
+			return m, nil
+		}
 		if msg.Browser != nil {
 			m.browser = msg.Browser
 		}
 		if msg.Transferer != nil {
 			m.transferer = msg.Transferer
 		}
-		m.disconnected = false
 		m.status = ""
-		m.focus, m.endpoint = 1, 0
-		locations := append([]storage.Location{msg.Right}, msg.Locations...)
+		m.focus, m.endpoint = msg.Pane+1, msg.Pane
+		locations := append([]storage.Location{msg.Location}, msg.Locations...)
 		locations = append(locations, m.locations...)
 		m.locations = nil
 		seen := map[storage.Location]bool{}
@@ -226,16 +238,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.navCursor = 0
 		var local tea.Cmd
-		if msg.Left.Path != "" && msg.Left != m.panes[0].location {
-			local = m.navigate(0, msg.Left)
+		if msg.Local != "" && (storage.Location{Path: msg.Local}) != m.panes[0].location {
+			local = m.navigate(0, storage.Location{Path: msg.Local})
 		}
-		return m, tea.Batch(local, m.navigate(1, msg.Right))
+		return m, tea.Batch(local, m.navigate(msg.Pane, msg.Location))
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.fixFocus()
 	case listed:
 		p := &m.panes[msg.pane]
-		if p.generation == msg.generation {
+		if !p.detached && p.generation == msg.generation {
 			p.entries, p.err, p.loading = msg.entries, msg.err, false
 			if p.revealName != "" {
 				for i, e := range p.visible() {
@@ -276,6 +288,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.status = msg.err.Error()
 		}
+		if m.panes[msg.pane].detached || m.panes[msg.pane].generation != msg.generation {
+			return m, nil
+		}
 		m.panes[msg.pane].generation++
 		m.panes[msg.pane].loading = true
 		return m, m.list(msg.pane)
@@ -297,7 +312,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i := range m.panes {
 			loc := msg.destination
 			loc.Path = path.Dir(loc.Path)
-			if m.panes[i].location == loc {
+			if !m.panes[i].detached && m.panes[i].location == loc {
 				m.panes[i].generation++
 				m.panes[i].loading = true
 				cmds = append(cmds, m.list(i))
@@ -391,11 +406,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if key == "k" || key == "up" {
 				delta = -1
 			}
-			if m.focus == 2 && m.disconnected {
-				m.destinationChoice = max(0, min(1, m.destinationChoice+delta))
+			if (m.focus == 1 || m.focus == 2) && m.panes[m.active()].detached {
+				p := &m.panes[m.active()]
+				p.sourceChoice = max(0, min(len(sourceButtons)-1, p.sourceChoice+delta))
 				return m, nil
 			}
-			if m.focus == 0 {
+			if m.focus == 0 && len(m.locations) > 0 {
 				m.navCursor = (m.navCursor + delta + len(m.locations)) % len(m.locations)
 			}
 			if m.focus == 4 {
@@ -409,18 +425,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "enter":
-			if m.focus == 2 && m.disconnected {
-				if m.destinationChoice == 1 {
-					return m.execute("folder")
-				}
-				return m.execute("connect")
+			if (m.focus == 1 || m.focus == 2) && m.panes[m.active()].detached {
+				return m.execute(sourceButtons[m.panes[m.active()].sourceChoice].action)
 			}
-			if m.focus == 0 {
-				loc := m.locations[m.navCursor]
-				i := 1
-				if loc.Remote == "" {
-					i = 0
+			if m.focus == 0 && len(m.locations) > 0 {
+				if reason := m.connectionDisabled(); m.transferer != nil && reason != "" {
+					m.status = reason
+					return m, nil
 				}
+				loc := m.locations[m.navCursor]
+				i := m.active()
 				m.focus = i + 1
 				m.endpoint = i
 				cmd := m.navigate(i, loc)
@@ -441,7 +455,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "backspace", "h":
-			if m.focus == 1 || (m.focus == 2 && !m.disconnected) {
+			if (m.focus == 1 || m.focus == 2) && !m.panes[m.active()].detached {
 				i := m.active()
 				loc := m.panes[i].location
 				loc.Path = path.Dir(loc.Path)
@@ -458,7 +472,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "/":
-			if m.focus == 1 || (m.focus == 2 && !m.disconnected) {
+			if (m.focus == 1 || m.focus == 2) && !m.panes[m.active()].detached {
 				m.filtering = true
 			}
 		}
@@ -502,8 +516,15 @@ func (m Model) actions() []action {
 		{"retry", "Retry unfinished transfers", "r", "recover failed canceled queue", m.retryDisabled()},
 	}
 	if m.transferer != nil {
-		a = append(a, action{"connect", "Connect a remote", "", "destination connection ftp blob s3", m.connectionDisabled()},
-			action{"folder", "Open local destination folder", "", "destination directory path", m.connectionDisabled()})
+		target := strings.ToLower(paneName(m.active())) + " pane"
+		detachReason := m.connectionDisabled()
+		if m.panes[m.active()].detached {
+			detachReason = "Pane has no source"
+		}
+		a = append(a, action{"connect", "Saved connection in " + target, "", "connect remote ftp blob s3", m.connectionDisabled()},
+			action{"new", "New connection in " + target, "", "setup remote ftp blob s3", m.connectionDisabled()},
+			action{"folder", "Open local folder in " + target, "", "destination directory path", m.connectionDisabled()},
+			action{"detach", "Detach " + target, "", "disconnect source close", detachReason})
 	}
 	for _, name := range theme.Names() {
 		a = append(a, action{"theme:" + name, "Theme: " + name, "", "colors style appearance", ""})
@@ -611,20 +632,37 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch id {
-	case "connect":
+	case "connect", "new":
 		if reason := m.connectionDisabled(); reason != "" {
 			m.status = reason
 			return m, nil
 		}
-		local := m.panes[0].location.Path
-		return m, func() tea.Msg { return ConnectRequested{Local: local, Destination: true} }
+		i, local := m.active(), m.panes[m.active()].lastLocal
+		return m, func() tea.Msg { return ConnectRequested{Local: local, Destination: true, Pane: i, New: id == "new"} }
+	case "detach":
+		if reason := m.connectionDisabled(); reason != "" {
+			m.status = reason
+			return m, nil
+		}
+		i := m.active()
+		p := m.panes[i]
+		m.panes[i] = pane{detached: true, generation: p.generation + 1, lastLocal: p.lastLocal, parent: p.parent, selected: map[string]bool{}}
+		if m.previewCancel != nil {
+			m.previewCancel()
+			m.previewCancel = nil
+		}
+		m.previewGeneration++
+		m.preview, m.filtering = nil, false
+		m.focus, m.endpoint = i+1, i
+		m.status = strings.ToLower(paneName(i)) + " pane detached"
 	case "folder":
 		if reason := m.connectionDisabled(); reason != "" {
 			m.status = reason
 			return m, nil
 		}
-		m.folderPath = m.panes[0].location.Path
+		m.folderPane, m.folderPath = m.active(), m.panes[m.active()].lastLocal
 		m.modal = "folder"
+		m.choice = 0
 		m.status = ""
 	case "navigation":
 		m.navigation = !m.navigation
@@ -640,6 +678,10 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		m.status = fmt.Sprintf("Filetype icons: %t — enable with a Nerd Font", m.icons)
 	case "refresh":
 		i := m.active()
+		if m.panes[i].detached {
+			m.status = "Choose a source before refreshing"
+			return m, nil
+		}
 		m.panes[i].generation++
 		m.panes[i].loading = true
 		return m, m.list(i)

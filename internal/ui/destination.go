@@ -16,56 +16,68 @@ import (
 type ConnectRequested struct {
 	Local       string
 	Destination bool
+	Pane        int
+	New         bool
 }
 
-// OpenLocalFolderRequested opens the right-pane folder prompt from the chooser.
-type OpenLocalFolderRequested struct{}
+// OpenLocalFolderRequested opens the invoking pane's local-folder prompt.
+type OpenLocalFolderRequested struct{ Pane int }
 
-// ConnectionOpened supplies endpoints chosen explicitly by the user.
+// ConnectionOpened attaches one pane. Local restores a companion folder only
+// during startup; subsequent source choices leave it empty.
 type ConnectionOpened struct {
-	Left, Right storage.Location
-	Locations   []storage.Location
-	Browser     storage.Browser
-	Transferer  storage.Transferer
+	Pane       int
+	Location   storage.Location
+	Local      string
+	Locations  []storage.Location
+	Browser    storage.Browser
+	Transferer storage.Transferer
 }
 
-const connectButton = "[ Connect a remote ]"
-const folderButton = "[ Open local folder ]"
+const detachButton = "[ Detach ]"
 
-func destinationRows(h int) (int, int) {
-	connect := max(3, (h-2)/2)
-	return connect, connect + 2
+var sourceButtons = []struct{ label, action string }{
+	{"[ Local files ]", "folder"},
+	{"[ Saved connection ]", "connect"},
+	{"[ New connection ]", "new"},
 }
 
-func (m Model) destinationPane(w, h int) []string {
+func paneName(i int) string {
+	if i == 0 {
+		return "LEFT"
+	}
+	return "RIGHT"
+}
+
+func destinationRows(h int) int { return max(3, (h-8)/2) }
+
+func (m Model) destinationPane(i, w, h int) []string {
 	lines := make([]string, max(0, h-2))
-	connect, folder := destinationRows(h)
+	first := destinationRows(h)
 	center := func(s string) string {
 		return strings.Repeat(" ", max(0, (w-2-lipgloss.Width(s))/2)) + s
 	}
-	if connect-2 < len(lines) {
-		lines[connect-2] = m.paint(center("Choose a destination"), m.theme.Foreground)
+	if first-2 < len(lines) {
+		lines[first-2] = m.paint(center("Choose a source"), m.theme.Foreground)
 	}
-	if connect < len(lines) {
-		lines[connect] = m.paint(center(connectButton), m.theme.Muted)
-	}
-	if folder < len(lines) {
-		lines[folder] = m.paint(center(folderButton), m.theme.Muted)
-	}
-	if m.focus == 2 {
-		row, label := connect, connectButton
-		if m.destinationChoice == 1 {
-			row, label = folder, folderButton
-		}
+	for choice, button := range sourceButtons {
+		row, label := first+2*choice, button.label
 		if row < len(lines) {
-			button := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection)).Render(label)
-			lines[row] = center(button)
+			if m.focus == i+1 && choice == m.panes[i].sourceChoice {
+				label = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection)).Render(label)
+			} else {
+				label = m.paint(label, m.theme.Muted)
+			}
+			lines[row] = center(label)
 		}
 	}
-	return m.block("REMOTE Not connected", w, h, lines, m.focus == 2, m.theme.Remote)
+	return m.block(paneName(i)+" · No source", w, h, lines, m.focus == i+1, m.theme.Muted)
 }
 
 func (m Model) connectionDisabled() string {
+	if m.transferer == nil {
+		return "Demo is read-only; choose sources in live mode"
+	}
 	if m.queuePlanning || m.queueIndex < len(m.queue) || (m.job != nil && m.job.state == "Running") {
 		return "Finish or cancel the current transfer queue first"
 	}
@@ -76,7 +88,15 @@ func (m Model) folderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+p":
 		m.modal = ""
+	case "tab":
+		m.choice = (m.choice + 1) % 3
+	case "shift+tab":
+		m.choice = (m.choice + 2) % 3
 	case "enter":
+		if m.choice == 1 {
+			m.modal = ""
+			return m, nil
+		}
 		folder, err := filepath.Abs(m.folderPath)
 		if strings.TrimSpace(m.folderPath) == "" {
 			m.status = "Choose an existing local folder"
@@ -95,15 +115,18 @@ func (m Model) folderKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.modal, m.status = "", ""
-		return m, m.navigate(1, storage.Location{Path: folder})
+		m.focus, m.endpoint = m.folderPane+1, m.folderPane
+		return m, m.navigate(m.folderPane, storage.Location{Path: folder})
 	case "ctrl+u":
 		m.folderPath = ""
 	case "backspace", "ctrl+h":
 		m.folderPath = dropRune(m.folderPath)
 	case " ":
-		m.folderPath += " "
+		if m.choice == 0 {
+			m.folderPath += " "
+		}
 	default:
-		if msg.Type == tea.KeyRunes {
+		if m.choice == 0 && msg.Type == tea.KeyRunes {
 			for _, r := range msg.Runes {
 				if !unicode.IsControl(r) {
 					m.folderPath += string(r)

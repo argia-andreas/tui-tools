@@ -1,4 +1,4 @@
-.PHONY: build demo run run-lab test test-terminal test-terminal-live check lab-up lab-seed lab-check lab-down test-integration
+.PHONY: build demo run run-lab test test-terminal test-terminal-live test-terminal-panes check lab-up lab-seed lab-check lab-down test-integration
 
 # Open S3 with: make run-lab LAB_RIGHT=lab-s3:/files/assets
 LAB_RIGHT ?= lab-ftp:/incoming
@@ -23,6 +23,10 @@ test-terminal-live: build
 	python3 scripts/lab.py check
 	.venv/bin/python scripts/terminal-live.py
 	.venv/bin/python scripts/terminal-rename.py
+
+test-terminal-panes: build
+	python3 scripts/lab.py check
+	.venv/bin/python scripts/terminal-panes.py
 
 run-lab: build
 	python3 scripts/lab.py check

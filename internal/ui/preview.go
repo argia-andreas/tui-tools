@@ -30,6 +30,9 @@ type previewLoaded struct {
 }
 
 func (m Model) previewDisabled() string {
+	if m.panes[m.active()].detached {
+		return "Choose a source before previewing"
+	}
 	if _, ok := m.browser.(storage.Reader); !ok {
 		return "Content preview is unavailable for this browser"
 	}

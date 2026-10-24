@@ -8,8 +8,9 @@ import (
 )
 
 type editFinished struct {
-	pane int
-	err  error
+	pane       int
+	generation int
+	err        error
 }
 
 func (m Model) editDisabled() string {
@@ -23,6 +24,9 @@ func (m Model) editDisabled() string {
 		return "Finish or cancel the current transfer queue first"
 	}
 	p := m.panes[m.active()]
+	if p.detached {
+		return "Choose a source before editing"
+	}
 	if p.loading || p.err != nil {
 		return "Wait for a successful directory listing"
 	}
@@ -43,6 +47,6 @@ func (m Model) startEdit() (tea.Model, tea.Cmd) {
 	loc := p.location
 	loc.Path = path.Join(loc.Path, p.visible()[p.cursor].Name)
 	return m, tea.Exec(editor.New(m.ctx, m.transferer, loc), func(err error) tea.Msg {
-		return editFinished{pane: i, err: err}
+		return editFinished{pane: i, generation: p.generation, err: err}
 	})
 }

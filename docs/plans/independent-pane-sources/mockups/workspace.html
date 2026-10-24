@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LazyFTP · Independent pane sources · Gate 1</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1423;--surface:#101d2f;--text:#dce8f4;--muted:#91a6bb;--border:#4b6a89;--accent:#65c7f7;--local:#68d6da;--remote:#b6a1f8;--selection:#8af0ce}*{box-sizing:border-box}body{margin:0;padding:32px;background:var(--bg);color:var(--text);font:15px/1.6 ui-monospace,monospace}main{max-width:1180px;margin:auto}h1{font-size:25px}h2{font-size:17px;margin-top:30px}p,figcaption{color:var(--muted)}a{color:var(--accent)}figure{margin:0 0 28px}.terminal{border:1px solid var(--border);padding:12px;background:var(--bg)}.top,.footer{color:var(--muted);padding:5px 0}.top{display:flex;justify-content:space-between}.panes{display:grid;grid-template-columns:1fr 1fr}.pane{border:1px solid var(--border);min-height:235px;padding:12px;min-width:0}.active{border-color:var(--accent)}header{display:flex;gap:10px;justify-content:space-between;font-size:13px;border-bottom:1px solid var(--border);padding-bottom:8px}header span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.local{color:var(--local)}.remote{color:var(--remote)}.control{color:var(--accent);white-space:nowrap}.rows{white-space:pre;line-height:1.85;font-size:14px}.empty{padding:28px 10px 16px}.choice{display:block;width:max-content;margin:8px 0;max-width:100%}.selected{background:var(--selection);color:#071a24}.note{padding:12px;border-left:2px solid var(--accent)}nav{display:flex;gap:24px;flex-wrap:wrap}@media(max-width:700px){body{padding:16px}.panes{font-size:12px}.pane{padding:8px}.rows{font-size:11px}header{display:block}.empty{padding:15px 0}.choice{font-size:11px}}
+</style>
+<style>
+.rows{overflow:hidden}
+@media(max-width:700px){header span{display:block;max-width:100%}.control{display:block}}
+</style>
+<main><h1>Independent sources, familiar two-pane workspace</h1><p id="approval">Needs from you: approve Gate 1, or say what should change. Static product mockups — not the running terminal app.</p><nav><a href="local-folder.html">Local-folder prompt</a><a href="saved-connection.html">Saved-connection flow</a></nav>
+<h2 id="decision-inline">Q1 · Recommend inline choices; details stay in focused overlays</h2><p>Detach affects only the chosen pane. No new manager, tabs, or automatic swapping. The five states below are separate examples of the same screen.</p>
+<figure id="fig-default"><div class="terminal"><div class="top"><b>LAZYFTP</b><span>[ Actions ]</span></div><div class="panes"><section class="pane active"><header><span>LEFT · <b class="local">LOCAL</b> /work</span><b class="control">[ Detach ]</b></header><div class="rows">↑ Up   / Filter   ↻ Refresh
+    Name                      Size
+› ▸ documents/                   —
+○ ≡ readme.md                1.4 KB
+○ λ main.go                  3.2 KB</div></section><section class="pane"><header><span>RIGHT · <b class="remote">REMOTE</b> archive:/incoming</span><b class="control">[ Detach ]</b></header><div class="rows">↑ Up   / Filter   ↻ Refresh
+    Name                      Size
+  ↑ ..
+○ ▸ exports/                     —
+○ ⌘ data.csv                12.0 KB</div></section></div><div class="footer">Tab panes · c copy · Ctrl+P actions · ? help · q quit</div></div><figcaption>S1 · Attached local/remote. Source labels and colors follow the source, not the side. Detach is also available in the palette.</figcaption></figure>
+<figure id="fig-left-detached"><div class="terminal"><div class="top"><b>LAZYFTP</b><span>[ Actions ]</span></div><div class="panes"><section class="pane active"><header><span>LEFT · No source</span></header><div class="empty">Choose a source<span class="choice selected">[ Local files ]</span><span class="choice">[ Saved connection ]</span><span class="choice">[ New connection ]</span></div></section><section class="pane"><header><span>RIGHT · <b class="remote">REMOTE</b> archive:/incoming</span><b class="control">[ Detach ]</b></header><div class="rows">↑ Up   / Filter   ↻ Refresh
+    Name                      Size
+  ↑ ..
+○ ▸ exports/                     —
+○ ⌘ data.csv                12.0 KB</div></section></div><div class="footer">Left pane detached · ↑↓ choose · Enter open · Tab panes</div></div><figcaption>S2 · Detached left. Right source, folder, cursor, filters and selections remain unchanged.</figcaption></figure>
+<figure id="fig-right-detached"><div class="terminal"><div class="top"><b>LAZYFTP</b><span>[ Actions ]</span></div><div class="panes"><section class="pane"><header><span>LEFT · <b class="remote">REMOTE</b> archive:/incoming</span><b class="control">[ Detach ]</b></header><div class="rows">↑ Up   / Filter   ↻ Refresh
+    Name                      Size
+  ↑ ..
+○ ▸ exports/                     —
+○ ⌘ data.csv                12.0 KB</div></section><section class="pane active"><header><span>RIGHT · No source</span></header><div class="empty">Choose a source<span class="choice selected">[ Local files ]</span><span class="choice">[ Saved connection ]</span><span class="choice">[ New connection ]</span></div></section></div><div class="footer">Right pane detached · ↑↓ choose · Enter open · Tab panes</div></div><figcaption>S3 · Detached right, with a remote on the left. Selecting Local files here produces remote/local.</figcaption></figure>
+<figure id="fig-both-detached"><div class="terminal"><div class="top"><b>LAZYFTP</b><span>[ Actions ]</span></div><div class="panes"><section class="pane"><header><span>LEFT · No source</span></header><div class="empty">Choose a source<span class="choice">[ Local files ]</span><span class="choice">[ Saved connection ]</span><span class="choice">[ New connection ]</span></div></section><section class="pane active"><header><span>RIGHT · No source</span></header><div class="empty">Choose a source<span class="choice selected">[ Local files ]</span><span class="choice">[ Saved connection ]</span><span class="choice">[ New connection ]</span></div></section></div><div class="footer">Choose two sources before copying · Tab panes · Ctrl+P actions</div></div><figcaption>S4 · Both detached. Neither pane is implicitly local. No invisible directory can receive a copy.</figcaption></figure>
+<figure id="fig-two-remotes"><div class="terminal"><div class="top"><b>LAZYFTP</b><span>[ Actions ]</span></div><div class="panes"><section class="pane active"><header><span>LEFT · <b class="remote">REMOTE</b> archive:/incoming</span><b class="control">[ Detach ]</b></header><div class="rows">↑ Up   / Filter   ↻ Refresh
+    Name                      Size
+  ↑ ..
+› ⌘ data.csv                12.0 KB</div></section><section class="pane"><header><span>RIGHT · <b class="remote">REMOTE</b> backup:/daily</span><b class="control">[ Detach ]</b></header><div class="rows">↑ Up   / Filter   ↻ Refresh
+    Name                      Size
+  ↑ ..
+○ ▸ snapshots/                   —</div></section></div><div class="footer">Remote-to-remote copies are not supported yet</div></div><figcaption>S5 · Two remotes may browse, preview and edit independently. This feature does not add remote-to-remote copying.</figcaption></figure>
+<p class="note" id="safety">R1 · Source changes are disabled during transfer planning or execution: finish or explicitly cancel the queue first. Detach never silently cancels a write or erases credentials.</p><p id="next">After approval: architecture, program design and slice-plan gates, in that order. No implementation code exists.</p></main></html>

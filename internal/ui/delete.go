@@ -27,7 +27,7 @@ func (m Model) deleteDisabled() string {
 		return "Finish or cancel the current transfer queue first"
 	}
 	p := m.panes[m.active()]
-	if m.active() == 1 && m.disconnected {
+	if p.detached {
 		return "Choose a connected file pane"
 	}
 	if p.loading || p.err != nil {

@@ -206,8 +206,17 @@ Do not use this prototype on valuable production files.
 | q | Quit |
 
 In the palette, type to fuzzy-search, use arrows to choose, Enter to run, and
-Esc to return. In the navigation sidebar, Enter opens the selected location in
-the corresponding file pane. Local and remote selections remain independent.
+Esc to return. Either pane can show local files or any saved/new remote. Click
+**Detach** in a pane header (or use Ctrl+P → Detach) to disconnect only that pane.
+Its inline chooser offers **Local files**, **Saved connection**, and **New
+connection**; use arrows/j/k and Enter, or click. Esc cancels setup without
+reattaching anything. Local files opens an existing-folder prompt for that pane.
+Source actions and sidebar locations open in the **last focused file pane**,
+not a fixed local-left/remote-right slot. The other pane's folder, filter and
+selections stay unchanged. Two remote panes can browse, preview and edit, but
+remote-to-remote copying remains unsupported. Finish or explicitly cancel active
+transfers before detaching or changing sources. Detach never deletes files,
+bookmarks or credentials; session configurations remain alive until app exit.
 
 ## Mouse navigation
 
@@ -231,6 +240,7 @@ widths optional sidebars hide automatically and return when there is room.
 make test           # go test ./...
 make check          # gofmt check, go vet, and go test
 make test-terminal  # build and run the PTY smoke test using .venv
+make test-terminal-panes # independent pane sources via actual terminal; lab required
 make test-integration   # real FTP/Blob/S3 bytes + UI folder round trips; lab required
 make test-terminal-live # actual TUI upload/download and conflict safety
 ```

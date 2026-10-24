@@ -44,8 +44,10 @@ def exercise(root):
             terminal = live.Terminal(local, prefix if ":" in root else "lab-ftp:/incoming")
             terminal.wait("original.txt", absent=("Loading",))
             if ":" not in root:
-                terminal.send("\x10Open local destination folder\r", "OPEN LOCAL DESTINATION")
-                terminal.send("\x15" + prefix + "\r", "existing.txt", absent=("OPEN LOCAL DESTINATION", "Loading"))
+                terminal.send("\t", "original.txt")
+                terminal.send("\x10Open local folder\r", "Open local folder · RIGHT pane")
+                terminal.send("\x15" + prefix + "\r", "existing.txt", absent=("Open local folder ·", "Loading"))
+                terminal.send("\t", "original.txt")
             terminal.wait("original.txt", "existing.txt", absent=("Loading",))
             terminal.send("r", "No failed or canceled transfers to retry")
             terminal.send("R", "Enter review", absent=("RENAME FILE?",))

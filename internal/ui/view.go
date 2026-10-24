@@ -260,17 +260,14 @@ func locationLabel(loc storage.Location) string {
 
 func (m Model) filePane(i, w, h int) []string {
 	p := m.panes[i]
+	if p.detached {
+		return m.destinationPane(i, w, h)
+	}
 	accent := m.theme.Local
 	label := "LOCAL"
-	if i == 1 {
+	if p.location.Remote != "" {
 		accent = m.theme.Remote
 		label = "REMOTE"
-		if m.disconnected {
-			return m.destinationPane(w, h)
-		}
-		if p.location.Remote == "" {
-			label, accent = "LOCAL", m.theme.Local
-		}
 	}
 	columns := fit("    Name", max(1, w-13)) + fit("Size", 10)
 	lines := []string{m.paint(paneControls, m.theme.Muted), m.paint(fit(columns, w-2), m.theme.Muted)}
@@ -363,9 +360,6 @@ func (m Model) filePane(i, w, h int) []string {
 		row += m.paint(strings.Repeat(" ", max(0, w-2-lipgloss.Width(row))), m.theme.Foreground)
 		if j == p.cursor && m.focus == i+1 && m.modal == "" {
 			foreground, background := m.theme.SelectionText, m.theme.Selection
-			if m.disconnected {
-				foreground, background = m.theme.Foreground, m.theme.Surface
-			}
 			row = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(foreground)).Background(lipgloss.Color(background)).Render(ansi.Strip(row))
 		}
 		lines = append(lines, row)
@@ -397,7 +391,19 @@ func (m Model) filePane(i, w, h int) []string {
 		info += " · /" + text(p.filter)
 	}
 	lines = append(lines, m.paint(info, m.theme.Muted))
-	return m.block(label+" "+locationLabel(p.location), w, h, lines, m.focus == i+1, accent)
+	title := paneName(i) + " · " + label + " " + locationLabel(p.location)
+	if m.transferer != nil {
+		title = ansi.Truncate(text(title), max(0, w-len(detachButton)-6), "…")
+	}
+	result := m.block(title, w, h, lines, m.focus == i+1, accent)
+	if m.transferer != nil {
+		border := m.theme.Border
+		if m.focus == i+1 {
+			border = m.theme.Focus
+		}
+		result[0] = ansi.Cut(result[0], 0, w-len(detachButton)-2) + m.paint(detachButton, m.theme.Focus) + m.paint("─┐", border)
+	}
+	return result
 }
 
 func (m Model) navigationPane(w, h int) []string {
@@ -443,6 +449,9 @@ func (m Model) inspectorPane(w, h int) []string {
 	if source == "" {
 		source = "LOCAL"
 	}
+	if p.detached {
+		source = paneName(m.active()) + " · No source"
+	}
 	lines := []string{m.paint("  "+source, m.theme.Muted), m.paint("  "+p.location.Path, m.theme.Muted), ""}
 	if len(entries) > 0 {
 		e := entries[min(p.cursor, len(entries)-1)]
@@ -470,8 +479,16 @@ func (m Model) overlay(background []string) []string {
 	lines := []string{}
 	title := "ACTIONS · Ctrl+P"
 	if m.modal == "folder" {
-		title = "OPEN LOCAL DESTINATION"
-		lines = []string{"", "  Folder", "  > " + text(m.folderPath) + "▏", m.paint("  "+m.status, m.theme.Error), "  Enter Open · Ctrl+U Clear · Esc Cancel"}
+		title = "Open local folder · " + paneName(m.folderPane) + " pane"
+		lines = []string{"", "  Folder", "  > " + text(m.folderPath) + "▏", m.paint("  "+m.status, m.theme.Error), "  Tab focus · Enter select · Ctrl+U clear · Esc cancel"}
+		buttons := "  "
+		for i, label := range []string{"[ Cancel ]", "[ Open ]"} {
+			if m.choice == i+1 {
+				label = lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection)).Render(label)
+			}
+			buttons += label + "  "
+		}
+		lines = append(lines, buttons)
 	} else if m.modal == "file-rename" {
 		title, lines = "RENAME FILE?", m.renameLines(w, h)
 	} else if m.modal == "preview" {

@@ -525,3 +525,78 @@ func TestWizardTypeDescriptionMouseSelectsItsCard(t *testing.T) {
 		t.Fatal("description click did not select Azure")
 	}
 }
+
+func TestDirectNewWizardTargetsPaneAndBackPreservesWorkspace(t *testing.T) {
+	for _, pane := range []int{0, 1} {
+		m, _, _ := setupWizard(t)
+		m, _ = wizardKey(m, "esc")
+		m, _ = wizardKey(m, "esc")
+		m, cmd := updateWorkspace(m, ui.ConnectRequested{Destination: true, Pane: pane, New: true})
+		if cmd != nil || !strings.Contains(ansi.Strip(m.View()), "New connection · "+paneHeading(pane)+" pane") {
+			t.Fatal("direct new did not immediately enter targeted wizard")
+		}
+		m, _ = wizardKey(m, "esc")
+		if !strings.Contains(ansi.Strip(m.View()), "Choose connection · "+paneHeading(pane)+" pane") {
+			t.Fatal("wizard Back lost picker or target")
+		}
+		if strings.Contains(m.View(), "Loading connections") {
+			t.Fatal("wizard Back left canceled discovery loading forever")
+		}
+		m, _ = wizardKey(m, "esc")
+		if m.View() != "workspace;size=100x30;" {
+			t.Fatalf("canceled setup mutated underlying model: %s", m.View())
+		}
+		m, _ = updateWorkspace(m, ui.ConnectRequested{Destination: true, Pane: pane, New: true})
+		m = fillWizardFTP(m, fmt.Sprintf("pane-%d", pane))
+		m, cmd = wizardKey(m, "enter")
+		m = runWorkspace(m, cmd)
+		m, cmd = wizardKey(m, "enter")
+		m = runWorkspace(m, cmd)
+		if !strings.Contains(m.View(), fmt.Sprintf("connected=|pane-%d:/|", pane)) || !strings.Contains(m.View(), fmt.Sprintf("pane=%d;", pane)) {
+			t.Fatalf("direct new attached wrong pane/companion: %s", m.View())
+		}
+	}
+}
+
+func TestSequentialPaneSessionsRetainAllRemotesUntilExit(t *testing.T) {
+	m, target, sessions := setupWizard(t)
+	m, _ = wizardKey(m, "esc")
+	m, _ = wizardKey(m, "esc")
+	var paths []string
+	var cmd tea.Cmd
+	for pane, name := range []string{"left-session", "right-session"} {
+		m, _ = updateWorkspace(m, ui.ConnectRequested{Destination: true, Pane: pane, New: true})
+		m = fillWizardFTP(m, name)
+		m, cmd = wizardKey(m, "enter")
+		m = runWorkspace(m, cmd)
+		m, cmd = wizardKey(m, "enter")
+		m = runWorkspace(m, cmd)
+		paths = append(paths, m.config)
+		if !strings.Contains(m.View(), fmt.Sprintf("pane=%d;", pane)) {
+			t.Fatal("session lost target")
+		}
+	}
+	for i, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil || !strings.Contains(string(data), "[left-session]") || (i == 1 && !strings.Contains(string(data), "[right-session]")) {
+			t.Fatalf("session %d lost earlier remote or was released: %v", i, err)
+		}
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatal("session defaults persisted credentials")
+	}
+	// Duplicate names cannot silently replace a remote still used by a pane.
+	m, _ = updateWorkspace(m, ui.ConnectRequested{Destination: true, Pane: 0, New: true})
+	m = fillWizardFTP(m, "LEFT-SESSION")
+	m, cmd = wizardKey(m, "enter")
+	m = runWorkspace(m, cmd)
+	if strings.Contains(m.View(), "Listing verified") || !strings.Contains(m.View(), "already exists") {
+		t.Fatalf("duplicate name was not safely rejected: %s", m.View())
+	}
+	sessions.Close()
+	for _, path := range paths {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatal("exit leaked snapshot")
+		}
+	}
+}

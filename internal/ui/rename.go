@@ -36,7 +36,7 @@ func (m Model) renameDisabled() string {
 	if m.focus != 1 && m.focus != 2 {
 		return "Focus a file pane to rename"
 	}
-	if m.active() == 1 && m.disconnected {
+	if m.panes[m.active()].detached {
 		return "Connect a remote or open a local folder first"
 	}
 	if m.queuePlanning || m.queueIndex < len(m.queue) || (m.job != nil && m.job.state == "Running") {

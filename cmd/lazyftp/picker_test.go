@@ -331,3 +331,41 @@ func TestPickerContinuousNavigation(t *testing.T) {
 		}
 	}
 }
+
+func TestPanePickerKeyboardSkipsCompanionAndSavesNoLocal(t *testing.T) {
+	th, _ := theme.Get("")
+	path := filepath.Join(t.TempDir(), "bookmarks")
+	m := newPicker([]string{"ftp"}, nil, "/missing-starting-folder", "/ignored-startup-override", path, th)
+	m.destination, m.pane = true, 0
+	m = key(m, "enter")
+	m = key(m, "ctrl+u")
+	m = key(m, "/root")
+	m = key(m, "tab")
+	m = key(m, "New bookmark")
+	m = key(m, "tab") // Open
+	m = key(m, "tab") // Save bookmark
+	m = key(m, "enter")
+	got, err := connections.Load(path)
+	if err != nil || len(got) != 1 || got[0].Name != "New bookmark" || got[0].Root != "/root" || got[0].Local != "" {
+		t.Fatalf("pane keyboard required a companion or saved one: %+v %v", got, err)
+	}
+	// Shift+Tab likewise skips the absent companion field.
+	m = key(m, "esc")
+	m = key(m, "enter")
+	next, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = next.(picker) // Save bookmark
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = next.(picker) // Open
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = next.(picker) // Bookmark name
+	next, _ = m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = next.(picker) // Remote root
+	m = key(m, "ctrl+u")
+	m = key(m, "/changed")
+	m = key(m, "enter") // Bookmark name, not companion
+	m = key(m, "enter") // Open
+	m = key(m, "enter")
+	if m.selected == nil || m.selected.Root != "/changed" || m.selected.Local != "" {
+		t.Fatalf("reverse focus or Enter navigation included companion: %+v", m.selected)
+	}
+}

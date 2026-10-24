@@ -70,6 +70,8 @@ type connectionWizard struct {
 	ctx                              context.Context
 	theme                            theme.Theme
 	local, source, target            string
+	destination                      bool
+	pane                             int
 	sessions                         *connectionSessions
 	values                           map[string]string
 	kind, step, focus, width, height int
@@ -467,7 +469,11 @@ func (w *connectionWizard) rows() []wizardRow {
 	_, _, width := w.geometry(0)
 	inner := max(54, width-6)
 	compact := w.height < 28
-	rows := []wizardRow{{"", -1}, {"New connection", -1}, {"", -1}}
+	heading := "New connection"
+	if w.destination {
+		heading += " · " + paneHeading(w.pane) + " pane"
+	}
+	rows := []wizardRow{{"", -1}, {heading, -1}, {"", -1}}
 	progress := []string{"○ Type", "○ Details", "○ Test"}
 	for i := range progress {
 		if i < w.step {
@@ -606,7 +612,7 @@ func (w *connectionWizard) View() string {
 		if r.focus < 0 {
 			style = style.Foreground(lipgloss.Color(w.theme.Muted))
 		}
-		if r.text == "New connection" || strings.Contains(r.text, "→") || strings.HasPrefix(r.text, "! ") {
+		if strings.HasPrefix(r.text, "New connection") || strings.Contains(r.text, "→") || strings.HasPrefix(r.text, "! ") {
 			style = style.Foreground(lipgloss.Color(w.theme.Focus)).Bold(true)
 		}
 		if strings.HasPrefix(r.text, "✓ ") {

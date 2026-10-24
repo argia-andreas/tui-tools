@@ -106,29 +106,29 @@ func TestRightPaneLocalDestination(t *testing.T) {
 			switch route {
 			case "arrows":
 				key(tea.KeyDown)
-				key(tea.KeyUp)
 				key(tea.KeyEnter)
 				if m.picker == nil {
-					t.Fatal("Up did not select the remote option")
+					t.Fatal("Down did not select the saved connection option")
 				}
 				key(tea.KeyEsc)
-				if strings.Contains(ansi.Strip(m.View()), "OPEN LOCAL DESTINATION") {
+				if strings.Contains(ansi.Strip(m.View()), "Open local folder · RIGHT pane") {
 					t.Fatal("Escape opened the folder prompt instead of returning to the workspace")
 				}
-				key(tea.KeyDown)
+				key(tea.KeyUp)
 				key(tea.KeyEnter)
 			case "vim keys":
-				for _, r := range "jkj" {
+				for _, r := range "jk" {
 					m, _ = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 				}
 				key(tea.KeyEnter)
 			case "mouse":
-				m, _ = wizardClick(t, m, "Open local folder")
+				m, _ = wizardClick(t, m, "[ Local files ]")
 			case "chooser":
+				key(tea.KeyDown)
 				key(tea.KeyEnter)
 				m, _ = wizardClick(t, m, "Browse local files")
 			}
-			if !strings.Contains(ansi.Strip(m.View()), "OPEN LOCAL DESTINATION") {
+			if !strings.Contains(ansi.Strip(m.View()), "Open local folder · RIGHT pane") {
 				t.Fatalf("%s did not open the destination folder prompt:\n%s", route, m.View())
 			}
 			key(tea.KeyCtrlU)
@@ -214,9 +214,11 @@ func (m workspaceProbe) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.events += fmt.Sprintf("size=%dx%d;", msg.Width, msg.Height)
 	case ui.ConnectionOpened:
-		m.events += fmt.Sprintf("connected=%s|%s|%v;", msg.Left, msg.Right, msg.Locations)
+		m.events += fmt.Sprintf("connected=%s|%s|%v;pane=%d;", msg.Local, msg.Location, msg.Locations, msg.Pane)
 		m.events += fmt.Sprintf("backend=%t/%t;", msg.Browser != nil, msg.Transferer != nil)
 		return m, func() tea.Msg { return "connection-result" }
+	case ui.OpenLocalFolderRequested:
+		m.events += fmt.Sprintf("folder-pane=%d;", msg.Pane)
 	case tea.KeyMsg:
 		m.events += "key=" + msg.String() + ";"
 	case tea.MouseMsg:
@@ -376,6 +378,76 @@ func TestDiscoveryPreservesChosenActionAndHelp(t *testing.T) {
 			if !strings.Contains(m.View(), "New connection") || !strings.Contains(m.View(), "FTP / FTPS") {
 				t.Fatal("discovery stole New connection selection")
 			}
+		}
+	}
+}
+
+func TestWorkspacePaneBookmarksNeverSendCompanionLocal(t *testing.T) {
+	fakeRclone(t)
+	th, _ := theme.Get("")
+	for _, pane := range []int{0, 1} {
+		for _, companion := range []string{"", "/missing-old-companion"} {
+			path := filepath.Join(t.TempDir(), "bookmarks")
+			bookmark := connections.Bookmark{Name: "Saved", Remote: "ftp", Root: "/incoming", Local: companion}
+			if err := connections.Save(path, bookmark); err != nil {
+				t.Fatal(err)
+			}
+			m := workspace{model: workspaceProbe{events: "unchanged;"}, ctx: context.Background(), theme: th, bookmarkPath: path, leftOverride: "/ignored-override",
+				extra: []storage.Location{{Path: "/retained-local"}, {Remote: "other", Path: "/kept"}}}
+			m, cmd := updateWorkspace(m, ui.ConnectRequested{Destination: true, Pane: pane, Local: "/missing-start"})
+			m = runWorkspace(m, cmd)
+			if !strings.Contains(ansi.Strip(m.View()), "Choose connection · "+paneHeading(pane)+" pane") {
+				t.Fatal("picker lost target heading")
+			}
+			m, _ = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyEnter})
+			view := ansi.Strip(m.View())
+			if strings.Contains(view, "Local folder") || !strings.Contains(view, "Connection details · "+paneHeading(pane)+" pane") {
+				t.Fatalf("pane details retain local input or lose target: %s", view)
+			}
+			m, _ = wizardClick(t, m, "[ Save bookmark ]")
+			saved, err := connections.Load(path)
+			if err != nil || len(saved) != 1 || saved[0] != bookmark {
+				t.Fatalf("pane-specific save lost metadata: %+v %v", saved, err)
+			}
+			m, cmd = wizardClick(t, m, "[ Open in "+strings.ToLower(paneHeading(pane))+" pane ]")
+			m = runWorkspace(m, cmd)
+			want := fmt.Sprintf("pane=%d;", pane)
+			if !strings.Contains(m.View(), "unchanged;connected=|ftp:/incoming|") || !strings.Contains(m.View(), want) || !strings.Contains(m.View(), "/retained-local") || !strings.Contains(m.View(), "other:/kept") {
+				t.Fatalf("pane open changed companion or dropped roots: %s", m.View())
+			}
+		}
+	}
+}
+
+func TestWorkspaceNoLocalStartupBookmarkDefaultsToStartingFolder(t *testing.T) {
+	fakeRclone(t)
+	th, _ := theme.Get("")
+	local, path := t.TempDir(), filepath.Join(t.TempDir(), "bookmarks")
+	if err := connections.Save(path, connections.Bookmark{Name: "Saved", Remote: "ftp", Root: "/"}); err != nil {
+		t.Fatal(err)
+	}
+	m := workspace{model: workspaceProbe{}, ctx: context.Background(), theme: th, bookmarkPath: path}
+	m, cmd := updateWorkspace(m, ui.ConnectRequested{Local: local, Pane: 0})
+	m = runWorkspace(m, cmd)
+	m, _ = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd = wizardClick(t, m, "[ Connect ]")
+	m = runWorkspace(m, cmd)
+	if !strings.Contains(m.View(), "connected="+local+"|ftp:/|") || !strings.Contains(m.View(), "pane=1;") {
+		t.Fatalf("startup fallback or target lost: %s", m.View())
+	}
+}
+
+func TestWorkspacePickerLocalActionRetainsExplicitPane(t *testing.T) {
+	fakeRclone(t)
+	th, _ := theme.Get("")
+	for _, pane := range []int{0, 1} {
+		m := workspace{model: workspaceProbe{}, ctx: context.Background(), theme: th, bookmarkPath: filepath.Join(t.TempDir(), "bookmarks")}
+		m, cmd := updateWorkspace(m, ui.ConnectRequested{Destination: true, Pane: pane, Local: t.TempDir()})
+		m = runWorkspace(m, cmd)
+		m, cmd = wizardClick(t, m, "Browse local files")
+		m = runWorkspace(m, cmd)
+		if m.View() != fmt.Sprintf("folder-pane=%d;", pane) {
+			t.Fatalf("folder request lost explicit target: %s", m.View())
 		}
 	}
 }

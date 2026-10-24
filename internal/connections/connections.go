@@ -90,7 +90,7 @@ func (b Bookmark) Validate() error {
 			}
 		}
 	}
-	if !filepath.IsAbs(b.Local) {
+	if b.Local != "" && !filepath.IsAbs(b.Local) {
 		return fmt.Errorf("bookmark local folder must be absolute")
 	}
 	return nil
