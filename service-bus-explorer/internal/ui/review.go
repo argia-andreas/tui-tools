@@ -15,6 +15,11 @@ import (
 type reviewState struct {
 	phase, outcome, typed, newID string
 	delivery                     explorer.Delivery
+	replay                       explorer.Replay
+	destination                  explorer.Resource
+	selected, back               bool
+	query                        string
+	queueIndex                   int
 	message                      explorer.Message
 	deadline                     time.Time
 	cancel                       context.CancelFunc
@@ -64,6 +69,11 @@ func (m Model) release() (tea.Model, tea.Cmd) {
 			m.stop()
 			return m, tea.Quit
 		}
+		if m.review.back {
+			m.review.phase, m.review.choice, m.review.back = "configure", 0, false
+			m.review.replay = nil
+			return m, nil
+		}
 		m.review.phase = "result"
 		m.status = m.review.outcome
 		return m, nil
@@ -84,7 +94,7 @@ func (m Model) quit() (tea.Model, tea.Cmd) {
 	}
 	m.review.quitting = true
 	switch m.review.phase {
-	case "acquiring":
+	case "acquiring", "preparing":
 		m.review.cancelled = true
 		m.review.cancel()
 		m.status = "Quitting · awaiting acquisition and releasing any late delivery…"
@@ -107,8 +117,32 @@ func (m Model) ExitSummary() string { return clean(m.review.outcome, false) }
 func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	finish := func(next tea.Model, cmd tea.Cmd) (tea.Model, tea.Cmd, bool) { return next, cmd, true }
 	switch msg := msg.(type) {
+	case prepared:
+		m.review.delivery, m.review.replay = msg.delivery, msg.replay
+		if msg.err != nil || m.review.cancelled || msg.replay == nil {
+			m.review.outcome = "Selected-message preparation stopped; nothing sent or deleted."
+			if msg.err != nil {
+				m.review.outcome += " " + msg.err.Error()
+			}
+			return finish(m.release())
+		}
+		snapshot := msg.replay.Snapshot()
+		if snapshot.Sequence != m.review.message.Sequence || snapshot.ID != m.review.message.ID {
+			m.review.outcome = "Selected identity changed; nothing sent or deleted."
+			return finish(m.release())
+		}
+		m.review.message, m.review.phase, m.review.choice = snapshot, "review", 0
+		m.review.newID = "sbx-" + rand.Text()
+		m.status = "PEEK COPY · original retained · Cancel selected by default"
+		if msg.delivery != nil {
+			m.review.deadline = msg.delivery.LockedUntil()
+			m.status = "SELECTED ORIGINAL LOCKED · cleanup authorized only after confirmed send"
+			return m, m.lockTimer(), true
+		}
+		return m, nil, true
 	case acquired:
 		m.review.delivery = msg.delivery
+		m.review.replay, m.review.destination = msg.delivery, m.resource
 		if msg.delivery != nil {
 			m.review.message, m.review.deadline = msg.delivery.Snapshot(), msg.delivery.LockedUntil()
 			if m.review.cancelled || msg.err != nil {
@@ -140,6 +174,13 @@ func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		return finish(m.release())
 	case released:
 		m.review.delivery = nil
+		if m.review.back && msg.err == nil && !m.review.quitting {
+			m.review.phase, m.review.choice, m.review.back = "configure", 0, false
+			m.review.replay = nil
+			m.review.deadline = time.Time{}
+			m.status = "Lock release confirmed · edit destination/cleanup, then review again"
+			return m, nil, true
+		}
 		m.review.phase = "result"
 		if msg.err == nil {
 			m.review.outcome += " Lock release confirmed (delivery count may increase)."
@@ -153,7 +194,7 @@ func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		return m, nil, true
 	case lockTick:
-		if uint64(msg) != m.reviewID || m.review.phase != "review" {
+		if uint64(msg) != m.reviewID || m.review.phase != "review" || m.review.delivery == nil {
 			return m, nil, true
 		}
 		if !time.Now().Before(m.review.deadline) {
@@ -165,11 +206,13 @@ func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		if m.review.phase == "" {
 			return m, nil, false
 		}
-		if msg.String() == "ctrl+c" || (msg.String() == "q" && (m.review.phase != "review" || m.review.choice != 3)) {
+		if msg.String() == "ctrl+c" || (msg.String() == "q" && m.review.phase != "destination" && (m.review.phase != "review" || m.review.choice != 3)) {
 			return finish(m.quit())
 		}
 		switch m.review.phase {
-		case "acquiring":
+		case "selected", "destination", "configure":
+			return finish(m.selectedKey(msg))
+		case "acquiring", "preparing":
 			if msg.String() == "esc" {
 				m.review.cancelled = true
 				m.review.cancel()
@@ -190,7 +233,7 @@ func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 }
 
 func (m Model) reviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if !time.Now().Before(m.review.deadline) {
+	if m.review.delivery != nil && !time.Now().Before(m.review.deadline) {
 		m.review.outcome = "Lock expired; no operation requested. Receive and review again."
 		return m.release()
 	}
@@ -200,15 +243,24 @@ func (m Model) reviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if !m.splitReview() && m.review.scroll > 0 && msg.String() != "pgup" && msg.String() != "pgdown" && msg.String() != "esc" {
 		return m, nil // Never submit a confirmation hidden behind the narrow body view.
 	}
+	if m.review.selected && msg.String() == "b" {
+		m.review.back, m.review.scroll = true, 0
+		m.review.outcome = "Returning to resend configuration; no operation requested."
+		return m.release()
+	}
+	choices := 4
+	if m.review.selected {
+		choices = 2 // Destination and cleanup are frozen after preparation.
+	}
 	switch msg.String() {
 	case "esc":
 		m.review.outcome = "Cancelled; no resend or delete requested."
 		return m.release()
 	case "tab", "down":
-		m.review.choice = (m.review.choice + 1) % 4
+		m.review.choice = (m.review.choice + 1) % choices
 		m.review.typed = ""
 	case "shift+tab", "up":
-		m.review.choice = (m.review.choice + 3) % 4
+		m.review.choice = (m.review.choice + choices - 1) % choices
 		m.review.typed = ""
 	case "pgdown":
 		if !m.splitReview() && m.review.scroll == 0 {
@@ -251,6 +303,10 @@ func (m Model) reviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) operate(deleting bool) (tea.Model, tea.Cmd) {
 	d, id, cleanup, deadline := m.review.delivery, m.review.newID, m.review.cleanup, m.review.deadline
+	replay, destination := m.review.replay, m.review.destination
+	if d == nil {
+		deadline = time.Now().Add(10 * time.Second)
+	}
 	m.review.phase = "sending"
 	if deleting {
 		m.review.phase = "deleting"
@@ -265,7 +321,7 @@ func (m Model) operate(deleting bool) (tea.Model, tea.Cmd) {
 			}
 			return operated{"Deletion confirmed for the reviewed DLQ message.", true}
 		}
-		result, err := d.Resend(ctx, id)
+		result, err := replay.Resend(ctx, destination, id)
 		switch result.State {
 		case "confirmed":
 			outcome := "Send confirmed · new ID " + id + "."

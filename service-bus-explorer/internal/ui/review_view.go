@@ -20,6 +20,9 @@ func (m Model) reviewView(width, height int) []string {
 	if width < 80 || height < 18 {
 		return m.panel("DLQ / REVIEW", width, height, []string{"", m.paint("  Resize to at least 80×24 to review or confirm.", m.theme.Warning), m.paint("  Esc releases · Ctrl+C quits safely · lock still expires", m.theme.Muted)}, true)
 	}
+	if r.selected && (r.phase == "selected" || r.phase == "destination" || r.phase == "configure" || r.phase == "preparing") {
+		return m.selectedView(width, height)
+	}
 	if r.phase == "acquiring" {
 		return m.panel("RECEIVE NEXT / DLQ", width, height, []string{
 			"", m.paint("  Acquiring next available message… (up to 5s)", m.theme.Warning), "",
@@ -47,21 +50,33 @@ func (m Model) reviewView(width, height int) []string {
 			mark = "[x]"
 		}
 		cleanup := "  " + mark + " Remove original ONLY after confirmed send"
+		if r.selected {
+			cleanup = "  " + mark + " Delete original after confirmed resend (fixed for this review)"
+		}
 		if r.choice == 2 {
 			cleanup = m.selectedLine("› "+mark+" Remove original ONLY after confirmed send", width-2)
 		} else {
 			cleanup = m.paint(cleanup, m.theme.Foreground)
 		}
 		actions = append(actions, cleanup)
+		cancelLabel := "Cancel / release"
+		if r.selected && r.delivery == nil {
+			cancelLabel = "Cancel"
+		}
 		buttons := lipgloss.JoinHorizontal(lipgloss.Top,
-			m.button("Cancel / release", r.choice == 0, m.theme.Focus), m.paint(" \n \n ", m.theme.Foreground),
-			m.button("Resend copy", r.choice == 1, m.theme.Focus), m.paint("  \n  \n  ", m.theme.Foreground),
-			m.button("Delete original", r.choice == 3, m.theme.DeadLetter))
+			m.button(cancelLabel, r.choice == 0, m.theme.Focus), m.paint(" \n \n ", m.theme.Foreground),
+			m.button("Resend copy", r.choice == 1, m.theme.Focus))
+		if !r.selected {
+			buttons = lipgloss.JoinHorizontal(lipgloss.Top, buttons, m.paint("  \n  \n  ", m.theme.Foreground), m.button("Delete original", r.choice == 3, m.theme.DeadLetter))
+		}
 		actions = append(actions, strings.Split(buttons, "\n")...)
 		if r.choice == 3 {
 			actions = append(actions, m.paint("  Delete original · type delete: "+r.typed+"_", m.theme.DeadLetter))
 		} else {
 			actions = append(actions, m.paint("  Release/expiry may increase delivery count. PgUp/PgDn body.", m.theme.Muted))
+		}
+		if r.selected {
+			actions[len(actions)-1] = m.paint("  b Back to edit (releases lock) · PgUp/PgDn body · Esc cancel", m.theme.Muted)
 		}
 		actions = m.panel("ACTIONS / Tab choose · Enter confirm · Esc release", width, 7, actions, true)
 		height -= len(actions)
@@ -77,7 +92,15 @@ func (m Model) reviewView(width, height int) []string {
 			rows = append(rows, m.paint("  "+line, color))
 		}
 	}
-	add("ACTUAL RECEIVED MESSAGE · not the peek selection", m.theme.Warning)
+	if r.selected {
+		if r.delivery == nil {
+			add("SELECTED PEEK COPY · no lock acquired · original retained", m.theme.Focus)
+		} else {
+			add("EXACT SELECTED ORIGINAL · locked for optional cleanup", m.theme.Warning)
+		}
+	} else {
+		add("ACTUAL RECEIVED MESSAGE · not the peek selection", m.theme.Warning)
+	}
 	add("ID: "+r.message.ID, m.theme.Foreground)
 	add(fmt.Sprintf("Sequence: %d · deliveries: %d", r.message.Sequence, r.message.DeliveryCount), m.theme.Muted)
 	add("Source: "+m.resource.Profile+" / "+m.resource.Namespace+" / "+m.resource.Name()+" / DLQ", m.theme.Muted)
@@ -85,14 +108,19 @@ func (m Model) reviewView(width, height int) []string {
 	if destination == "" {
 		destination = m.resource.Topic
 	}
+	if r.selected {
+		destination = r.destination.Queue
+	}
 	add("Resend destination: "+destination, m.theme.Focus)
 	add("New MessageID: "+r.newID, m.theme.Foreground)
-	add("Lock until: "+r.deadline.UTC().Format("15:04:05 UTC")+fmt.Sprintf(" · %ds left · no renewal", max(0, int(time.Until(r.deadline).Seconds()))), m.theme.Warning)
+	if r.delivery != nil {
+		add("Lock until: "+r.deadline.UTC().Format("15:04:05 UTC")+fmt.Sprintf(" · %ds left · no renewal", max(0, int(time.Until(r.deadline).Seconds()))), m.theme.Warning)
+	}
 	if split {
 		rows = append(rows, "")
 	}
 	add("Resend creates a new copy; duplicate processing is possible.", m.theme.Warning)
-	if m.resource.Subscription != "" {
+	if m.resource.Subscription != "" && !r.selected {
 		add("TOPIC FAN-OUT: other matching subscriptions may receive this copy.", m.theme.DeadLetter)
 	}
 	if split {
@@ -108,7 +136,11 @@ func (m Model) reviewView(width, height int) []string {
 	if !split && len(rows) > height-2 {
 		rows = append(rows[:height-3], m.paint("  PgDn: full identity, body and replay policy", m.theme.Warning))
 	}
-	left := m.panel("DLQ / REVIEW HELD MESSAGE", leftWidth, height, rows, true)
+	title, bodyTitle := "DLQ / REVIEW HELD MESSAGE", "HELD BODY"
+	if r.selected && r.delivery == nil {
+		title, bodyTitle = "DLQ / REVIEW SELECTED COPY", "COPY BODY"
+	}
+	left := m.panel(title, leftWidth, height, rows, true)
 	bodyWidth := width - leftWidth - 6
 	if !split {
 		bodyWidth = width - 6
@@ -118,6 +150,11 @@ func (m Model) reviewView(width, height int) []string {
 		for _, text := range []string{"ID: " + r.message.ID, "Source: " + m.resource.Profile + " / " + m.resource.Namespace + " / " + m.resource.Name() + " / DLQ"} {
 			for _, line := range strings.Split(ansi.Wrap(clean(text, false), bodyWidth, ""), "\n") {
 				body = append(body, m.paint("  "+line, m.theme.Foreground))
+			}
+		}
+		if r.selected {
+			for _, line := range strings.Split(ansi.Wrap(clean("Destination queue: "+r.destination.Queue, false), bodyWidth, ""), "\n") {
+				body = append(body, m.paint("  "+line, m.theme.Focus))
 			}
 		}
 		body = append(body, "")
@@ -142,7 +179,7 @@ func (m Model) reviewView(width, height int) []string {
 	}
 	if split {
 		offset := min(r.scroll, max(0, len(body)-(height-2)))
-		right := m.panel("HELD BODY / properties · PgUp/PgDn", width-leftWidth, height, body[offset:], false)
+		right := m.panel(bodyTitle+" / properties · PgUp/PgDn", width-leftWidth, height, body[offset:], false)
 		for i := range left {
 			left[i] += right[i]
 		}
@@ -153,7 +190,7 @@ func (m Model) reviewView(width, height int) []string {
 		offset := min(max(0, r.scroll-1), max(0, len(body)-(height-3)))
 		body = append([]string{m.paint("  PgUp to return to review / Esc releases", m.theme.Warning)}, body[offset:]...)
 		// The body page is read-only: don't show confirm buttons behind it.
-		return m.panel("HELD BODY / read-only", width, height+len(actions), body, true)
+		return m.panel(bodyTitle+" / read-only", width, height+len(actions), body, true)
 	}
 	return append(left, actions...)
 }

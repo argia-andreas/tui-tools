@@ -16,6 +16,7 @@ import (
 	sb "github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus"
 	"github.com/Azure/azure-sdk-for-go/sdk/messaging/azservicebus/admin"
 	"github.com/Azure/go-amqp"
+	"servicebusexplorer/internal/explorer"
 )
 
 func ptr[T any](v T) *T { return &v }
@@ -176,7 +177,7 @@ func TestSettlementOnceClosesAndReleasesEvenOnFailure(t *testing.T) {
 			if err := d.Abandon(context.Background()); err == nil || p.closed != 1 || released != 1 {
 				t.Fatal("settlement retried")
 			}
-			if result, err := d.Resend(context.Background(), "another"); err == nil || result.State != "rejected" {
+			if result, err := d.Resend(context.Background(), resource("orders", "", ""), "another"); err == nil || result.State != "rejected" {
 				t.Fatal("settled delivery resent")
 			}
 		}
@@ -200,7 +201,7 @@ func TestDeliveryDeadlineCancellationAndSingleFlight(t *testing.T) {
 		}
 		p := &settlementProbe{}
 		d := &delivery{message: m, receiver: p, release: func() {}}
-		if result, err := d.Resend(ctx, "new"); err == nil || result.State != "rejected" {
+		if result, err := d.Resend(ctx, resource("orders", "", ""), "new"); err == nil || result.State != "rejected" {
 			t.Fatalf("%s allowed send", kind)
 		}
 		if err := d.Complete(ctx); err == nil || p.complete != 0 || p.closed != 1 {
@@ -209,17 +210,17 @@ func TestDeliveryDeadlineCancellationAndSingleFlight(t *testing.T) {
 	}
 	d := &delivery{message: standardDeliveryMessage()}
 	d.mu.Lock()
-	if _, err := d.Resend(context.Background(), "new"); err == nil {
+	if _, err := d.Resend(context.Background(), resource("orders", "", ""), "new"); err == nil {
 		t.Fatal("concurrent send accepted")
 	}
 	if err := d.Complete(context.Background()); err == nil {
 		t.Fatal("concurrent settlement accepted")
 	}
 	d.mu.Unlock()
-	if _, err := d.Resend(context.Background(), "original"); err == nil {
+	if _, err := d.Resend(context.Background(), resource("orders", "", ""), "original"); err == nil {
 		t.Fatal("same ID accepted")
 	}
-	if result, err := d.Resend(context.Background(), "new"); err == nil || result.State != "rejected" {
+	if result, err := d.Resend(context.Background(), resource("orders", "", ""), "new"); err == nil || result.State != "rejected" {
 		t.Fatal("validation failure allowed a second attempt")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -264,6 +265,17 @@ func TestReceiveRejectsSessionEntitiesBeforeAMQP(t *testing.T) {
 		s := &Store{admin: management} // nil messaging client: must never open AMQP
 		if _, err := s.ReceiveNextDLQ(context.Background(), r); err == nil || !strings.Contains(err.Error(), "session-enabled") || transport.requests != 1 || s.held {
 			t.Fatalf("session validation: err=%v requests=%d held=%v", err, transport.requests, s.held)
+		}
+		if _, err := s.PrepareDLQCopy(context.Background(), r, 1); err == nil || !strings.Contains(err.Error(), "session-enabled") || transport.requests != 2 {
+			t.Fatalf("selected copy session validation: %v", err)
+		}
+		if _, err := s.ReceiveSelectedDLQ(context.Background(), r, 1); err == nil || !strings.Contains(err.Error(), "session-enabled") || transport.requests != 3 || s.held {
+			t.Fatalf("selected acquisition session validation: %v", err)
+		}
+		if !subscription {
+			if _, err := s.replaySender(r, false)(context.Background(), r); err == nil || !strings.Contains(err.Error(), "session-enabled") || transport.requests != 4 {
+				t.Fatalf("destination session validation: %v", err)
+			}
 		}
 	}
 }
@@ -311,8 +323,8 @@ func TestReplayOutcomesAreTerminalAndNeverSettleOriginal(t *testing.T) {
 			receiver := &settlementProbe{}
 			opens, releases := 0, 0
 			m := standardDeliveryMessage()
-			d := &delivery{message: m, receiver: receiver, release: func() { releases++ }, newSender: func() (deliverySender, error) { opens++; return sender, nil }}
-			result, err := d.Resend(context.Background(), "replay")
+			d := &delivery{message: m, receiver: receiver, release: func() { releases++ }, newSender: func(context.Context, explorer.Resource) (deliverySender, error) { opens++; return sender, nil }}
+			result, err := d.Resend(context.Background(), resource("orders", "", ""), "replay")
 			if result.State != test.state || result.MessageID != "replay" || (err != nil) != (test.err != nil) {
 				t.Fatalf("result=%+v err=%v", result, err)
 			}
@@ -325,7 +337,7 @@ func TestReplayOutcomesAreTerminalAndNeverSettleOriginal(t *testing.T) {
 			if *sender.message.MessageID != "replay" || !bytes.Equal(sender.message.Body, m.Body) || sender.deadline.After(*m.LockedUntil) || sender.deadline.After(time.Now().Add(10*time.Second)) {
 				t.Fatal("wrong send body/identity/deadline")
 			}
-			if second, err := d.Resend(context.Background(), "another"); err == nil || second.State != "rejected" || sender.calls != 1 || opens != 1 {
+			if second, err := d.Resend(context.Background(), resource("orders", "", ""), "another"); err == nil || second.State != "rejected" || sender.calls != 1 || opens != 1 {
 				t.Fatal("terminal send retried")
 			}
 			// Retaining the original still requires explicit bounded release,
@@ -339,12 +351,40 @@ func TestReplayOutcomesAreTerminalAndNeverSettleOriginal(t *testing.T) {
 
 func TestReplaySenderOpenFailureIsRejectedWithoutRetry(t *testing.T) {
 	opens := 0
-	d := &delivery{message: standardDeliveryMessage(), newSender: func() (deliverySender, error) { opens++; return nil, errors.New("sensitive SDK error") }}
-	result, err := d.Resend(context.Background(), "replay")
+	d := &delivery{message: standardDeliveryMessage(), newSender: func(context.Context, explorer.Resource) (deliverySender, error) {
+		opens++
+		return nil, errors.New("sensitive SDK error")
+	}}
+	result, err := d.Resend(context.Background(), resource("orders", "", ""), "replay")
 	if err == nil || result.State != "rejected" || opens != 1 || strings.Contains(err.Error(), "sensitive") {
 		t.Fatalf("open result=%+v err=%v", result, err)
 	}
-	if _, err := d.Resend(context.Background(), "another"); err == nil || opens != 1 {
+	if _, err := d.Resend(context.Background(), resource("orders", "", ""), "another"); err == nil || opens != 1 {
 		t.Fatal("sender open failure retried")
+	}
+}
+
+func TestPreparedReplayUsesFullContentWithoutLockAndOnlyOneAttempt(t *testing.T) {
+	m := standardDeliveryMessage()
+	m.LockedUntil = nil
+	m.Body = bytes.Repeat([]byte{0, 255, 65}, 30000)
+	m.RawAMQPMessage.Body.Data[0] = m.Body
+	destination := resource("empty", "", "")
+	sender := &sendProbe{}
+	d := &delivery{message: m, copyOnly: true, newSender: func(ctx context.Context, got explorer.Resource) (deliverySender, error) {
+		if got != destination {
+			t.Fatal("lost destination identity")
+		}
+		return sender, nil
+	}}
+	preview := d.Snapshot()
+	preview.Body[0] = 99
+	preview.Properties["binary"].([]byte)[0] = 99
+	result, err := d.Resend(context.Background(), destination, "copy")
+	if err != nil || result.State != "confirmed" || !bytes.Equal(sender.message.Body, bytes.Repeat([]byte{0, 255, 65}, 30000)) || sender.message.ApplicationProperties["binary"].([]byte)[0] != 5 {
+		t.Fatalf("full prepared copy: result=%+v err=%v", result, err)
+	}
+	if _, err := d.Resend(context.Background(), destination, "duplicate"); err == nil {
+		t.Fatal("prepared copy sent twice")
 	}
 }

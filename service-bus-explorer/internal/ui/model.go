@@ -347,6 +347,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			switch key {
+			case "enter":
+				return m.openSelected(false)
 			case "j", "down":
 				m.message, m.offset = min(max(0, len(m.page.Messages)-1), m.message+1), 0
 			case "k", "up":

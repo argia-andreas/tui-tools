@@ -313,7 +313,7 @@ func (m Model) inspectorLines() []string {
 		if truncated {
 			details = append(details, m.paint("  [body preview truncated]", m.theme.Warning))
 		}
-		details = append(details, "", m.paint("  Peek is safe. DLQ actions require receive-next review.", m.theme.Muted))
+		details = append(details, "", m.paint("  Peek is safe. Enter opens selected DLQ; Ctrl+P offers actions.", m.theme.Muted))
 	}
 	return details
 }
@@ -352,7 +352,7 @@ func (m Model) View() string {
 	lines = append(lines, content...)
 	keys := "  j/k move   Enter open   ] DLQ   g/t layout   Tab focus   b sidebar   Ctrl+P actions   q quit"
 	if m.screen == "messages" {
-		keys = "  j/k move/scroll   [ Active   ] DLQ   i inspector   n/p pages   Tab focus   Ctrl+P actions   Esc back   q quit"
+		keys = "  j/k move/scroll   Enter open DLQ   [/] view   i inspector   n/p pages   Tab focus   Ctrl+P actions   Esc back   q quit"
 	} else if m.screen == "settings" {
 		keys = "  j/k move   Enter change   s save preferences   Ctrl+P actions   Esc back   q quit"
 	}
@@ -362,7 +362,7 @@ func (m Model) View() string {
 	if m.width < 110 {
 		keys = "  j/k move  Enter open  ] DLQ  Ctrl+P actions  q quit"
 		if m.screen == "messages" {
-			keys = "  j/k move  [/] view  n/p pages  Ctrl+P  Esc back  q quit"
+			keys = "  j/k move  Enter open DLQ  [/] view  n/p pages  Ctrl+P  Esc back  q quit"
 		} else if m.screen == "settings" {
 			keys = "  j/k move  Enter change  s save  Ctrl+P  Esc back  q quit"
 		}
@@ -372,6 +372,9 @@ func (m Model) View() string {
 		keys = "  Tab/arrows choose   Enter confirm   Esc cancel/release   PgUp/PgDn body   Ctrl+C quit safely"
 		if m.width < 110 {
 			keys = "  Tab choose  Enter confirm  Esc release  PgUp/PgDn body  Ctrl+C quit"
+		}
+		if m.review.phase == "destination" {
+			keys = "  Type to filter queues   arrows choose   Enter select   Esc back   Ctrl+C quit"
 		}
 	}
 	if m.revision != m.persisted {

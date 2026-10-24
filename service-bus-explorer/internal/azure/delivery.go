@@ -28,7 +28,8 @@ type delivery struct {
 	mu                     sync.Mutex
 	message                *sb.ReceivedMessage // full SDK delivery, never the display preview
 	receiver               deliveryReceiver
-	newSender              func() (deliverySender, error) // captures only the validated origin queue/topic
+	newSender              func(context.Context, explorer.Resource) (deliverySender, error)
+	copyOnly               bool
 	release                func()
 	sendAttempted, settled bool
 }
@@ -134,13 +135,13 @@ func replayMessage(m *sb.ReceivedMessage, id string) (*sb.Message, error) {
 
 func (d *delivery) operationContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	deadline := time.Now().Add(10 * time.Second)
-	if lock := d.LockedUntil(); lock.Before(deadline) {
+	if lock := d.LockedUntil(); !d.copyOnly && lock.Before(deadline) {
 		deadline = lock
 	}
 	return context.WithDeadline(ctx, deadline)
 }
 
-func (d *delivery) Resend(ctx context.Context, id string) (explorer.SendResult, error) {
+func (d *delivery) Resend(ctx context.Context, destination explorer.Resource, id string) (explorer.SendResult, error) {
 	result := explorer.SendResult{State: "rejected", MessageID: id}
 	if !d.mu.TryLock() {
 		return result, errors.New("delivery operation already in progress")
@@ -160,12 +161,12 @@ func (d *delivery) Resend(ctx context.Context, id string) (explorer.SendResult, 
 	if err := ctx.Err(); err != nil {
 		return result, err
 	}
-	sender, err := d.newSender()
+	sender, err := d.newSender(ctx, destination)
 	if err != nil {
 		return result, errors.New("cannot open replay sender")
 	}
 	defer func() {
-		closeCtx, stop := context.WithTimeout(ctx, 2*time.Second)
+		closeCtx, stop := context.WithTimeout(context.Background(), 2*time.Second)
 		defer stop()
 		_ = sender.Close(closeCtx)
 	}()

@@ -69,6 +69,35 @@ def main():
         return send("\r", want, "Ctrl+P / ACTIONS")
 
     def dlq_review():
+        # A non-first highlighted row, not receive-next, is the resend source.
+        for cleanup in (False, True):
+            selected_row = next(row for row in screen.display if re.search(r"› \d+\s+orders-dlq-", row))
+            text = send("j", "orders / DEAD-LETTER", selected_row)
+            selected_id = re.search(r"› \d+\s+(orders-dlq-\d{4})", text).group(1)
+            send("\r", "SELECTED MESSAGE / OPEN")
+            wait("ID: " + selected_id)
+            send("\t\r", "CHOOSE QUEUE")
+            send("empty", "Filter queues: empty_")
+            send("\r", "Destination queue: empty")
+            wait("[ ] Delete original after confirmed resend")
+            if cleanup:
+                send("\t\t\r", "[x] Delete original after confirmed resend")
+                send("\x1b[A", "› Review resend")
+            else:
+                send("\t", "› Review resend")
+            send("\r", "Resend destination: empty")
+            wait("ID: " + selected_id)
+            if cleanup:
+                wait("EXACT SELECTED ORIGINAL")
+            else:
+                text = wait("SELECTED PEEK COPY")
+                assert "Lock until:" not in text
+            send("\t", "› Resend copy")
+            send("\r", "cleanup confirmed" if cleanup else "no cleanup requested")
+            send("\r", "orders / DEAD-LETTER")
+            wait("PEEK ONLY", selected_id if cleanup else None)
+            if not cleanup:
+                wait(selected_id)
         action("receive next", "ACTUAL RECEIVED MESSAGE")
         text = wait("› Cancel / release")
         assert re.search(r"ID: orders-dlq-\d{4}", text)
@@ -120,7 +149,7 @@ def main():
             os.write(master, b"q")
             proc.wait(timeout=5)
             assert proc.returncode == 0
-            print("PASS: real emulator PTY — discovery, unavailable counts, paging/refresh, receive/review, cancel/release, resend retaining original, typed delete, resize, clean exit")
+            print("PASS: real emulator PTY — discovery, unavailable counts, paging/refresh, selected copy to queue, exact-selected cleanup, receive-next/review, cancel/release, retained original, typed delete, resize, clean exit")
             return
         # The footer arrives after the complete frame; matching the first card
         # could return while the PTY is still streaming the remaining rows.
@@ -223,7 +252,7 @@ def main():
         os.write(master, b"q")
         proc.wait(timeout=5)
         assert proc.returncode == 0
-        print("PASS: real PTY — layouts/palette/themes, receive/review, cancel/release, retained-original resend, typed delete, save/restart watchlist, resize, clean exit")
+        print("PASS: real PTY — layouts/palette/themes, selected copy to queue, exact-selected cleanup, receive-next/review, cancel/release, retained-original resend, typed delete, save/restart watchlist, resize, clean exit")
     finally:
         if proc.poll() is None:
             proc.terminate()

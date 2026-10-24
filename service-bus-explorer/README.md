@@ -57,6 +57,31 @@ Cancel / release, Resend copy and Delete original buttons with visible focus.
 Below 110 columns or 35 rows, the held body moves to a separate read-only page
 (`PgDn` / `PgUp`); Enter cannot submit a hidden confirmation from that page.
 
+## Resend the selected DLQ message to a queue
+
+Highlight a DLQ message and press `Enter` to open it without acquiring a lock.
+Choose **Send copy to…**, filter/select an existing queue in the connected
+namespace, then choose **Review resend**. Ctrl+P also offers **Send selected DLQ
+message to queue…**. Unwatched queues are included; topic destinations and
+cross-namespace copies are not part of this flow.
+
+**Delete original after confirmed resend** is unchecked by default:
+
+- **Off:** re-peek that exact sequence and send its full content, not the truncated
+  display preview. No receive, scan or lock acquisition; original stays in the DLQ.
+- **On:** first receive/lock that exact original for the final review. This can
+  temporarily lock other DLQ messages and releasing them can increase delivery
+  counts. Search stops after 100 messages or five seconds; bounded release/close
+  work can take additional time. If unavailable or cleanup of unrelated locks is
+  uncertain, nothing is sent. It never substitutes the next message.
+
+Final review defaults to Cancel and freezes destination/cleanup; `b` returns to
+editing after releasing any lock. Send is a single application invocation; only
+a confirmed send permits the checked original cleanup. An unknown send retains
+the original; confirmed send with unconfirmed deletion is a partial result.
+This is not an atomic move or an exactly-once guarantee. The existing explicitly
+named receive-next workflow below remains available independently.
+
 ## Slice 4 — reviewed single-message DLQ actions
 
 “Receive next DLQ message…” acquires one message for review; it does **not** act
@@ -192,8 +217,10 @@ empty queues and unavailable counters. Slice 4 checks additionally cover the
 90 KB body/scalar-property replay, independent source/replay TTL, original
 retention, separate cleanup and topic fan-out; real-emulator PTY covers
 receive/review, cancel/release, retained-original resend and typed delete.
-Run against a fresh seed: the checks leave replay copies and delete one reviewed
-Orders DLQ message. These checks do not prove cloud authentication, accurate
+Run against a fresh seed: the checks leave topic replay copies, delete two reviewed
+Orders DLQ messages and one selected Shipping subscription DLQ message. Selected
+queue replay checks also create and drain their own isolated probe messages.
+These checks do not prove cloud authentication, accurate
 Azure runtime counts, binary-property broker preservation or native Mac/Windows
 execution. Unknown outcomes are exercised deterministically offline.
 

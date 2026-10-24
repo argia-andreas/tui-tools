@@ -6,8 +6,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"maps"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -138,18 +136,7 @@ func (s *Store) Peek(ctx context.Context, r explorer.Resource, dlq bool, from in
 		messages = messages[:limit]
 	}
 	for _, message := range messages {
-		body := message.Body
-		truncated := len(body) > 64*1024
-		if truncated {
-			body = body[:64*1024]
-		}
-		page.Messages = append(page.Messages, explorer.Message{
-			ID: message.MessageID, Subject: value(message.Subject), ContentType: value(message.ContentType),
-			Sequence: value(message.SequenceNumber), Body: slices.Clone(body), Properties: maps.Clone(message.ApplicationProperties),
-			EnqueuedAt: value(message.EnqueuedTime), DeliveryCount: message.DeliveryCount,
-			DeadLetterReason: value(message.DeadLetterReason), DeadLetterDescription: value(message.DeadLetterErrorDescription),
-			PreviewTruncated: truncated,
-		})
+		page.Messages = append(page.Messages, (&delivery{message: message}).Snapshot())
 	}
 	return page, nil
 }
@@ -181,48 +168,55 @@ func (s *Store) ReceiveNextDLQ(ctx context.Context, r explorer.Resource) (explor
 	}()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
+	if err := s.validateSource(ctx, r); err != nil {
+		return nil, err
+	}
+	receiver, err := s.dlqReceiver(r)
+	if err != nil {
+		return nil, errors.New("cannot open DLQ receiver")
+	}
+	messages, err := receiver.ReceiveMessages(ctx, 1, nil)
+	if err != nil || len(messages) != 1 {
+		closeReceiver(context.Background(), receiver)
+		return nil, errors.New("no DLQ delivery acquired within receive deadline")
+	}
+	owned = true
+	return &delivery{message: messages[0], receiver: receiver, release: release,
+		newSender: s.replaySender(r, true)}, nil
+}
+
+func (s *Store) validateSource(ctx context.Context, r explorer.Resource) error {
+	if !validResource(r) {
+		return errors.New("invalid emulator resource identity")
+	}
 	// Check the actual entity before opening a non-session receiver. Failure to
 	// inspect it is not permission to attempt an unsupported session mutation.
 	var sessions bool
 	if r.Queue != "" {
 		q, err := s.admin.GetQueue(ctx, r.Queue, nil)
 		if err != nil || q == nil {
-			return nil, errors.New("cannot validate queue for DLQ mutation")
+			return errors.New("cannot validate queue for DLQ mutation")
 		}
 		sessions = value(q.RequiresSession)
 	} else {
 		sub, err := s.admin.GetSubscription(ctx, r.Topic, r.Subscription, nil)
 		if err != nil || sub == nil {
-			return nil, errors.New("cannot validate subscription for DLQ mutation")
+			return errors.New("cannot validate subscription for DLQ mutation")
 		}
 		sessions = value(sub.RequiresSession)
 	}
 	if sessions {
-		return nil, errors.New("DLQ mutations on session-enabled entities are unsupported")
+		return errors.New("DLQ mutations on session-enabled entities are unsupported")
 	}
+	return nil
+}
+
+func (s *Store) dlqReceiver(r explorer.Resource) (*sb.Receiver, error) {
 	options := &sb.ReceiverOptions{ReceiveMode: sb.ReceiveModePeekLock, SubQueue: sb.SubQueueDeadLetter}
-	var receiver *sb.Receiver
-	var err error
 	if r.Queue != "" {
-		receiver, err = s.client.NewReceiverForQueue(r.Queue, options)
-	} else {
-		receiver, err = s.client.NewReceiverForSubscription(r.Topic, r.Subscription, options)
+		return s.client.NewReceiverForQueue(r.Queue, options)
 	}
-	if err != nil {
-		return nil, errors.New("cannot open DLQ receiver")
-	}
-	messages, err := receiver.ReceiveMessages(ctx, 1, nil)
-	if err != nil || len(messages) != 1 {
-		closeReceiver(ctx, receiver)
-		return nil, errors.New("no DLQ delivery acquired within receive deadline")
-	}
-	destination := r.Queue
-	if destination == "" {
-		destination = r.Topic
-	}
-	owned = true
-	return &delivery{message: messages[0], receiver: receiver, release: release,
-		newSender: func() (deliverySender, error) { return s.client.NewSender(destination, nil) }}, nil
+	return s.client.NewReceiverForSubscription(r.Topic, r.Subscription, options)
 }
 
 func (s *Store) Close(ctx context.Context) error { return s.client.Close(ctx) }

@@ -240,11 +240,12 @@ Read-only source inspection pinned Azure SDK commit `7792debc7e87e22baca89191fde
 - [Retry defaults: negative disables; zero selects defaults](https://github.com/Azure/azure-sdk-for-go/blob/7792debc7e87e22baca89191fde85d1f334fb532/sdk/messaging/azservicebus/internal/utils/retrier.go).
 - [Admin entity manager constructs HTTPS host](https://github.com/Azure/azure-sdk-for-go/blob/7792debc7e87e22baca89191fde85d1f334fb532/sdk/messaging/azservicebus/internal/atom/entity_manager.go).
 
-## Selected-message resend amendment — Gate 3 pending, 2026-10-24
+## Selected-message resend amendment — Gate 3 approved, 2026-10-24
 
-Gate 2 amendment approved. This section proposes only the selected-message
+Andreas approved Gate 3 on 2026-10-24. This section specifies only the selected-message
 extension; it supersedes origin-only routing for this flow, not the legacy
-receive-next action or topic replay. No extension implementation exists yet.
+receive-next action or topic replay. Gate 4 was then approved for continuous
+implementation and shipping after verification, without further approval stops.
 
 ### Files and contract changes
 

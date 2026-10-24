@@ -153,6 +153,12 @@ func TestSeededEmulatorBrowsing(t *testing.T) {
 	t.Run("DLQTopicReplayFansOutAndRetainsOriginal", func(t *testing.T) {
 		testTopicReplay(t, ctx, store, byName["events/billing"], byName["events/shipping"])
 	})
+	t.Run("SelectedDLQCopyPreservesFullMessageAndCleanupTargetsOnlySelection", func(t *testing.T) {
+		testSelectedQueueReplay(t, ctx, store, client, byName["empty"], byName["invoices"])
+	})
+	t.Run("SelectedSubscriptionDLQToQueue", func(t *testing.T) {
+		testSelectedSubscriptionToQueue(t, ctx, store, client, byName["events/shipping"], byName["invoices"])
+	})
 }
 
 func testQueueReplay(t *testing.T, ctx context.Context, store *azure.Store, client *sb.Client, target explorer.Resource) {
@@ -214,11 +220,11 @@ func testQueueReplay(t *testing.T, ctx context.Context, store *azure.Store, clie
 		t.Fatal("store allowed another held delivery")
 	}
 	replayID := id + "-replay"
-	result, err := d.Resend(ctx, replayID)
+	result, err := d.Resend(ctx, target, replayID)
 	if err != nil || result.State != "confirmed" || result.MessageID != replayID {
 		t.Fatalf("resend: %+v, %v", result, err)
 	}
-	if second, err := d.Resend(ctx, id+"-duplicate"); err == nil || second.State != "rejected" {
+	if second, err := d.Resend(ctx, target, id+"-duplicate"); err == nil || second.State != "rejected" {
 		t.Fatal("repeated send was allowed")
 	}
 	copy := receiveOne(t, ctx, receiver)
@@ -272,7 +278,7 @@ func testTopicReplay(t *testing.T, ctx context.Context, store *azure.Store, bill
 	defer d.Abandon(context.Background())
 	original := d.Snapshot()
 	id := fmt.Sprintf("slice4-topic-replay-%d", time.Now().UnixNano())
-	result, err := d.Resend(ctx, id)
+	result, err := d.Resend(ctx, billing, id)
 	if err != nil || result.State != "confirmed" {
 		t.Fatalf("topic resend: %+v, %v", result, err)
 	}

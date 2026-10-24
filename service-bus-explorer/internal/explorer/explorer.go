@@ -49,13 +49,19 @@ type Store interface {
 	Counts(context.Context, Resource) (Counts, error)
 	Peek(ctx context.Context, target Resource, deadLetter bool, fromSequence int64, limit int) (Page, error)
 	ReceiveNextDLQ(context.Context, Resource) (Delivery, error)
+	PrepareDLQCopy(ctx context.Context, source Resource, sequence int64) (Replay, error)
+	ReceiveSelectedDLQ(ctx context.Context, source Resource, sequence int64) (Delivery, error)
 	Close(context.Context) error
 }
 
-type Delivery interface {
+type Replay interface {
 	Snapshot() Message
+	Resend(ctx context.Context, destination Resource, newMessageID string) (SendResult, error)
+}
+
+type Delivery interface {
+	Replay
 	LockedUntil() time.Time
-	Resend(ctx context.Context, newMessageID string) (SendResult, error)
 	Complete(context.Context) error
 	Abandon(context.Context) error
 }

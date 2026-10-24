@@ -12,6 +12,43 @@ Gate 4 approved 2026-10-23. All design gates are approved. Build and verify one 
 
 Each slice ends with a runnable result, relevant checks, an updated status checklist, a reviewable local commit and the question “Continue to slice N+1, or re-steer?” Do not turn the slices into horizontal layers with nothing runnable between them. If a slice invalidates an approved design decision, stop and seek re-approval of that decision rather than silently changing it.
 
+## Selected-message extension — Gate 4 amendment approved, 2026-10-24
+
+Product and Gate 2/3 amendments approved. This is a separate extension to the
+delivered Slice 4, not permission to start the remaining Slice 5 portability work.
+Keep the current compact button styling and all legacy receive-next behavior.
+Andreas explicitly requested implementing all of this in one go and shipping
+after confirmation it works; proceed without approval stops between checkpoints.
+
+1. **Runnable selected-message fixture flow:** selected DLQ open → destination
+   queue picker → cleanup checkbox → final review → observable copy/cleanup result,
+   using full fixture messages and the approved Replay/Delivery contracts. Prove
+   a non-first selection, different destination, original retained vs removed,
+   Cancel/Back, missing selection and repeated Enter through public UI/fixture
+   tests and actual PTY; inspect a representative rendered review. Real backend
+   selected actions must remain explicitly unavailable until supported, never
+   silently use receive-next or fixture data. Commit/push this usable checkpoint.
+2. **Real selected-message replay and cleanup:** implement exact peek preparation,
+   validated queue routing and bounded receive-and-match acquisition through the
+   same UI. Fresh-seed serial emulator checks must prove 90 KB full content/scalar
+   properties/TTL, non-first queue and subscription selections sent to a different
+   queue, retained original for copy-only, only selected original completed for
+   checked cleanup, and independently receivable neighbors. Race/vet/guards and
+   existing legacy integration/PTY stay green. Commit/push the working checkpoint.
+3. **Failure boundaries and final rendered verification:** finish the approved
+   deterministic missing/locked/expired/canceled/unknown/partial/release-failure
+   cases and 100-receive/five-second boundaries; no fallback send or unrelated
+   completion. Exercise fixture/emulator PTY, all themes, 80×24 and short-wide
+   body pages; inspect final screenshots and real keyboard/pointer tour. Document
+   actual limits and repeat required suites from fresh seed serially. Commit/push
+   final evidence/status and ask whether to return to Slice 5 or re-steer.
+
+Each slice includes its own regression tests and failure handling needed to be
+safe on main; the final slice is not permission to postpone cleanup ownership,
+uncertain outcomes or safety guards from either earlier runnable checkpoint.
+Record completion at each checkpoint; the user authorized continuous execution
+of this extension, overriding the original per-slice approval stops here only.
+
 ## Parallel work ownership
 
 The user requested parallel work where useful. Keep integration and verification in the owning checkout; use bounded subagents for non-overlapping implementation tasks. Create separate persistent threads only for independently owned work that actually needs them. Do not contact or delegate into the FTP thread.

@@ -29,6 +29,9 @@ func (m Model) actions() []action {
 		choices = append(choices, action{"inspector", "Toggle message inspector"}, action{"refresh", "Refresh this peek page (no receive)"})
 		if m.dlq {
 			choices = append(choices, action{"receive", "Receive next DLQ message… (acquire lock, then review)"})
+			if !m.loading && len(m.page.Messages) > 0 {
+				choices = append(choices, action{"selected-copy", "Send selected DLQ message to queue…"})
+			}
 		}
 	}
 	if m.screen == "messages" || (m.screen != "settings" && len(m.visible()) > 0) {
@@ -83,6 +86,8 @@ func (m Model) paletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 	switch id {
+	case "selected-copy":
+		return m.openSelected(true)
 	case "receive":
 		return m.acquire()
 	case "dashboard", "queues", "topics", "settings":

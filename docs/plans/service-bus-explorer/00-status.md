@@ -14,12 +14,29 @@
   clarification. Exact-selected cleanup uses bounded receive-and-match; unrelated
   temporary locks and delivery-count effects are disclosed. The earlier scan
   prohibition is superseded only for this flow.
-- Gate 3 amendment: **in progress / awaiting approval** in `03-program-design.md`:
+- Gate 3 amendment: **APPROVED 2026-10-24** in `03-program-design.md`:
   full-content prepared copy, same-namespace destination picker, single-use send,
   five-second/100-message search limit, bounded release and no send on uncertain
   nonmatch release. Tests are specified before implementation.
-- No extension implementation yet. Slice amendment follows Gate 3 approval;
-  do not restart base project gates or silently start Slice 5/MCP.
+- Gate 4 amendment: **APPROVED 2026-10-24** by Andreas's explicit instruction
+  to implement all of it in one go and ship once confirmed working. Proceed
+  through all extension checkpoints without additional approval stops. Frequent
+  scoped main commits/pushes remain authorized; no deployment/cloud writes.
+- Extension fixture flow and real backend implemented and verified; final visual
+  evidence/interaction presentation in progress. Base Slice 5/MCP remain separate.
+- [x] Selected-message fixture workflow: exact highlighted row, queue picker,
+  optional cleanup, frozen final review and correct retained/deleted outcomes.
+- [x] Real backend: exact peek preparation, full-content replay, bounded selected
+  acquisition and separate cleanup. Two fresh-seed serial emulator runs pass,
+  including 90 KB bytes/scalar properties/TTL, queue and subscription sources to
+  a different queue, original retention and independently received neighbors.
+- [ ] Final evidence index, inspected theme/compact/keyboard tour and presentation.
+- Latest race suite, vet, ten Python guards and fixture PTY pass. Real-emulator
+  PTY exercises both selected copy and exact-selected cleanup as well as legacy
+  receive-next/release/resend/typed delete. No cloud writes or SDK patch.
+- Rendered 80×24 configuration initially hid cleanup warnings. The final
+  horizontal three-button configuration bar restores destination and the full
+  scan-budget/delivery-count warning; all-theme/ASCII frame tests guard it.
 
 ## Project boundary
 

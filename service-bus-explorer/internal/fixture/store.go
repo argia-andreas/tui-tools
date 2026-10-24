@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"servicebusexplorer/internal/explorer"
 )
@@ -136,7 +137,7 @@ func (s *Store) ReceiveNextDLQ(ctx context.Context, r explorer.Resource) (explor
 	if len(e.deadLetter) == 0 {
 		return nil, errors.New("no available DLQ message")
 	}
-	d := &delivery{store: s, resource: r, message: cloneMessage(e.deadLetter[0]), until: s.now().Add(time.Minute)}
+	d := &delivery{store: s, resource: r, message: cloneMessage(e.deadLetter[0]), until: s.now().Add(time.Minute), legacy: true}
 	s.held = d
 	return d, nil
 }
@@ -156,6 +157,8 @@ type delivery struct {
 	until    time.Time
 	settled  bool
 	sent     bool
+	copyOnly bool
+	legacy   bool
 }
 
 func (d *delivery) Snapshot() explorer.Message { return preview(d.message) }
@@ -165,6 +168,9 @@ func (d *delivery) valid(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if d.copyOnly {
+		return nil
+	}
 	d.store.expire()
 	if d.settled || d.store.held != d {
 		return errors.New("fixture delivery is settled or its lock expired; receive again")
@@ -172,29 +178,38 @@ func (d *delivery) valid(ctx context.Context) error {
 	return nil
 }
 
-func (d *delivery) Resend(ctx context.Context, newMessageID string) (explorer.SendResult, error) {
+func (d *delivery) Resend(ctx context.Context, destination explorer.Resource, newMessageID string) (explorer.SendResult, error) {
 	s := d.store
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	rejected := explorer.SendResult{State: "rejected", MessageID: newMessageID}
-	if err := d.valid(ctx); err != nil {
-		return rejected, err
-	}
 	if d.sent {
 		return rejected, errors.New("this delivery has already sent a copy")
 	}
-	if newMessageID == "" || newMessageID == d.message.ID {
+	// Selected reviews are single-use even on pre-send rejection. Preserve the
+	// legacy fixture's validation behavior for its existing receive-next callers.
+	if !d.legacy {
+		d.sent = true
+	}
+	if err := d.valid(ctx); err != nil {
+		return rejected, err
+	}
+	if newMessageID == "" || newMessageID == d.message.ID || !utf8.ValidString(newMessageID) || len(newMessageID) > 128 {
 		return rejected, errors.New("replay requires a new nonempty message ID")
 	}
+	if _, exists := s.entries[destination]; !exists || destination.Profile != d.resource.Profile || destination.Namespace != d.resource.Namespace ||
+		(destination.Queue == "" && (!d.legacy || destination != d.resource)) {
+		return rejected, errors.New("destination must be an existing queue in the connected namespace")
+	}
 	for _, r := range s.resources {
-		if r.Profile != d.resource.Profile || r.Namespace != d.resource.Namespace {
+		if r.Profile != destination.Profile || r.Namespace != destination.Namespace {
 			continue
 		}
-		if d.resource.Queue != "" {
-			if r != d.resource {
+		if destination.Queue != "" {
+			if r != destination {
 				continue
 			}
-		} else if r.Topic != d.resource.Topic || r.Subscription == "" {
+		} else if r.Topic != destination.Topic || r.Subscription == "" {
 			continue
 		}
 		e := s.entries[r]
@@ -227,7 +242,11 @@ func (d *delivery) Complete(ctx context.Context) error {
 		return err
 	}
 	e := s.entries[d.resource]
-	e.deadLetter = slices.Delete(e.deadLetter, 0, 1)
+	index := slices.IndexFunc(e.deadLetter, func(m explorer.Message) bool { return m.Sequence == d.message.Sequence })
+	if index < 0 {
+		return errors.New("selected original is no longer available")
+	}
+	e.deadLetter = slices.Delete(e.deadLetter, index, index+1)
 	s.entries[d.resource] = e
 	d.settled, s.held = true, nil
 	return nil
@@ -245,7 +264,12 @@ func (d *delivery) Abandon(ctx context.Context) error {
 
 func (d *delivery) release() {
 	e := d.store.entries[d.resource]
-	e.deadLetter[0].DeliveryCount++
+	for i := range e.deadLetter {
+		if e.deadLetter[i].Sequence == d.message.Sequence {
+			e.deadLetter[i].DeliveryCount++
+			break
+		}
+	}
 	d.store.entries[d.resource] = e
 	d.settled, d.store.held = true, nil
 }

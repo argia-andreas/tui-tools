@@ -103,7 +103,7 @@ func TestResendRetainsOriginalAndCleanupIsSeparate(t *testing.T) {
 	if _, err := s.ReceiveNextDLQ(ctx, resources[1]); err == nil {
 		t.Fatal("allowed a second held delivery")
 	}
-	if result, err := d.Resend(ctx, "replay-1"); err != nil || result.State != "confirmed" || result.MessageID != "replay-1" {
+	if result, err := d.Resend(ctx, r, "replay-1"); err != nil || result.State != "confirmed" || result.MessageID != "replay-1" {
 		t.Fatalf("resend: %+v %v", result, err)
 	}
 	after, _ := s.Counts(ctx, r)
@@ -122,7 +122,7 @@ func TestResendRetainsOriginalAndCleanupIsSeparate(t *testing.T) {
 	if m.ID != "replay-1" || !bytes.Equal(m.Body, original.Body) || m.Subject != original.Subject || m.ContentType != original.ContentType || m.Properties["region"] != "eu-north" || m.DeadLetterReason != "" || m.DeadLetterDescription != "" {
 		t.Fatalf("incorrect copy: %+v", m)
 	}
-	if _, err := d.Resend(ctx, "replay-2"); err == nil {
+	if _, err := d.Resend(ctx, r, "replay-2"); err == nil {
 		t.Fatal("allowed a repeated send")
 	}
 	if err := d.Complete(ctx); err != nil {
@@ -138,7 +138,7 @@ func TestResendRetainsOriginalAndCleanupIsSeparate(t *testing.T) {
 	if err := d.Abandon(ctx); err == nil {
 		t.Fatal("abandoned settled message")
 	}
-	if _, err := d.Resend(ctx, "replay-3"); err == nil {
+	if _, err := d.Resend(ctx, r, "replay-3"); err == nil {
 		t.Fatal("sent settled message")
 	}
 	next := receive(t, s, r)
@@ -153,7 +153,7 @@ func TestTopicResendFansOutAndRetainedOriginalCanBeReleased(t *testing.T) {
 	billing, shipping := resources[12], resources[13]
 	d := receive(t, s, billing)
 	original := d.Snapshot()
-	if _, err := d.Resend(ctx, "topic-replay"); err != nil {
+	if _, err := d.Resend(ctx, billing, "topic-replay"); err != nil {
 		t.Fatal(err)
 	}
 	for _, r := range []explorer.Resource{billing, shipping} {
@@ -187,7 +187,7 @@ func TestExpiryDisablesOldDeliveryAndRestoresAvailability(t *testing.T) {
 		t.Fatal("lock is not one minute")
 	}
 	now = now.Add(time.Minute)
-	if _, err := d.Resend(ctx, "expired-replay"); err == nil {
+	if _, err := d.Resend(ctx, resources[0], "expired-replay"); err == nil {
 		t.Fatal("expired lock sent")
 	}
 	if err := d.Complete(ctx); err == nil {
@@ -216,7 +216,7 @@ func TestCanceledContextsDoNotMutate(t *testing.T) {
 		t.Fatalf("receive: %v", err)
 	}
 	d := receive(t, s, r)
-	if _, err := d.Resend(canceled, "canceled-replay"); !errors.Is(err, context.Canceled) {
+	if _, err := d.Resend(canceled, r, "canceled-replay"); !errors.Is(err, context.Canceled) {
 		t.Fatalf("resend: %v", err)
 	}
 	if err := d.Complete(canceled); !errors.Is(err, context.Canceled) {
@@ -238,7 +238,7 @@ func TestCanceledContextsDoNotMutate(t *testing.T) {
 	if counts.Active != 128 || counts.DeadLetter != 12 {
 		t.Fatalf("cancellation changed backlog: %+v", counts)
 	}
-	if _, err := d.Resend(ctx, "normal-replay"); err != nil {
+	if _, err := d.Resend(ctx, r, "normal-replay"); err != nil {
 		t.Fatalf("canceled send consumed opportunity: %v", err)
 	}
 	if err := s.Close(ctx); err != nil {
@@ -272,7 +272,7 @@ func TestPreviewCloningCannotTruncateReplayBody(t *testing.T) {
 	if !peek.Messages[0].PreviewTruncated || peek.Messages[0].Body[0] != 'x' || d.Snapshot().Body[0] != 'x' {
 		t.Fatal("snapshot mutated source")
 	}
-	if _, err := d.Resend(ctx, "full-replay"); err != nil {
+	if _, err := d.Resend(ctx, r, "full-replay"); err != nil {
 		t.Fatal(err)
 	}
 	// Public preview is bounded; inspect the fixture's stored outbound data to
@@ -298,7 +298,7 @@ func TestConcurrentReadsAndSingleSend(t *testing.T) {
 	var wg sync.WaitGroup
 	for i := 0; i < 20; i++ {
 		wg.Go(func() {
-			_, _ = d.Resend(ctx, "concurrent-replay")
+			_, _ = d.Resend(ctx, r, "concurrent-replay")
 			_, _ = s.Counts(ctx, r)
 			_, _ = s.Peek(ctx, r, true, 0, 20)
 			_ = d.Snapshot()
@@ -335,7 +335,7 @@ func TestDeleteWithoutResendAndReceiveValidation(t *testing.T) {
 	r := resources[0]
 	d := receive(t, s, r)
 	for _, id := range []string{"", d.Snapshot().ID} {
-		if result, err := d.Resend(ctx, id); err == nil || result.State != "rejected" {
+		if result, err := d.Resend(ctx, r, id); err == nil || result.State != "rejected" {
 			t.Fatalf("accepted invalid replay identity: %+v %v", result, err)
 		}
 	}
