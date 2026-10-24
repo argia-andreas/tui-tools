@@ -84,6 +84,12 @@ def main(args=(), icons=True):
         notice_row = next(i for i, row in enumerate(screen.display) if "FTP · unencrypted" in row)
         expect_background(notice_row, 20, "101d2f")
 
+        # Ctrl+L/H use the terminal's actual control bytes and stay directional.
+        send("\x0c\x0c\r", "shipment.json")
+        send("h", "orders.csv", "shipment.json")
+        send("\x08\x08j\r", "browser.go")
+        send("h", "README.md", "browser.go")
+
         # Exercise actual terminal mouse reports, not synthetic model messages.
         # Marking a directory must not open it, and a press/release pair must
         # toggle only once. Find src so fixture directory names can still vary.
@@ -102,6 +108,8 @@ def main(args=(), icons=True):
         wait("F1 shortcuts")
         shortcuts_x, shortcuts_y = locate("F1 shortcuts")
         click(shortcuts_x + 2, shortcuts_y, "KEYBOARD SHORTCUTS", "ACTIONS · Ctrl+P")
+        wait("Ctrl+H/L")
+        wait("Focus left/right file pane")
         modal_w = min(82, screen.columns - 6)
         modal_h = min(20, screen.lines - 4)
         modal_x = (screen.columns - modal_w) // 2

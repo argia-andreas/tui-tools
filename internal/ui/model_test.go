@@ -46,7 +46,7 @@ func (d *driver) run(cmd tea.Cmd) {
 	}
 }
 func (d *driver) key(key string) {
-	special := map[string]tea.KeyType{"tab": tea.KeyTab, "enter": tea.KeyEnter, "esc": tea.KeyEsc, "ctrl+p": tea.KeyCtrlP, "ctrl+r": tea.KeyCtrlR, "backspace": tea.KeyBackspace, "shift+tab": tea.KeyShiftTab, "f1": tea.KeyF1}
+	special := map[string]tea.KeyType{"tab": tea.KeyTab, "enter": tea.KeyEnter, "esc": tea.KeyEsc, "ctrl+h": tea.KeyCtrlH, "ctrl+l": tea.KeyCtrlL, "ctrl+p": tea.KeyCtrlP, "ctrl+r": tea.KeyCtrlR, "backspace": tea.KeyBackspace, "shift+tab": tea.KeyShiftTab, "f1": tea.KeyF1}
 	if kind, ok := special[key]; ok {
 		d.deliver(tea.KeyMsg{Type: kind})
 	} else {
@@ -99,6 +99,37 @@ func TestKeyboardNavigationSelectionAndEndpoints(t *testing.T) {
 	}
 }
 
+func TestDirectionalPaneShortcuts(t *testing.T) {
+	for _, width := range []int{160, 80} {
+		t.Run(fmt.Sprintf("width%d", width), func(t *testing.T) {
+			d := start(t, storage.NewDemo())
+			d.deliver(tea.WindowSizeMsg{Width: width, Height: 40})
+			d.key("]")
+			d.key("t")
+			// Repeated directional keys stay on the requested file pane,
+			// even when Tab can also reach navigation, inspector and jobs.
+			d.key("ctrl+l")
+			d.key("ctrl+l")
+			d.key("enter")
+			requireText(t, d, "shipment.json")
+			d.key("tab")
+			d.key("ctrl+h")
+			d.key("ctrl+h")
+			d.key("j")
+			d.key("enter")
+			requireText(t, d, "browser.go")
+			requireText(t, d, "shipment.json")
+			// Tab and Shift+Tab still move between the two file panes.
+			d.key("tab")
+			d.key("h")
+			requireText(t, d, "orders.csv")
+			d.key("shift+tab")
+			d.key("h")
+			requireText(t, d, "README.md")
+		})
+	}
+}
+
 func TestPaletteOwnsInputAndExecutesEnabledActions(t *testing.T) {
 	d := start(t, storage.NewDemo())
 	d.key("ctrl+p")
@@ -142,7 +173,9 @@ func TestPaletteOwnsInputAndExecutesEnabledActions(t *testing.T) {
 func TestFilteringConsumesShortcutsAndUnicode(t *testing.T) {
 	d := start(t, storage.NewDemo())
 	d.key("/")
-	d.key("配置")
+	d.key("配置x")
+	d.key("ctrl+h")
+	d.key("ctrl+l")
 	d.key("enter")
 	requireText(t, d, "配置.json")
 	if strings.Contains(d.screen(), "README.md") {
@@ -301,6 +334,10 @@ func TestMouseBrowsingAndShortcutGuide(t *testing.T) {
 			requireText(t, d, "ACTIONS · Ctrl+P")
 			d.key("f1")
 			requireText(t, d, "KEYBOARD SHORTCUTS")
+			if size[1] >= 24 {
+				requireText(t, d, "Ctrl+H/L")
+				requireText(t, d, "Focus left/right file pane")
+			}
 			for range 40 {
 				d.deliver(tea.MouseMsg{X: size[0] / 2, Y: size[1] / 2, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
 			}

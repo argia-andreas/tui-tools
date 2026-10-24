@@ -344,6 +344,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		switch key {
+		case "ctrl+h", "ctrl+l":
+			m.focus = 1
+			if key == "ctrl+l" {
+				m.focus = 2
+			}
+			m.endpoint = m.focus - 1
 		case "tab", "shift+tab":
 			r := m.regions()
 			idx := 0
