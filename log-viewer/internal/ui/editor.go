@@ -125,6 +125,7 @@ func (m Model) openRestore() (tea.Model, tea.Cmd) {
 		m.status = "Saved searches read failed · check private file"
 		return m, nil
 	}
+	m.reloadSaved()
 	m.editor = &editor{kind: "restore", saved: saved, returnFocus: m.focus}
 	return m, nil
 }
@@ -195,6 +196,7 @@ func (m Model) edit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			m.focus = e.returnFocus
 			m.editor = nil
+			m.reloadSaved()
 			m.status = "Saved search explicitly · exact apps and absolute UTC window retained"
 		} else {
 			e.text = appendInput(e.text, msg)
@@ -318,86 +320,6 @@ func (m Model) editorLines() (string, []string) {
 		return m.paletteLines()
 	case "field":
 		return m.fieldPickerLines()
-	case "filter":
-		apps := strings.Join(e.draft.Scope.Services, " OR ")
-		if apps == "" {
-			apps = "ALL (no exact selections)"
-		}
-		lines := []string{"Tab/Shift+Tab fields · Ctrl+U clear text · Ctrl+S apply · Esc cancel", "App · exact (lab field service.name) · selected apps OR", "Selected: " + apps, "Enter toggles suggestion · Ctrl+X clears apps"}
-		if m.height < 20 {
-			lines = []string{"Tab fields · Ctrl+S apply · Esc cancel", "Selected apps OR: " + apps, "Enter toggle · Ctrl+X clear apps"}
-		}
-		labels := []string{"App suggestion keyword (NOT a filter)", "Start inclusive RFC3339", "End exclusive RFC3339", "Levels ALL / UNKNOWN / WARN+ / comma-separated", "Message: Elastic analyzed phrase", "Trace IDs: exact, comma-separated OR", "Exact field predicates: Up/Down choose · Enter removes one"}
-		if !m.options.LocalLab {
-			labels[4] += " (fixture approximation)"
-		}
-		for i, label := range labels {
-			if m.height < 36 && i != e.field {
-				continue
-			}
-			prefix := "  "
-			if i == e.field {
-				prefix = "› "
-			}
-			lines = append(lines, prefix+label)
-			if i != 6 {
-				lines = append(lines, "  "+e.inputs[i])
-			}
-			if i == 6 {
-				if len(e.draft.Fields) == 0 {
-					lines = append(lines, "  None")
-				}
-				start := max(0, e.predicate-1)
-				for j := start; j < min(len(e.draft.Fields), start+3); j++ {
-					mark := "  "
-					if e.field == 6 && j == e.predicate {
-						mark = "› "
-					}
-					f := e.draft.Fields[j]
-					lines = append(lines, mark+f.Path+"="+string(f.Value))
-				}
-			}
-		}
-		lines = append(lines, "UTC [start, end) · other facets AND · WARN+=WARN,ERROR,FATAL")
-		if len(e.draft.Fields) > 0 {
-			lines = append(lines, fmt.Sprintf("%d exact field predicates active · Ctrl+R clears field predicates", len(e.draft.Fields)))
-		}
-		if e.field == 0 {
-			lines = append(lines, "Bounded app-name suggestions (substring; not exhaustive):")
-			if e.suggestionLoading {
-				lines = append(lines, "Loading suggestions…")
-			} else if len(e.suggestions.Items) == 0 && !e.suggestionError {
-				lines = append(lines, "No suggestions · change keyword or filters")
-			}
-			start := max(0, e.suggestion-2)
-			for i := start; i < min(len(e.suggestions.Items), start+min(4, max(1, m.height-15))); i++ {
-				app := e.suggestions.Items[i]
-				mark := "[ ]"
-				for _, s := range e.draft.Scope.Services {
-					if s == app {
-						mark = "[x]"
-					}
-				}
-				prefix := "  "
-				if i == e.suggestion {
-					prefix = "› "
-				}
-				lines = append(lines, prefix+mark+" "+app)
-			}
-			if e.suggestions.More {
-				lines = append(lines, "More suggestions exist · narrow keyword")
-			}
-			if e.suggestions.Partial {
-				lines = append(lines, "Partial suggestions · incomplete")
-			}
-			if e.suggestionError {
-				lines = append(lines, "Suggestions unavailable · current selections retained")
-			}
-		}
-		if e.error != "" {
-			lines = append(lines, e.error)
-		}
-		return "FILTER EDITOR", lines
 	case "find":
 		return "LOCAL LITERAL FIND", []string{"LOADED policy-safe event data only (all structured fields)", "Ctrl+T toggles case · Enter find · Esc cancel", fmt.Sprintf("Case sensitive: %t", e.caseSensitive), "> " + e.text}
 	case "save":

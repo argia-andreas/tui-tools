@@ -205,16 +205,68 @@ func TestEditorsOwnTextAndCancelWithoutWritesOrFocusChanges(t *testing.T) {
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatal("editor wrote without explicit submit")
 	}
-	for _, size := range []tea.WindowSizeMsg{{Width: 80, Height: 24}, {Width: 60, Height: 16}} {
-		d.apply(size)
-		d.key("f")
-		for i := 0; i < 6; i++ {
-			d.key("tab")
-			if !strings.Contains(d.view(), "FILTER EDITOR") {
-				t.Fatal("narrow editor inaccessible")
+	for _, width := range []int{60, 80, 119, 120, 139, 140, 160} {
+		for _, height := range []int{16, 24, 48} {
+			d.apply(tea.WindowSizeMsg{Width: width, Height: height})
+			d.key("f")
+			for i := 0; i < 7; i++ {
+				view := d.view()
+				if !strings.Contains(view, "FILTER EDITOR") {
+					t.Fatal("narrow editor inaccessible")
+				}
+				lines := strings.Split(view, "\n")
+				if len(lines) > height {
+					t.Fatalf("facet editor exceeds height at %dx%d", width, height)
+				}
+				for _, line := range lines {
+					if ansi.StringWidth(line) > width {
+						t.Fatalf("facet editor exceeds width at %dx%d", width, height)
+					}
+				}
+				d.key("tab")
 			}
+			d.key("esc")
 		}
-		d.key("esc")
+	}
+}
+
+func TestWorkspaceRestoresSameSourceSavedSearchAndSurvivesCollapse(t *testing.T) {
+	d, path := fixtureDriver(t, 500)
+	q := fixture.Query()
+	q.Scope.Services = []string{"payment-worker"}
+	if err := config.SaveSearch(path, config.SavedSearch{Name: "Payment failures", Query: q}); err != nil {
+		t.Fatal(err)
+	}
+	foreign := q
+	foreign.Scope.Source = "local-elastic"
+	if err := config.SaveSearch(path, config.SavedSearch{Name: "Foreign source", Query: foreign}); err != nil {
+		t.Fatal(err)
+	}
+	d.key("tab") // Inspector, then workspace.
+	d.key("tab")
+	if !strings.Contains(d.view(), "Payment failures") || strings.Contains(d.view(), "Foreign source") {
+		t.Fatal("workspace must show only current-source saved queries")
+	}
+	d.key("down")
+	d.key("enter")
+	if !strings.Contains(d.view(), "App exact: payment-worker") || !strings.Contains(d.view(), "12 fictional events") {
+		t.Fatal("sidebar entry did not restore the actual saved predicate")
+	}
+	d.key("S")
+	d.key("Payments again")
+	d.key("enter")
+	if !strings.Contains(d.view(), "Payments again") {
+		t.Fatal("explicit save did not update workspace")
+	}
+	d.key("tab")
+	d.key("tab")
+	d.apply(tea.WindowSizeMsg{Width: 80, Height: 24})
+	if !strings.Contains(d.view(), "● LOGS") || strings.Contains(d.view(), "WORKSPACE") {
+		t.Fatal("collapsed sidebar retained hidden focus")
+	}
+	d.key("R")
+	if !strings.Contains(d.view(), "Payment failures") {
+		t.Fatal("saved picker unavailable without sidebar")
 	}
 }
 

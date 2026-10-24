@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"logviewer/internal/config"
 	"logviewer/internal/logs"
 	"logviewer/internal/theme"
 )
@@ -38,6 +39,9 @@ type Model struct {
 	suggestionCancel                      context.CancelFunc
 	find                                  string
 	findCase                              bool
+	saved                                 []config.SavedSearch
+	savedError                            bool
+	workspaceRow                          int
 }
 
 type loadedMsg struct {
@@ -59,7 +63,9 @@ func New(options Options) Model {
 		options.Query.Limits.Events = 500
 	}
 	ctx, cancel := context.WithCancel(options.Context)
-	return Model{options: options, focus: 1, status: status, generation: 1, requestContext: ctx, cancel: cancel, loading: true}
+	m := Model{options: options, focus: 1, status: status, generation: 1, requestContext: ctx, cancel: cancel, loading: true}
+	m.reloadSaved()
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
@@ -151,12 +157,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						delta = len(panels) - 1
 					}
 					m.focus = panels[(i+delta)%len(panels)]
+					if m.focus == 0 {
+						m.reloadSaved()
+					}
 					break
 				}
 			}
 		case "enter":
 			if m.focus == 0 {
-				m.focus = 1
+				return m.openWorkspaceRow()
 			} else if len(m.page.Events) > 0 {
 				m.focus = 2
 				m.detail = m.width < 120
@@ -172,7 +181,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == "pgup" {
 				step = -max(1, m.height-12)
 			}
-			if m.focus == 1 {
+			if m.focus == 0 {
+				m.workspaceRow += step
+				if msg.String() == "g" || msg.String() == "home" {
+					m.workspaceRow = 0
+				}
+				if msg.String() == "G" || msg.String() == "end" {
+					m.workspaceRow = len(m.saved) + 1
+				}
+				m.workspaceRow = max(0, min(m.workspaceRow, len(m.saved)+1))
+			} else if m.focus == 1 {
 				m.selected += step
 				if msg.String() == "g" || msg.String() == "home" {
 					m.selected = 0

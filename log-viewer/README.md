@@ -62,7 +62,9 @@ seeding never reset it.
 ## Search and saved filters
 
 Press `f` from logs to edit exact app selections, time, levels, message phrase and
-trace IDs. Apps OR together; different facets AND together. App suggestions use a
+trace IDs. The facet navigator keeps the summary on the left and edits only one
+facet on the right. Tab/Shift+Tab moves between inputs (Time has From and To);
+contextual help stays with the current facet. Apps OR together; different facets AND together. App suggestions use a
 separate case-insensitive substring keyword: Enter toggles an exact app selection,
 Ctrl+X clears app selections, Tab moves fields, and Ctrl+S applies the query.
 Times require RFC3339 with `Z` or an explicit offset, and use a half-open window.
@@ -82,6 +84,19 @@ directory's `logview/searches.json`; override with `--searches /private/dir/sear
 Its directory/file must be owned and private (0700/0600). Saves contain absolute
 times and filter values, which may be sensitive, but no events, credentials or
 cursors. Saving an existing name replaces that search.
+
+On wide terminals, the workspace shows current-source saved searches instead of
+planned-provider placeholders. Tab to it, j/k or arrows choose, Enter restores.
+Explicit saves update the list immediately; entering the workspace or opening `R`
+reloads it. Rendering never reads the file. `R` remains available when the sidebar
+is hidden; collapsing the sidebar returns focus to logs.
+
+Inspector keys are cyan, values bright, ERROR red, numbers amber and booleans mint.
+Recognizable Go `stack_trace` function/path/line-number spans get restrained syntax
+color without rewriting content. Other stack formats remain ordinary text. This
+is presentation of policy-safe data, not a parser or a raw-data escape hatch.
+Inspector scrolling is still line-based; highlighted field selection and yank
+are being implemented separately, and no clipboard success is claimed here.
 
 ## Keyboard
 

@@ -58,6 +58,9 @@ func (m Model) View() string {
 	if m.editor != nil && m.editor.kind == "palette" {
 		return m.paletteView()
 	}
+	if m.editor != nil && m.editor.kind == "filter" {
+		return m.filterView(header)
+	}
 	if m.editor != nil {
 		title, lines := m.editorLines()
 		for i := range lines {
@@ -108,18 +111,7 @@ func (m Model) View() string {
 		}
 		var panels []string
 		if left > 0 {
-			source := "  fixture / local"
-			if m.options.LocalLab {
-				source = "  local-elastic"
-			}
-			if m.focus == 0 {
-				source = m.style(t.SelectionText).Background(lipgloss.Color(t.Selection)).Render(fit("›"+source[1:], left-4))
-			}
-			lines := []string{"", " SOURCES", "", source, "", " Fictional records", " No network access", "", " PROVIDERS · PLANNED", "", "  Elasticsearch", "  Azure Monitor", "  Kubernetes", "  Loki", "", " MCP · NOT RUNNING", " No grants or tools", "", " Fixed sample window", " No live collection"}
-			if m.options.LocalLab {
-				lines = []string{"", " SOURCES", "", source, "", " Seeded fictional logs", " HTTPS / read-only key", "", " PROVIDERS · PLANNED", "", "  Azure Monitor", "  Kubernetes", "  Loki", "", " MCP · NOT RUNNING", " No grants or tools", "", " Fixed lab window", " No live collection"}
-			}
-			panels = append(panels, m.panel("WORKSPACE", lines, left, height, 0))
+			panels = append(panels, m.workspace(left, height))
 		}
 		panels = append(panels, m.logList(m.width-left-right, height))
 		if right > 0 {
@@ -132,7 +124,7 @@ func (m Model) View() string {
 		footer = " Ctrl+P actions  j/k scroll  g/G start/end  f exact field filter  / find  S save  R restore  Esc logs  q quit"
 	}
 	if m.focus == 0 {
-		footer = " Ctrl+P actions  Tab next panel  Enter logs  q quit"
+		footer = " j/k select  Enter open  R all saved searches  Tab next panel  Ctrl+P actions  q quit"
 	}
 	status := m.status
 	if m.loading {
