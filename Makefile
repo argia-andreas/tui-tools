@@ -22,6 +22,7 @@ test-terminal: build
 test-terminal-live: build
 	python3 scripts/lab.py check
 	.venv/bin/python scripts/terminal-live.py
+	.venv/bin/python scripts/terminal-rename.py
 
 run-lab: build
 	python3 scripts/lab.py check

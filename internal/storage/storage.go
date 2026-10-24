@@ -30,6 +30,14 @@ type Deleter interface {
 	Delete(context.Context, Location) error
 }
 
+// Renamer renames a regular file within the same remote and directory, refusing
+// existing destinations even when their contents match. Remote backends cannot
+// guarantee atomic no-clobber against concurrent external writers. A failed
+// remote rename may have partly succeeded; callers must refresh before retrying.
+type Renamer interface {
+	Rename(ctx context.Context, source, destination Location) error
+}
+
 // Transferer operates on full file paths, not directory destinations. Copy must
 // reject directories and existing destinations unless overwrite is explicit.
 // FTP cannot guarantee atomic no-clobber against concurrent external writers.

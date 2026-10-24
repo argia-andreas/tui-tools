@@ -19,6 +19,34 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	key := func(kind tea.KeyType) (tea.Model, tea.Cmd) {
 		return m.Update(tea.KeyMsg{Type: kind})
 	}
+	if m.rename != nil {
+		if m.rename.running || !m.rename.confirming {
+			return m, nil
+		}
+		w, h := m.modalSize()
+		x, y := (m.width-w)/2, (m.height-h)/2
+		outside := msg.X < x || msg.X >= x+w || msg.Y < y || msg.Y >= y+h
+		if click && (outside || (msg.Y == y && msg.X >= x+w-6)) {
+			return key(tea.KeyEsc)
+		}
+		if wheel && !outside {
+			if msg.Button == tea.MouseButtonWheelUp {
+				return key(tea.KeyUp)
+			}
+			return key(tea.KeyDown)
+		}
+		if click && msg.Y == y+h-2 {
+			if msg.X >= x+1 && msg.X < x+11 {
+				m.choice = 0
+				return key(tea.KeyEnter)
+			}
+			if msg.X >= x+11 && msg.X < x+21 {
+				m.choice = 1
+				return key(tea.KeyEnter)
+			}
+		}
+		return m, nil
+	}
 	if m.modal != "" {
 		w, h := m.modalSize()
 		x, y := (m.width-w)/2, (m.height-h)/2

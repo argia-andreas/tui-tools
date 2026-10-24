@@ -34,6 +34,7 @@ type pane struct {
 	loading    bool
 	err        error
 	parent     bool
+	revealName string
 }
 
 type listed struct {
@@ -58,6 +59,7 @@ type Model struct {
 	queueCancel                 context.CancelFunc
 	transferCancel              context.CancelFunc
 	preview                     *previewState
+	rename                      *renameState
 	previewGeneration           int
 	previewCancel               context.CancelFunc
 	operation                   int
@@ -132,6 +134,7 @@ func (m *Model) navigate(i int, loc storage.Location) tea.Cmd {
 	}
 	p := &m.panes[i]
 	p.location, p.cursor, p.filter = loc, 0, ""
+	p.revealName = ""
 	if p.hasParent() {
 		p.cursor = 1
 	}
@@ -234,10 +237,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		p := &m.panes[msg.pane]
 		if p.generation == msg.generation {
 			p.entries, p.err, p.loading = msg.entries, msg.err, false
+			if p.revealName != "" {
+				for i, e := range p.visible() {
+					if e.Name == p.revealName {
+						p.cursor = i
+					}
+				}
+				p.revealName = ""
+			}
 			if p.cursor >= len(p.visible()) {
 				p.cursor = 0
 			}
 		}
+	case renameFinished:
+		return m.finishRename(msg)
 	case destinationChecked:
 		if m.pending != nil && msg.operation == m.operation {
 			if m.queueCancel != nil {
@@ -302,6 +315,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.mouse(msg)
 	case tea.KeyMsg:
 		key := msg.String()
+		if m.rename != nil {
+			return m.renameKey(msg)
+		}
 		if key == "ctrl+c" {
 			m.cancelWork()
 			return m, tea.Quit
@@ -481,6 +497,7 @@ func (m Model) actions() []action {
 		{"icons", "Toggle filetype icons", "", "glyphs nerd font", ""},
 		{"help", "Keyboard shortcuts", "?", "help keys", ""},
 		{"delete", "Delete selected file", "D", "remove file", m.deleteDisabled()},
+		{"file-rename", "Rename selected file", "R", "name move filename", m.renameDisabled()},
 		{"cancel", "Cancel unfinished transfers", "ctrl+x", "stop queue", m.cancelDisabled()},
 		{"retry", "Retry unfinished transfers", "r", "recover failed canceled queue", m.retryDisabled()},
 	}
@@ -659,6 +676,8 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		return m.startPreview()
 	case "edit":
 		return m.startEdit()
+	case "file-rename":
+		return m.startRename()
 	}
 	return m, nil
 }

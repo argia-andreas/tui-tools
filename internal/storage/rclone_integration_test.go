@@ -136,6 +136,42 @@ func TestRcloneIntegration(t *testing.T) {
 				}
 			}
 
+			// Rename through the optional public contract used by the UI. Test
+			// empty and binary files, Unicode/spaces and both kinds of collision.
+			var renamer storage.Renamer = client
+			for _, i := range []int{0, 4} {
+				source := remoteFile(names[i])
+				destination := remoteFile(fmt.Sprintf("renamed %d 雪.bin", i))
+				if err := renamer.Rename(ctx, source, destination); err != nil {
+					t.Fatalf("Rename: %v", err)
+				}
+				if _, err := client.Stat(ctx, source); !errors.Is(err, fs.ErrNotExist) {
+					t.Fatalf("renamed source still exists: %v", err)
+				}
+				checkBytes(destination, payloads[i])
+				if err := renamer.Rename(ctx, destination, source); err != nil {
+					t.Fatalf("rename back: %v", err)
+				}
+			}
+			for _, i := range []int{4, 5} {
+				destination := remoteFile(fmt.Sprintf("rename collision %d.bin", i))
+				copyFile(localFile(names[i]), destination, false)
+				if err := renamer.Rename(ctx, remoteFile(names[4]), destination); !errors.Is(err, fs.ErrExist) {
+					t.Fatalf("rename collision: %v", err)
+				}
+				checkBytes(remoteFile(names[4]), payloads[4])
+				checkBytes(destination, payloads[i])
+			}
+			if err := renamer.Rename(ctx, remoteFile(""), storage.Location{Remote: remote.name, Path: prefix + "-renamed"}); err == nil {
+				t.Fatal("directory rename succeeded")
+			}
+			canceledRename, stopRename := context.WithCancel(ctx)
+			stopRename()
+			if err := renamer.Rename(canceledRename, remoteFile(names[4]), remoteFile("canceled-rename")); !errors.Is(err, context.Canceled) {
+				t.Fatalf("canceled rename: %v", err)
+			}
+			checkBytes(remoteFile(names[4]), payloads[4])
+
 			// Object-store prefixes must behave as navigable directories, not
 			// flatten keys or lose Unicode names on a nested round trip.
 			nested := remoteFile("nested dir/deeper/雪 café.bin")

@@ -129,7 +129,7 @@ func (m Model) modalSize() (int, int) {
 	switch m.modal {
 	case "folder", "delete":
 		h = min(h, 8)
-	case "copy", "batch":
+	case "copy", "batch", "file-rename":
 		h = min(h, 12)
 	case "rename":
 		h = min(h, 8)
@@ -229,6 +229,12 @@ func (m Model) View() string {
 			footer = " Filter: " + text(m.panes[m.active()].filter) + "▏   Enter apply · Esc clear"
 		} else if status != "" {
 			footer = " " + text(status)
+		}
+		if m.rename != nil && !m.rename.confirming {
+			footer = " Rename " + text(path.Base(m.rename.source.Path)) + " · Enter review · Esc cancel"
+			if status != "" {
+				footer = " " + text(status)
+			}
 		}
 		count := fmt.Sprintf(" %d transfers ", len(m.queue))
 		if len(m.queue) == 0 && m.job != nil {
@@ -351,6 +357,9 @@ func (m Model) filePane(i, w, h int) []string {
 			nameColor = m.theme.Folder
 		}
 		row := m.paint(marker+" ", m.theme.Focus) + m.paint(fit(icon, 2), color) + m.paint(fit(name, max(1, w-17)), nameColor) + m.paint(fit(size, 10), m.theme.Muted)
+		if m.rename != nil && m.rename.pane == i && e.Name == path.Base(m.rename.source.Path) && !m.rename.confirming {
+			row = m.paint("› "+fit(icon, 2)+m.renameInput(max(1, w-17)), m.theme.Focus) + m.paint(fit(size, 10), m.theme.Muted)
+		}
 		row += m.paint(strings.Repeat(" ", max(0, w-2-lipgloss.Width(row))), m.theme.Foreground)
 		if j == p.cursor && m.focus == i+1 && m.modal == "" {
 			foreground, background := m.theme.SelectionText, m.theme.Selection
@@ -463,6 +472,8 @@ func (m Model) overlay(background []string) []string {
 	if m.modal == "folder" {
 		title = "OPEN LOCAL DESTINATION"
 		lines = []string{"", "  Folder", "  > " + text(m.folderPath) + "▏", m.paint("  "+m.status, m.theme.Error), "  Enter Open · Ctrl+U Clear · Esc Cancel"}
+	} else if m.modal == "file-rename" {
+		title, lines = "RENAME FILE?", m.renameLines(w, h)
 	} else if m.modal == "preview" {
 		title, lines = m.previewLines(w, h)
 	} else if m.modal == "batch" {
@@ -530,7 +541,7 @@ func (m Model) overlay(background []string) []string {
 func shortcutLines() []string {
 	return []string{
 		"  DISCOVER", "  Ctrl+P        Search every action", "  F1 / ?        Keyboard shortcuts", "  Esc           Close modal / clear filter", "",
-		"  BROWSE & SELECT", "  Tab/Shift+Tab Focus next/previous panel", "  Ctrl+H/L      Focus left/right file pane", "  ↑↓ or j/k     Move cursor", "  Enter         Open directory / inspect file", "  Backspace/h   Parent directory", "  Space         Toggle file selection", "  c             Copy files / folders (live)", "  D             Delete highlighted file (confirmed; live)", "  Ctrl+X        Cancel unfinished transfers", "  r             Retry failed / canceled files", "  p             Bounded text preview", "  e             Edit in Neovim (live; saves sync)", "  /             Filter current pane", "  Ctrl+R        Refresh listing", "",
+		"  BROWSE & SELECT", "  Tab/Shift+Tab Focus next/previous panel", "  Ctrl+H/L      Focus left/right file pane", "  ↑↓ or j/k     Move cursor", "  Enter         Open directory / inspect file", "  Backspace/h   Parent directory", "  Space         Toggle file selection", "  c             Copy files / folders (live)", "  D             Delete highlighted file (confirmed; live)", "  R (Shift+r)   Rename focused file (live)", "  Ctrl+X        Cancel unfinished transfers", "  r             Retry failed / canceled files", "  p             Bounded text preview", "  e             Edit in Neovim (live; saves sync)", "  /             Filter current pane", "  Ctrl+R        Refresh listing", "",
 		"  WORKSPACE", "  [ / ]         Toggle navigation / inspector", "  t             Toggle transfer drawer", "  q / Ctrl+C    Quit workspace", "",
 		"  COMMAND PALETTE", "  Type          Fuzzy-search actions", "  ↑↓ / Ctrl+N/K Choose action", "  Enter         Run selected action", "  F1            Show this guide", "",
 		"  MOUSE", "  Click row     Open directory / inspect file", "  Click marker  Toggle selection without opening", "  Wheel         Scroll list / guide / palette", "  Top buttons   Toggle panels / help / actions",

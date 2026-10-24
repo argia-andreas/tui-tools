@@ -107,7 +107,35 @@ opens a confirmation; multiple files or folders first produce a read-only plan
 and a batch confirmation. Both default to **Cancel**. A confirmed batch copies
 new files serially and pauses on each conflict for Skip, Overwrite or Rename.
 A renamed destination is checked and confirmed again. Rename copies under a
-new name; it does not move or delete the source.
+new name; this copy-conflict option does not move or delete the source.
+
+## Rename files
+
+Focus a file in either pane and press **R (Shift+r)**, or choose **Rename selected
+file** in Actions/Ctrl+P. Edit the filename inline; arrows, Home/End,
+Backspace/Delete and Ctrl+U work with Unicode and spaces. Enter opens a review
+showing the location and quoted old/new names. **Cancel is the default**; choose
+Rename and confirm to apply it. Long confirmation text wraps and scrolls with
+↑/↓ or the wheel. Esc cancels before confirmation, and Escape, Cancel, × or an
+outside click dismisses the confirmation without changing files.
+
+Rename changes only the highlighted file, not a marked batch, within its current
+folder. It works on local files and configured FTP/FTPS, Azure Blob and S3
+connections. Existing names are refused, even when contents match. The demo,
+directories and active transfer queues cannot be renamed. **Lowercase r still
+retries transfers.** After success, matching panes refresh and follow the renamed
+file if its new name matches the current filter. A known name collision returns
+to inline editing; change the name and review again. Other errors refresh the
+panes before you press R to retry with a fresh confirmation.
+
+Once confirmed, a rename runs to its bounded completion; Esc cannot undo it.
+Object stores may copy then delete, so failures can leave both names or an
+uncertain outcome. Inspect the refreshed listing before retrying. Remote checks
+cannot guarantee atomic no-clobber against concurrent external writers. Local
+rename uses no-clobber hard-link creation then source removal, requires hard-link
+support, and may leave both names if removal fails. No rollback or undo is promised.
+
+## Transfer queue
 
 The drawer distinguishes queued/running/completed/skipped/failed/canceled files,
 not invented percentages. Scroll or focus it to review outcomes. Navigation
@@ -169,6 +197,7 @@ Do not use this prototype on valuable production files.
 | Space | Toggle file selection |
 | c | Confirm copying selected files/folders to the opposite pane (live mode only) |
 | D (Shift+d) | Confirm permanent deletion of the highlighted file (live mode only; Cancel is the default; folders are excluded) |
+| R (Shift+r) | Rename the highlighted file inline, then review and confirm |
 | Ctrl+X / r | Cancel unfinished work / confirm retry of failed and canceled files |
 | p | Explicit bounded text preview |
 | `/` / Ctrl+R | Filter the focused file pane / refresh |
