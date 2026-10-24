@@ -391,7 +391,16 @@ func (w *connectionWizard) input(msg tea.Msg) tea.Cmd {
 		}
 		return nil
 	}
-	switch k.String() {
+	key := k.String()
+	if w.step == 0 {
+		switch key {
+		case "j":
+			key = "down"
+		case "k":
+			key = "up"
+		}
+	}
+	switch key {
 	case "tab", "down":
 		w.focus = (w.focus + 1) % w.count()
 	case "shift+tab", "up":

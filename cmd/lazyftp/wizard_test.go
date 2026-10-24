@@ -92,6 +92,40 @@ func wizardClick(t *testing.T, m workspace, label string) (workspace, tea.Cmd) {
 	return m, nil
 }
 
+func TestWizardConnectionTypesVimNavigation(t *testing.T) {
+	for _, tc := range []struct {
+		name, keys, field string
+	}{
+		{"azure", "j", "Storage account"},
+		{"s3", "jj", "Service"},
+		{"back up", "jjk", "Storage account"},
+		{"wrap", "kk", "Service"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, _, _ := setupWizard(t)
+			for _, key := range tc.keys {
+				m, _ = wizardKey(m, string(key))
+			}
+			m, _ = wizardKey(m, "enter")
+			if !strings.Contains(m.View(), tc.field) {
+				t.Fatalf("wrong connection details after %q: %s", tc.keys, m.View())
+			}
+			for _, key := range []string{"j", "k", "tab"} {
+				m, _ = wizardKey(m, key)
+			}
+			nameRow := ""
+			for _, row := range strings.Split(ansi.Strip(m.View()), "\n") {
+				if strings.Contains(row, "Connection name") {
+					nameRow = row
+				}
+			}
+			if !strings.Contains(nameRow, "jk") {
+				t.Fatalf("navigation stole field input: %s", m.View())
+			}
+		})
+	}
+}
+
 func TestWizardSessionConnectMasksSecretsAndNeverSavesByDefault(t *testing.T) {
 	m, target, sessions := setupWizard(t)
 	m = fillWizardFTP(m, "session-one")
