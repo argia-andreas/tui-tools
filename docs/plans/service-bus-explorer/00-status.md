@@ -5,6 +5,22 @@
 - Gate 3 — Program Design: APPROVED 2026-10-23; SDK-internal recovery accepted 2026-10-24 (no application-level retries)
 - Gate 4 — Slice plan: APPROVED 2026-10-23
 
+### Selected-message extension — 2026-10-24
+
+- Product change approved by Andreas: select/open a DLQ message, choose a queue,
+  resend a copy, optional “Delete original after confirmed resend” checkbox off
+  by default. Existing delivered Slice 4 remains unchanged.
+- Gate 2 amendment: **APPROVED 2026-10-24** after peek/copy vs locked deletion
+  clarification. Exact-selected cleanup uses bounded receive-and-match; unrelated
+  temporary locks and delivery-count effects are disclosed. The earlier scan
+  prohibition is superseded only for this flow.
+- Gate 3 amendment: **in progress / awaiting approval** in `03-program-design.md`:
+  full-content prepared copy, same-namespace destination picker, single-use send,
+  five-second/100-message search limit, bounded release and no send on uncertain
+  nonmatch release. Tests are specified before implementation.
+- No extension implementation yet. Slice amendment follows Gate 3 approval;
+  do not restart base project gates or silently start Slice 5/MCP.
+
 ## Project boundary
 
 This is an independent side project in the same repository as LazyFTP, not a LazyFTP feature. Its documentation lives exclusively in this directory and its application in `service-bus-explorer/`. Do not change LazyFTP code, documentation, plans or mockups while working on this project. Shared code extraction requires a separate explicit decision; do not assume shared runtime, credentials or configuration.

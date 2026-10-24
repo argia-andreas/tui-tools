@@ -239,3 +239,131 @@ Read-only source inspection pinned Azure SDK commit `7792debc7e87e22baca89191fde
 - [Message conversion and AMQP representation](https://github.com/Azure/azure-sdk-for-go/blob/7792debc7e87e22baca89191fde85d1f334fb532/sdk/messaging/azservicebus/message.go).
 - [Retry defaults: negative disables; zero selects defaults](https://github.com/Azure/azure-sdk-for-go/blob/7792debc7e87e22baca89191fde85d1f334fb532/sdk/messaging/azservicebus/internal/utils/retrier.go).
 - [Admin entity manager constructs HTTPS host](https://github.com/Azure/azure-sdk-for-go/blob/7792debc7e87e22baca89191fde85d1f334fb532/sdk/messaging/azservicebus/internal/atom/entity_manager.go).
+
+## Selected-message resend amendment — Gate 3 pending, 2026-10-24
+
+Gate 2 amendment approved. This section proposes only the selected-message
+extension; it supersedes origin-only routing for this flow, not the legacy
+receive-next action or topic replay. No extension implementation exists yet.
+
+### Files and contract changes
+
+- `internal/explorer/explorer.go`: add a prepared, single-use replay contract;
+  held deliveries add settlement. No SDK objects or raw bodies in UI state.
+- `internal/azure/store.go`, `delivery.go`: exact-sequence read-only preparation,
+  bounded selected acquisition, shared existing replay conversion and validated
+  destination routing. No second conversion path or SDK patch.
+- `internal/fixture/store.go`: same selected preparation/acquisition/routing
+  semantics against full fixture messages, not display previews.
+- `internal/ui/model.go`, `actions.go`, `review.go`, `review_view.go`, `view.go`:
+  selected-message open, destination picker and cleanup configuration, using the
+  existing compact controls and asynchronous review lifecycle.
+- Existing adjacent Azure/fixture/UI tests and `scripts/terminal-smoke.py`:
+  contract regressions, actual keyboard flow and serial broker coverage.
+- App `README.md` and these plans: commands, side effects and verified limits.
+
+Proposed additions/changes (other existing methods stay):
+
+```go
+type Replay interface {
+    Snapshot() Message // display-limited copy, never the outbound body source
+    Resend(ctx context.Context, destination Resource, newMessageID string) (SendResult, error)
+}
+type Delivery interface {
+    Replay
+    LockedUntil() time.Time
+    Complete(context.Context) error
+    Abandon(context.Context) error
+}
+// Added to Store; source must identify a queue/subscription DLQ.
+PrepareDLQCopy(ctx context.Context, source Resource, sequence int64) (Replay, error)
+ReceiveSelectedDLQ(ctx context.Context, source Resource, sequence int64) (Delivery, error)
+```
+
+A prepared Replay retains full raw message content privately, without a receiver
+or lock, and allows one application send attempt. Prepare re-peeks exactly the
+selected sequence; a higher returned sequence is missing, not a replacement.
+Full resource identity + sequence identifies the source; UI also verifies the
+returned ID against the selected row. Reuse existing raw AMQP validation, byte/
+property copying, renewed TTL, new-ID and unknown-outcome rules. Validate source
+session restrictions and destination queue existence/session restrictions before
+send. Picker lists existing queues in the connected profile/namespace, including
+unwatched ones; no arbitrary endpoint/path input. Legacy replay explicitly passes
+its origin Resource, including a topic for subscription replay.
+
+### User flow and runtime order
+
+1. Enter opens the selected DLQ message read-only; Ctrl+P also exposes “Send
+   selected DLQ message to queue…”. No selected row means no such action.
+2. Choose destination from a keyboard-filterable queue list, then configure
+   “Delete original after confirmed resend” (unchecked). No destination silently
+   chosen. Back/cancel never sends. Existing receive-next is still clearly named.
+3. Proceed to final review: unchecked prepares the exact peeked copy without
+   acquiring a lock; checked acquires the exact selected original via the bounded
+   search below. Review shows source entity/ID/sequence, destination, full-content
+   display truncation notice, cleanup choice, and scan side effects if applicable.
+4. Final review defaults to Cancel. Destination/cleanup are frozen; Back releases
+   any held message before editing. Existing Tab/arrows/Enter controls apply.
+   Read-only body pages cannot submit hidden confirmations. Only locked reviews
+   show a lock deadline/timer; copy-only must not pretend it holds the original.
+5. Confirm invokes Resend once; only confirmed send plus checked cleanup invokes
+   Complete. Unknown send never completes. Confirmed send plus failed/unknown
+   Complete is partial. Cancellation/quit/late replies account for held locks and
+   pending outcomes. Refresh affected source/destination views, not fake counts.
+
+### Selected acquisition bounds and cleanup
+
+- One acquisition/held delivery at a time. Non-session PeekLock DLQ receiver,
+  prefetch disabled. At most 100 individual receives and five seconds of search,
+  whichever ends first; an earlier caller cancellation also stops it. No automatic
+  restart, scan continuation, deferral or ReceiveAndDelete.
+- Retain nonmatching locks until the scan ends so the same message is not
+  abandoned and reacquired repeatedly. Match source/sequence exactly. Other
+  locked messages may be skipped by the broker; a bound/timeout is “could not
+  acquire selected message,” not proof of absence or emptiness.
+- Attempt each nonmatch Abandon once within a shared two-second cleanup context
+  independent of caller cancellation. On any unconfirmed release, abort before
+  send; release the target too, close the receiver with a separate two-second
+  bound, and report release uncertainty. Never claim all locks were released
+  merely because Close returned. Lock expiry may be needed after uncertain cleanup.
+- On success, only the selected lock remains owned by Delivery. On failure,
+  cancel, expiry or late response, retain ownership until bounded cleanup has
+  been attempted. No silent lock renewal; expiration disables send/Complete.
+- Search can take up to five seconds plus bounded release/close work. Selected
+  messages beyond the 100-receive/time budget require explicit user action;
+  the UI must explain the limit rather than promise arbitrary-depth access.
+
+### Test plan before implementation
+
+- `TestSelectedDLQCopyPreservesFullMessage`: select the second of asymmetric
+  messages, copy a 90 KB binary body/scalar properties to a different queue;
+  independently assert complete bytes/TTL/new ID and both originals retained.
+- `TestSelectedDLQCleanupTargetsOnlySelection`: acquire a non-first selected
+  message, send to a different queue, remove only that original; independently
+  receive untouched neighbors and assert they remain available (delivery count
+  may increase). Include source subscription to destination queue, not topic fanout.
+- `TestSelectedDLQCannotSubstituteNext`: selected sequence missing, ID mismatch,
+  concurrently locked target, 100-message bound, deadline/cancel and expired lock
+  produce no send or completion of another message. Deterministic fixture/fake
+  clocks cover boundaries; serial emulator verifies non-first acquisition.
+- `TestSelectedDLQUncertainEffects`: accepted send/lost acknowledgement retains
+  original; confirmed send/uncertain Complete reports partial; uncertain nonmatch
+  release prevents send. Repeat Enter and late cancel cannot send twice or leak
+  ownership. Assert public outcomes/content, not mock call ordering.
+- `TestSelectedDLQDestinationValidation`: same-name resource identities, missing
+  destination, cross-profile/namespace or injected paths, sessions and unsupported
+  AMQP data fail without sending. Legacy origin queue/topic replay still works.
+- Real PTY: select a non-first row, open, filter/choose destination, unchecked
+  default and checked cleanup flows, Back/Escape, resize/read-only body page;
+  inspect all themes/80×24 and a recorded keyboard/pointer tour. Race/vet/guards
+  plus fresh-seed serial broker integration remain required. No cloud proof.
+
+### Least confident decisions
+
+1. Five seconds/100 messages deliberately favors bounded disruption over finding
+   a deeply queued selection. Raise limits only after measured lab evidence and
+   user agreement, never silently scan the whole DLQ.
+2. Treating uncertain nonmatch release as a pre-send failure is conservative;
+   it avoids creating a replay while unrelated lock cleanup is unresolved.
+3. Preparing a copy re-peeks the selected identity instead of trusting a cached,
+   truncated display snapshot. If the original disappeared, the operation stops.

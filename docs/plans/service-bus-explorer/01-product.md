@@ -43,6 +43,13 @@ A terminal workspace for your Azure Service Bus queues and topic subscriptions. 
 
 ### Safe operations
 
+- **Selected-message extension requested 2026-10-24:** Andreas wants to open a
+  selected DLQ message, send a copy to a chosen queue, and optionally check
+  “Delete original after confirmed resend” (off by default). This supersedes
+  the receive-next/origin-only restriction for the new flow, not the existing
+  implemented flow. Selected-original acquisition and cleanup need the narrow
+  architecture amendment below before implementation; no unrelated deletion or
+  successful-cleanup claim is allowed on an uncertain outcome.
 - Peek is the default inspection path: no lock acquisition or message removal. Distinguish it from Receive, which acquires a message lock.
 - Complete removes a received message; Dead-letter settles it into its DLQ. Review risky actions with clear resource/message scope and consequences; safe cancellation is the default.
 - DLQ actions include resending to the source queue/topic and permanently deleting the explicitly reviewed, received DLQ message, subject to permissions. User-approved first flow: receive next, then review its actual identity; it may differ from the highlighted peek message. No promise of arbitrary peek-row acquisition. Releasing a received message can affect delivery count, so cancellation is not presented as side-effect-free browsing.
