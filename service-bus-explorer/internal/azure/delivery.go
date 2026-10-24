@@ -169,6 +169,10 @@ func (d *delivery) Resend(ctx context.Context, id string) (explorer.SendResult, 
 		defer stop()
 		_ = sender.Close(closeCtx)
 	}()
+	// One application invocation, not a wire-level no-retry guarantee: SDK
+	// v1.11.0 internal/amqpLinks.go can reset its attempt counter for a quick
+	// link-error retry even with MaxRetries=-1. A dependency fix is required
+	// before claiming strictly one transfer attempt under link failures.
 	if err := sender.SendMessage(ctx, message, nil); err != nil {
 		// No transport error proves rejection. A lost acknowledgement may hide
 		// broker acceptance. The SDK's explicit message-size rejection is known.
@@ -207,6 +211,10 @@ func (d *delivery) settle(ctx context.Context, complete bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	// SDK v1.11.0 messageSettler.go uses RetryOptions{} (not the client's
+	// disabled-retry setting), and may fall back to management-link settlement.
+	// We never invoke settlement again, but cannot disable those SDK retries
+	// through its public API. Errors therefore remain unconfirmed outcomes.
 	var err error
 	if complete {
 		err = d.receiver.CompleteMessage(ctx, d.message, nil)
