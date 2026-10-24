@@ -1,8 +1,8 @@
 # Gate 3 — Program design
 
-Draft for approval. Product and architecture are approved. No implementation code,
-lab bootstrap, dependency installation or slice execution is authorized by this
-document. The declarations below are proposed contracts, not compiled source.
+Approved by Andreas on 2026-10-24 (“Sounds good. Go ahead.”). Implementation code,
+lab bootstrap and slice execution still await Gate 4 approval. The declarations
+below are design contracts, not compiled source.
 
 ## Files
 
@@ -360,4 +360,4 @@ where supported; terminal escape emission alone is not proof of a system copy.
 5. **Local copy:** OSC52 needs explicit trust and may not work in every SSH/tmux
    setup. Reliable receipt, not just a “Yanked” toast, needs platform validation.
 
-Approve Gate 3, or what should change?
+Proceed to the Gate 4 vertical-slice plan before implementation.
