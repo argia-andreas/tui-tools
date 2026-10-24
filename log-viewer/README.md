@@ -105,7 +105,10 @@ still opens details at narrow widths. Minimum size is 60×16. Resizing cannot le
 focus in a hidden panel. The log row shows a one-line summary; the inspector wraps
 the full retained message and displays multiline strings and typed structure.
 
-The palette lists only implemented actions, reusing their existing behavior.
+The compact centered palette floats above a dimmed workbench, with a raised
+surface, highlighted selection and right-aligned shortcuts. It shrinks with the
+match count and scrolls within terminal bounds instead of replacing the screen.
+It lists only implemented actions, reusing their existing behavior.
 Its filter action is contextual: source filters from logs/workspace, exact field
 filtering from inspector. Disabled actions show the current reason (for example,
 no selected event, no older history, or no local find yet); Enter cannot run them.

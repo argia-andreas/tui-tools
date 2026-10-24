@@ -82,6 +82,9 @@ func TestPaletteOwnsInputDispatchesExistingActionsAndRestoresFocus(t *testing.T)
 	d.key("enter")
 	before := d.view()
 	d.key("ctrl+p")
+	if !strings.Contains(d.view(), "WORKSPACE") || !strings.Contains(d.view(), "INSPECTOR") {
+		t.Fatal("palette replaced the workbench instead of floating above it")
+	}
 	d.key("q y ")
 	d.key("enter") // No match must not quit, yank or follow.
 	if !strings.Contains(d.view(), "No matching implemented actions") {

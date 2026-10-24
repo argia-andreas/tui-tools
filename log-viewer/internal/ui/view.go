@@ -55,6 +55,9 @@ func (m Model) View() string {
 		mode = " LOGVIEW  /  ELASTICSEARCH · LOCAL LAB · TLS"
 	}
 	header := m.style(t.Focus).Bold(true).Render(fit(mode, m.width))
+	if m.editor != nil && m.editor.kind == "palette" {
+		return m.paletteView()
+	}
 	if m.editor != nil {
 		title, lines := m.editorLines()
 		for i := range lines {

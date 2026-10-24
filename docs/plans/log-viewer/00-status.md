@@ -281,3 +281,33 @@ locally but not tracked. The preview/browser are stopped after verification.
   `view.go`; palette behavior is owned by `actions.go`. Pull this checkpoint before
   editing these files. No LazyFTP/Service Bus code/docs changed; no deployment or
   publishing. Field yank and the rest of Slice 4 remain pending.
+
+### Palette visual correction requested by Andreas
+
+- Andreas rejected the initial full-screen-editor appearance in favor of a real
+  command-palette modal like the other apps. Reused the actual LazyFTP compositor
+  method and Midnight styling: dim/recolor the existing workspace, center an
+  opaque raised surface, cyan outline, mint selected row, right-aligned shortcuts,
+  selected-action availability and concise keyboard footer. Geometry caps at
+  82 columns / nine visible actions, shrinks with matches, and respects 60×16.
+  All actions, modal input/focus, disabled reasons and output policy are unchanged.
+- The only shared rendering hook is a palette-only branch before the generic
+  editor branch in `View`; filter facets/sidebar/inspector revisions remain owned
+  by the source thread. `actions.go` owns the ANSI-cell-aware overlay. No imports
+  across app internals or edits to the other applications.
+- `make -C log-viewer check test-terminal`: PASS, including real fixture palette
+  and search PTYs, race/vet and existing 21-size bounds/focus cases. Extended the
+  palette regression to require workbench panels remain visible behind the modal.
+  Real Elastic integration was not rerun for this rendering-only correction.
+- Inspected final real 2× screenshots: [default modal](../../../.amp/in/artifacts/log-viewer/palette-modal/01-modal.png),
+  [filtered unavailable action](../../../.amp/in/artifacts/log-viewer/palette-modal/02-unavailable.png),
+  [no matches](../../../.amp/in/artifacts/log-viewer/palette-modal/03-no-match.png),
+  [80×24 modal](../../../.amp/in/artifacts/log-viewer/palette-modal/04-narrow.png),
+  [80×24 inspector context](../../../.amp/in/artifacts/log-viewer/palette-modal/05-inspector.png).
+  These supersede the initial full-screen palette images for current appearance.
+- Inspected the entire 14.4-second real keyboard/moving-pointer
+  [clip](../../../.amp/in/artifacts/log-viewer/palette-modal/06-keyboard.mp4)
+  at 5 fps: unavailable history, query-driven shrinking/recentering, cancel,
+  inspector, contextual palette, field picker and return to inspector. Private
+  ttyd preview/browser stopped after review; temporary helpers removed. No
+  deployment, publishing, clipboard, follow or MCP behavior added.
