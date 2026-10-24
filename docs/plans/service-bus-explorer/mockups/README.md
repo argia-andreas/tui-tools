@@ -6,11 +6,12 @@ All PNGs are Painter-generated design references with fictional offline sample d
 
 Andreas requested a nicer UI with actions that almost look like buttons after
 Slice 4 completion. These three alternatives explore action placement and visual
-hierarchy, not new broker behavior. No direction has been selected or implemented.
+hierarchy, not new broker behavior. Andreas selected H (option A in the thread)
+for its compact button styling and authorized implementation on 2026-10-24.
 All use padded, bordered terminal controls, a distinct focused Cancel state,
 outlined resend, separate destructive action and cleanup unchecked by default.
 Keyboard focus must remain visible without color; exact cell geometry and all
-theme/compact variants require real-terminal validation after selection.
+theme/compact variants require real-terminal validation, not mockup inspection.
 
 | Reference | Direction and trade-off |
 | --- | --- |
@@ -18,8 +19,9 @@ theme/compact variants require real-terminal validation after selection.
 | [I — Focused review dialog](i-actions-dialog.png) | Review sits over inactive browsing context; explicit separate typed-delete state, but adds overlay/navigation complexity. |
 | [J — Action rail](j-actions-rail.png) | Strongest button affordance and clearest action hierarchy beside the held body; consumes width and needs a stacked/footer fallback at 80 columns. |
 
-Recommendation: J's action styling with H's compact footer fallback. This is a
-recommendation for discussion, not approval to implement it or start Slice 5.
+Selected direction: H's compact horizontal controls, not J's action rail.
+The initial implementation keeps existing shortcut-driven browsing and review
+keyboard order; typed delete stays in the action bar rather than adding a modal.
 Delete still requires typing `delete`; ellipsis controls propose opening that
 confirmation rather than deleting immediately. Receiving next is never a peek
 and may acquire a different message from the highlighted preview. Navigation

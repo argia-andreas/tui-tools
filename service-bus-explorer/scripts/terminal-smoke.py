@@ -70,14 +70,14 @@ def main():
 
     def dlq_review():
         action("receive next", "ACTUAL RECEIVED MESSAGE")
-        text = wait("› Cancel / release original")
+        text = wait("› Cancel / release")
         assert re.search(r"ID: orders-dlq-\d{4}", text)
         assert "[ ] Remove original" in text
         send("\r", "Lock release confirmed")
         send("\r", "orders / DEAD-LETTER")
         action("receive next", "ACTUAL RECEIVED MESSAGE")
         retained_id = re.search(r"ID: (orders-dlq-\d{4})", wait("New MessageID:")).group(1)
-        send("\t", "› Resend new copy to origin")
+        send("\t", "› Resend copy")
         send("\r", "no cleanup requested")
         wait("Lock release confirmed")
         send("\r", "orders / DEAD-LETTER")

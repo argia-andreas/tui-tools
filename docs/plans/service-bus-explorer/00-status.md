@@ -156,6 +156,25 @@ This is an independent side project in the same repository as LazyFTP, not a Laz
 - Slice 4 requires no further implementation. Next decision: continue Slice 5
   portable developer handoff/polish, or re-steer; do not start it implicitly.
 
+## Compact button styling — requested follow-up, 2026-10-24
+
+- Andreas selected mockup H (option A in the conversation): compact horizontal
+  terminal buttons, not the action rail. Implementation authorized separately
+  from the remaining Slice 5 portability work. Continue to commit/push scoped
+  verified improvements early so Andreas can test while work continues.
+- First checkpoint: bordered Active/DLQ/Refresh/Actions shortcut toolbar and
+  a bottom review bar with horizontal Cancel/Resend/Delete controls. Cancel is
+  focused by default; cleanup stays unchecked; typed delete and keyboard order
+  are unchanged. No mouse mode, broker action or retry behavior was added.
+- Review body becomes a separate read-only page at short heights as well as
+  narrow widths; confirmations hidden by that page cannot submit. Tests cover
+  all three themes, Unicode/ASCII and sizes around the 35-row split boundary.
+  Toolbar space is accounted for in inspector scroll bounds.
+- Race tests, ten Python guards, fixture PTY and vet pass. Inspected actual
+  Midnight browse/review at 160×48 and compact review at 80×24. Remaining theme,
+  typed-delete and keyboard/pointer capture review is in progress; evidence is
+  under this orb's `.amp/in/artifacts/service-bus-buttons/`.
+
 ## Slices
 
 - [x] Slice 1 — runnable fixture workspace

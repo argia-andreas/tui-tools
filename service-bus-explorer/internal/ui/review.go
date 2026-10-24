@@ -197,7 +197,7 @@ func (m Model) reviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if (m.width < 80 || m.height < 24) && msg.String() != "esc" {
 		return m, nil
 	}
-	if m.width < 110 && m.review.scroll > 0 && msg.String() != "pgup" && msg.String() != "pgdown" && msg.String() != "esc" {
+	if !m.splitReview() && m.review.scroll > 0 && msg.String() != "pgup" && msg.String() != "pgdown" && msg.String() != "esc" {
 		return m, nil // Never submit a confirmation hidden behind the narrow body view.
 	}
 	switch msg.String() {
@@ -211,7 +211,7 @@ func (m Model) reviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.review.choice = (m.review.choice + 3) % 4
 		m.review.typed = ""
 	case "pgdown":
-		if m.width < 110 && m.review.scroll == 0 {
+		if !m.splitReview() && m.review.scroll == 0 {
 			m.review.scroll = 1
 		} else {
 			m.review.scroll += max(1, m.height-10)

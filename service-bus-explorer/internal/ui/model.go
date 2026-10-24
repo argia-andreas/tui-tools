@@ -341,7 +341,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case "pgup":
 					step = -max(1, m.height-10)
 				}
-				m.offset = min(max(0, len(m.inspectorLines())-(m.height-8)), max(0, m.offset+step))
+				m.offset = min(max(0, len(m.inspectorLines())-(m.height-11)), max(0, m.offset+step))
 				if key != "i" && key != "[" && key != "]" && key != "r" {
 					return m, nil
 				}

@@ -6,8 +6,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
+
+func (m Model) splitReview() bool {
+	// Leave room for the seven-row action bar and both review panes.
+	return m.width >= 110 && m.height >= 35
+}
 
 func (m Model) reviewView(width, height int) []string {
 	r := m.review
@@ -34,8 +40,34 @@ func (m Model) reviewView(width, height int) []string {
 		}
 		return m.panel("DLQ / OUTCOME", width, height, rows, true)
 	}
+	var actions []string
+	if r.phase == "review" {
+		mark := "[ ]"
+		if r.cleanup {
+			mark = "[x]"
+		}
+		cleanup := "  " + mark + " Remove original ONLY after confirmed send"
+		if r.choice == 2 {
+			cleanup = m.selectedLine("› "+mark+" Remove original ONLY after confirmed send", width-2)
+		} else {
+			cleanup = m.paint(cleanup, m.theme.Foreground)
+		}
+		actions = append(actions, cleanup)
+		buttons := lipgloss.JoinHorizontal(lipgloss.Top,
+			m.button("Cancel / release", r.choice == 0, m.theme.Focus), " ",
+			m.button("Resend copy", r.choice == 1, m.theme.Focus), "  ",
+			m.button("Delete original", r.choice == 3, m.theme.DeadLetter))
+		actions = append(actions, strings.Split(buttons, "\n")...)
+		if r.choice == 3 {
+			actions = append(actions, m.paint("  Delete original · type delete: "+r.typed+"_", m.theme.DeadLetter))
+		} else {
+			actions = append(actions, m.paint("  Release/expiry may increase delivery count. PgUp/PgDn body.", m.theme.Muted))
+		}
+		actions = m.panel("ACTIONS / Tab choose · Enter confirm · Esc release", width, 7, actions, true)
+		height -= len(actions)
+	}
 	leftWidth := width
-	split := width >= 110
+	split := m.splitReview()
 	if split {
 		leftWidth = width * 60 / 100
 	}
@@ -69,29 +101,12 @@ func (m Model) reviewView(width, height int) []string {
 		add("No app-level retries; SDK recovery may repeat wire attempts. Not exactly-once.", m.theme.Muted)
 		rows = append(rows, "")
 	}
-	if r.phase == "review" {
-		if !split && len(rows) > height-9 {
-			rows = append(rows[:height-10], m.paint("  PgDn: full identity, body and replay policy", m.theme.Warning))
-		}
-		mark := "[ ]"
-		if r.cleanup {
-			mark = "[x]"
-		}
-		for i, label := range []string{"Cancel / release original", "Resend new copy to origin", mark + " Remove original ONLY after confirmed send", "Delete original · type delete: " + r.typed + "_"} {
-			if i == r.choice {
-				rows = append(rows, m.selectedLine("› "+label, leftWidth-2))
-			} else {
-				add(label, m.theme.Foreground)
-			}
-		}
-		if split {
-			rows = append(rows, "")
-			add("Tab / arrows choose · Enter confirm · Esc release", m.theme.Focus)
-		}
-		add("Release/expiry can increase delivery count. PgUp/PgDn body.", m.theme.Muted)
-	} else {
+	if r.phase != "review" {
 		add(strings.ToUpper(r.phase)+"… no repeat submission", m.theme.Warning)
 		add("Cancellation cannot roll back broker acceptance. Waiting for confirmed/unknown outcome.", m.theme.Muted)
+	}
+	if !split && len(rows) > height-2 {
+		rows = append(rows[:height-3], m.paint("  PgDn: full identity, body and replay policy", m.theme.Warning))
 	}
 	left := m.panel("DLQ / REVIEW HELD MESSAGE", leftWidth, height, rows, true)
 	bodyWidth := width - leftWidth - 6
@@ -131,13 +146,14 @@ func (m Model) reviewView(width, height int) []string {
 		for i := range left {
 			left[i] += right[i]
 		}
-		return left
+		return append(left, actions...)
 	}
 	// Narrow terminals retain confirmations and reveal body/properties on demand.
 	if r.scroll > 0 {
 		offset := min(max(0, r.scroll-1), max(0, len(body)-(height-3)))
 		body = append([]string{m.paint("  PgUp to return to review / Esc releases", m.theme.Warning)}, body[offset:]...)
-		return m.panel("HELD BODY / read-only", width, height, body, true)
+		// The body page is read-only: don't show confirm buttons behind it.
+		return m.panel("HELD BODY / read-only", width, height+len(actions), body, true)
 	}
-	return left
+	return append(left, actions...)
 }

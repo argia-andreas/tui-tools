@@ -50,7 +50,7 @@ func TestReviewActsOnAcquiredNotSelectedAndRetainsOriginal(t *testing.T) {
 	m = press(m, "j") // selected preview 0002, next acquired 0001
 	m = acquiredReview(t, m)
 	view := ansi.Strip(m.View())
-	for _, want := range []string{"ID: orders-dlq-0001", "› Cancel / release original", "[ ] Remove original", "New MessageID:", "no renewal"} {
+	for _, want := range []string{"ID: orders-dlq-0001", "› Cancel / release", "[ ] Remove original", "New MessageID:", "no renewal"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("missing %q\n%s", want, view)
 		}
@@ -92,6 +92,36 @@ func TestReviewActsOnAcquiredNotSelectedAndRetainsOriginal(t *testing.T) {
 	c, _ := s.Counts(ctx, resources[0])
 	if c.Active != 129 {
 		t.Fatalf("expected exactly one new copy, got %d", c.Active)
+	}
+}
+
+func TestReviewControlsRemainVisibleAcrossThemesAndSizes(t *testing.T) {
+	for _, theme := range []string{"midnight", "gruvbox", "light"} {
+		for _, ascii := range []bool{false, true} {
+			s, _ := fixture.New()
+			prefs := config.Default()
+			prefs.Theme = theme
+			m := start(t, s, prefs, "fixture", ascii)
+			m = press(m, "]")
+			m = acquiredReview(t, m)
+			for _, size := range [][2]int{{80, 24}, {110, 24}, {160, 24}, {160, 34}, {160, 35}, {160, 48}} {
+				m, _ = m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+				assertFrame(t, m, size[0], size[1])
+				for _, want := range []string{"Cancel / release", "Resend copy", "Delete original", "[ ] Remove original", "Lock until:", "duplicate processing"} {
+					if !strings.Contains(ansi.Strip(m.View()), want) {
+						t.Fatalf("%s ascii=%v at %v hid %q\n%s", theme, ascii, size, want, ansi.Strip(m.View()))
+					}
+				}
+				if size[1] < 35 {
+					m = press(m, "pgdown")
+					if !strings.Contains(m.View(), "HELD BODY / read-only") || strings.Contains(m.View(), "Resend copy") {
+						t.Fatal("body page exposed hidden confirmations")
+					}
+					m = press(m, "pgup")
+				}
+			}
+			m = press(m, "esc")
+		}
 	}
 }
 

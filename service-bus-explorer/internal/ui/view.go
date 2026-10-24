@@ -39,6 +39,17 @@ func (m Model) selectedLine(s string, width int) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection)).Render(fit(s, width))
 }
 
+func (m Model) button(label string, focused bool, color string) string {
+	prefix, foreground, background := "  ", color, m.theme.Background
+	if focused {
+		prefix, foreground, background = "› ", m.theme.SelectionText, m.theme.Selection
+	}
+	return lipgloss.NewStyle().Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color(color)).BorderBackground(lipgloss.Color(m.theme.Background)).
+		Foreground(lipgloss.Color(foreground)).Background(lipgloss.Color(background)).
+		Padding(0, 1).Render(prefix + label)
+}
+
 func (m Model) panel(title string, width, height int, lines []string, focused bool) []string {
 	color := m.theme.Border
 	if focused {
@@ -221,12 +232,25 @@ func (m Model) messageView(width, height int) []string {
 	if m.dlq {
 		view = "DEAD-LETTER"
 	}
+	actions := "Actions ^P"
+	if width < 70 {
+		actions = "More ^P"
+	}
+	toolbar := strings.Split(lipgloss.JoinHorizontal(lipgloss.Top,
+		m.button("Active [", !m.dlq, m.theme.Focus), " ",
+		m.button("DLQ ]", m.dlq, m.theme.Focus), " ",
+		m.button("Refresh r", false, m.theme.Focus), " ",
+		m.button(actions, false, m.theme.Focus)), "\n")
+	for i, line := range toolbar {
+		toolbar[i] = line + m.paint(strings.Repeat(" ", max(0, width-lipgloss.Width(line))), m.theme.Foreground)
+	}
+	height -= len(toolbar)
 	listWidth := width
 	showInspector := m.hasInspector()
 	if showInspector {
 		listWidth = width * 48 / 100
 	}
-	lines := []string{m.paint("  [ Active     ] Dead-letter", m.theme.Focus), m.paint("  PEEK ONLY · no locks or settlement", m.theme.Queued), m.paint("  "+clean(m.resource.Profile+" / "+m.resource.Namespace, false), m.theme.Muted)}
+	lines := []string{m.paint("  PEEK ONLY · no locks or settlement", m.theme.Queued), m.paint("  "+clean(m.resource.Profile+" / "+m.resource.Namespace, false), m.theme.Muted)}
 	if m.loading {
 		lines = append(lines, m.paint("  Loading messages…", m.theme.Muted))
 	} else if len(m.page.Messages) == 0 {
@@ -257,7 +281,7 @@ func (m Model) messageView(width, height int) []string {
 	}
 	left := m.panel(clean(m.resource.Name(), false)+" / "+view, listWidth, height, lines, m.focus == "content")
 	if !showInspector {
-		return left
+		return append(toolbar, left...)
 	}
 	details := m.inspectorLines()
 	offset := min(m.offset, max(0, len(details)-(height-2)))
@@ -265,7 +289,7 @@ func (m Model) messageView(width, height int) []string {
 	for i := range left {
 		left[i] += right[i]
 	}
-	return left
+	return append(toolbar, left...)
 }
 
 func (m Model) inspectorLines() []string {
