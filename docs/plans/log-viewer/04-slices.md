@@ -1,8 +1,9 @@
 # Gate 4 — Vertical slices
 
-Draft for Andreas's approval. Gates 1–3 are approved; no application code, lab
-installation or slice execution has begun. All paths below are relative to the
-proposed `log-viewer/` module. Contract details remain in `03-program-design.md`.
+Approved by Andreas on 2026-10-24 (“Go for it”). Gates 1–4 are approved.
+Only Slice 1 is authorized for the first implementation checkpoint; see
+`00-status.md` for delivered work and verification. All implementation paths below
+are relative to `log-viewer/`. Target contracts remain in `03-program-design.md`.
 
 ## Build order
 
@@ -117,4 +118,4 @@ and exercising the actual source with appropriate read authorization. Kubernetes
 Loki, Azure Monitor, cross-provider merge and final branding remain outside these
 slices; add the second real provider as a separately scoped continuation.
 
-Approve Gate 4, or what should change?
+Gate 4 approval does not bypass the continuation question at each slice boundary.

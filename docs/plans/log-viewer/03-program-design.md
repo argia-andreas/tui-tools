@@ -1,8 +1,9 @@
 # Gate 3 — Program design
 
-Approved by Andreas on 2026-10-24 (“Sounds good. Go ahead.”). Implementation code,
-lab bootstrap and slice execution still await Gate 4 approval. The declarations
-below are design contracts, not compiled source.
+Approved by Andreas on 2026-10-24 (“Sounds good. Go ahead.”). Gate 4 was subsequently
+approved. The declarations below are the target design, not a claim that every
+operation is implemented. See `00-status.md` for the actual delivered slice;
+introduce only the operations each slice needs.
 
 ## Files
 
