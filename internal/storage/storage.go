@@ -25,6 +25,11 @@ type Browser interface {
 	List(ctx context.Context, loc Location) ([]Entry, error)
 }
 
+// Deleter removes one file at its full path, never directories or prefixes.
+type Deleter interface {
+	Delete(context.Context, Location) error
+}
+
 // Transferer operates on full file paths, not directory destinations. Copy must
 // reject directories and existing destinations unless overwrite is explicit.
 // FTP cannot guarantee atomic no-clobber against concurrent external writers.

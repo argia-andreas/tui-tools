@@ -74,7 +74,7 @@ func join(a, b []string) []string {
 
 const toolbar = " [Nav] [Info] [Jobs] [?] [Actions] "
 const paneControls = " ↑ Up  / Filter  ↻ Refresh"
-const workspaceFooter = " Space Select   c Copy   ? help"
+const workspaceFooter = " Space Select   c Copy   D Delete   ? help"
 const paletteFooter = "  ↑↓ choose · Enter run · F1 shortcuts · Esc close"
 const helpFooter = "  ↑↓ / wheel scroll · Esc close"
 
@@ -127,7 +127,7 @@ func (m Model) layout() workspaceLayout {
 func (m Model) modalSize() (int, int) {
 	w, h := min(82, m.width-6), min(20, m.height-4)
 	switch m.modal {
-	case "folder":
+	case "folder", "delete":
 		h = min(h, 8)
 	case "copy", "batch":
 		h = min(h, 12)
@@ -469,6 +469,8 @@ func (m Model) overlay(background []string) []string {
 		title, lines = m.batchLines(h)
 	} else if m.modal == "copy" || m.modal == "rename" {
 		title, lines = m.copyLines(w, h)
+	} else if m.modal == "delete" {
+		title, lines = m.deleteLines(h)
 	} else if m.modal == "help" {
 		title = "KEYBOARD SHORTCUTS · F1"
 		guide := shortcutLines()
@@ -528,7 +530,7 @@ func (m Model) overlay(background []string) []string {
 func shortcutLines() []string {
 	return []string{
 		"  DISCOVER", "  Ctrl+P        Search every action", "  F1 / ?        Keyboard shortcuts", "  Esc           Close modal / clear filter", "",
-		"  BROWSE & SELECT", "  Tab/Shift+Tab Focus next/previous panel", "  Ctrl+H/L      Focus left/right file pane", "  ↑↓ or j/k     Move cursor", "  Enter         Open directory / inspect file", "  Backspace/h   Parent directory", "  Space         Toggle file selection", "  c             Copy files / folders (live)", "  Ctrl+X        Cancel unfinished transfers", "  r             Retry failed / canceled files", "  p             Bounded text preview", "  e             Edit in Neovim (live; saves sync)", "  /             Filter current pane", "  Ctrl+R        Refresh listing", "",
+		"  BROWSE & SELECT", "  Tab/Shift+Tab Focus next/previous panel", "  Ctrl+H/L      Focus left/right file pane", "  ↑↓ or j/k     Move cursor", "  Enter         Open directory / inspect file", "  Backspace/h   Parent directory", "  Space         Toggle file selection", "  c             Copy files / folders (live)", "  D             Delete highlighted file (confirmed; live)", "  Ctrl+X        Cancel unfinished transfers", "  r             Retry failed / canceled files", "  p             Bounded text preview", "  e             Edit in Neovim (live; saves sync)", "  /             Filter current pane", "  Ctrl+R        Refresh listing", "",
 		"  WORKSPACE", "  [ / ]         Toggle navigation / inspector", "  t             Toggle transfer drawer", "  q / Ctrl+C    Quit workspace", "",
 		"  COMMAND PALETTE", "  Type          Fuzzy-search actions", "  ↑↓ / Ctrl+N/K Choose action", "  Enter         Run selected action", "  F1            Show this guide", "",
 		"  MOUSE", "  Click row     Open directory / inspect file", "  Click marker  Toggle selection without opening", "  Wheel         Scroll list / guide / palette", "  Top buttons   Toggle panels / help / actions",

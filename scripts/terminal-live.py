@@ -160,9 +160,28 @@ def exercise(remote):
         terminal.transfer("\t\t\r", str(filename))
         assert filename.read_bytes() == original, "explicit overwrite download did not restore original bytes"
         assert rclone("cat", destination) == original, "download changed remote source"
+
+        terminal.send("D", "CONFIRM FILE DELETION", "File: " + name, "In:   " + remote, "[Cancel]", "[Delete]")
+        assert rclone("cat", destination) == original, "opening deletion dialog changed remote bytes"
+        terminal.send("\r", name, absent=("CONFIRM FILE DELETION",))
+        assert rclone("cat", destination) == original, "default Cancel deleted remote file"
+        terminal.send("D", "CONFIRM FILE DELETION")
+        terminal.send("\t\r", "Deleted: " + destination, absent=("CONFIRM FILE DELETION", "Loading"))
+        assert name not in rclone("lsf", remote, "--files-only").decode().splitlines(), "remote deletion failed"
+        assert filename.read_bytes() == original, "remote deletion changed local copy"
+
+        # Focus traverses the jobs drawer before returning to the local pane.
+        terminal.send("\t\t", str(local))
+        terminal.send("D", "CONFIRM FILE DELETION", "File: " + name, "In:   " + str(local))
+        terminal.send("\x1b", name, absent=("CONFIRM FILE DELETION",))
+        assert filename.read_bytes() == original, "Esc deleted local file"
+        terminal.send("D", "CONFIRM FILE DELETION")
+        terminal.send("\t\r", "Deleted: " + str(filename), absent=("CONFIRM FILE DELETION", "Loading"))
+        assert not filename.exists(), "local deletion failed"
         terminal.quit()
         print(f"Live PTY {remote} PASS: upload + independent cat, default Cancel, "
               f"same-length overwrite download + byte equality, fresh Running→Completed, "
+              f"confirmed local/remote deletion + Cancel/Esc preservation, "
               f"clean exit ({len(original)} bytes; {time.monotonic() - started:.2f}s)", flush=True)
     finally:
         try:

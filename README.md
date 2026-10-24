@@ -168,6 +168,7 @@ Do not use this prototype on valuable production files.
 | Enter / Backspace | Open directory (including `..`) / go to parent |
 | Space | Toggle file selection |
 | c | Confirm copying selected files/folders to the opposite pane (live mode only) |
+| D (Shift+d) | Confirm permanent deletion of the highlighted file (live mode only; Cancel is the default; folders are excluded) |
 | Ctrl+X / r | Cancel unfinished work / confirm retry of failed and canceled files |
 | p | Explicit bounded text preview |
 | `/` / Ctrl+R | Filter the focused file pane / refresh |

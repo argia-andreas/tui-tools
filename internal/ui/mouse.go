@@ -24,7 +24,7 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		x, y := (m.width-w)/2, (m.height-h)/2
 		outside := msg.X < x || msg.X >= x+w || msg.Y < y || msg.Y >= y+h
 		if click && (outside || (msg.Y == y && msg.X >= x+w-6)) {
-			if m.modal == "copy" || m.modal == "rename" || m.modal == "batch" || m.modal == "preview" || m.modal == "folder" {
+			if m.modal == "copy" || m.modal == "rename" || m.modal == "batch" || m.modal == "preview" || m.modal == "folder" || m.modal == "delete" {
 				return key(tea.KeyEsc)
 			}
 			m.modal = ""
@@ -32,6 +32,19 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if outside {
+			return m, nil
+		}
+		if m.modal == "delete" {
+			if click && msg.Y == y+h-2 {
+				start := x + 2
+				for i, label := range []string{"Cancel", "Delete"} {
+					if msg.X >= start && msg.X < start+len(label)+4 {
+						m.choice = i
+						return key(tea.KeyEnter)
+					}
+					start += len(label) + 4
+				}
+			}
 			return m, nil
 		}
 		if m.modal == "folder" {

@@ -48,6 +48,8 @@ type Model struct {
 	transferer                  storage.Transferer
 	locations                   []storage.Location
 	pending                     *copyState
+	deleteTarget                *storage.Location
+	deleting                    bool
 	job                         *transferJob
 	queue                       []transferJob
 	queueIndex                  int
@@ -254,6 +256,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.acceptPlan(msg)
 	case previewLoaded:
 		m = m.applyPreview(msg)
+	case deleteFinished:
+		return m.finishDelete(msg)
 	case editFinished:
 		m.status = "Editor closed — saved changes synchronized"
 		if msg.err != nil {
@@ -476,6 +480,7 @@ func (m Model) actions() []action {
 		{"refresh", "Refresh focused filesystem", "ctrl+r", "reload browse", ""},
 		{"icons", "Toggle filetype icons", "", "glyphs nerd font", ""},
 		{"help", "Keyboard shortcuts", "?", "help keys", ""},
+		{"delete", "Delete selected file", "D", "remove file", m.deleteDisabled()},
 		{"cancel", "Cancel unfinished transfers", "ctrl+x", "stop queue", m.cancelDisabled()},
 		{"retry", "Retry unfinished transfers", "r", "recover failed canceled queue", m.retryDisabled()},
 	}
@@ -515,6 +520,9 @@ func (m Model) matches() []action {
 }
 
 func (m Model) modalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.modal == "delete" {
+		return m.deleteKey(msg)
+	}
 	if m.modal == "folder" {
 		return m.folderKey(msg)
 	}
@@ -645,6 +653,8 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		destination.Path = path.Join(destination.Path, e.Name)
 		m.pending = &copyState{source: source, destination: destination, size: e.Size}
 		return m.checkDestination()
+	case "delete":
+		return m.confirmDelete()
 	case "preview":
 		return m.startPreview()
 	case "edit":

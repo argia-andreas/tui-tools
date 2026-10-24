@@ -211,6 +211,29 @@ func TestRcloneIntegration(t *testing.T) {
 					t.Error("canceled Copy reported success")
 				}
 			}
+			for _, loc := range []storage.Location{localFile(names[3]), remoteFile(names[3])} {
+				if err := client.Delete(canceled, loc); !errors.Is(err, context.Canceled) {
+					t.Fatalf("canceled Delete: %v", err)
+				}
+				checkBytes(loc, payloads[3])
+				parent := loc
+				parent.Path = path.Dir(parent.Path)
+				if err := client.Delete(ctx, parent); err == nil {
+					t.Fatal("Delete accepted a directory/prefix")
+				}
+				checkBytes(loc, payloads[3])
+				if err := client.Delete(ctx, loc); err != nil {
+					t.Fatalf("Delete(%v): %v", loc, err)
+				}
+				if _, err := client.Stat(ctx, loc); !errors.Is(err, fs.ErrNotExist) {
+					t.Fatalf("deleted file still exists: %v", err)
+				}
+				if err := client.Delete(ctx, loc); !errors.Is(err, fs.ErrNotExist) {
+					t.Fatalf("missing Delete: %v", err)
+				}
+			}
+			checkBytes(localFile(names[4]), payloads[4])
+			checkBytes(remoteFile(names[4]), payloads[4])
 		})
 	}
 }

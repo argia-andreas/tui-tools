@@ -164,6 +164,19 @@ func (r *Rclone) Stat(ctx context.Context, loc Location) (Entry, error) {
 	return Entry{}, fs.ErrNotExist
 }
 
+func (r *Rclone) Delete(ctx context.Context, loc Location) error {
+	entry, err := r.Stat(ctx, loc)
+	if err != nil {
+		return err
+	}
+	if entry.IsDir {
+		return fmt.Errorf("choose a file, not a directory, to delete")
+	}
+	// deletefile targets exactly one object; never use recursive delete or purge.
+	_, err = r.run(ctx, time.Minute, "deletefile", nil, loc)
+	return err
+}
+
 func (r *Rclone) Copy(ctx context.Context, source, destination Location, overwrite bool) error {
 	if source == destination {
 		return fmt.Errorf("source and destination are the same")
