@@ -130,6 +130,13 @@ func TestPaletteOwnsInputAndExecutesEnabledActions(t *testing.T) {
 	d.key("tab")
 	d.key("c")
 	requireText(t, d, "demo is read-only")
+	d.key("e")
+	requireText(t, d, "Demo is read-only; edit real files in live mode")
+	d.key("ctrl+p")
+	d.key("Neovim")
+	requireText(t, d, "Edit selected file in Neovim")
+	d.key("enter")
+	requireText(t, d, "ACTIONS · Ctrl+P")
 }
 
 func TestFilteringConsumesShortcutsAndUnicode(t *testing.T) {

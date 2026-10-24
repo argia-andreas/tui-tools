@@ -254,6 +254,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.acceptPlan(msg)
 	case previewLoaded:
 		m = m.applyPreview(msg)
+	case editFinished:
+		m.status = "Editor closed — saved changes synchronized"
+		if msg.err != nil {
+			m.status = msg.err.Error()
+		}
+		m.panes[msg.pane].generation++
+		m.panes[msg.pane].loading = true
+		return m, m.list(msg.pane)
 	case copyFinished:
 		if m.transferCancel != nil {
 			m.transferCancel()
@@ -452,6 +460,7 @@ func (m Model) actions() []action {
 	a := []action{
 		{"copy", "Copy to " + direction + " pane", "c", "upload download transfer", m.copyDisabled()},
 		{"preview", "Preview selected file", "p", "inspect text", m.previewDisabled()},
+		{"edit", "Edit selected file in Neovim", "e", "editor nvim save remote", m.editDisabled()},
 		{"navigation", "Toggle navigation sidebar", "[", "connections places", ""},
 		{"inspector", "Toggle file inspector", "]", "metadata details sidebar", ""},
 		{"jobs", "Toggle transfer drawer", "t", "queue jobs", ""},
@@ -629,6 +638,8 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		return m.checkDestination()
 	case "preview":
 		return m.startPreview()
+	case "edit":
+		return m.startEdit()
 	}
 	return m, nil
 }

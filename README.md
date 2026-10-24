@@ -70,6 +70,25 @@ extensions, including uppercase extensions; filenames share a fixed-width gutter
 Unknown presets, roles, and invalid colors
 produce errors rather than silently falling back.
 
+## Edit files in Neovim
+
+Install `nvim` on PATH, focus a file in either pane, and press **e** (or choose
+“Edit selected file in Neovim” from Ctrl+P). Your existing Neovim configuration
+is used unchanged: no plugins, configuration edits, or injected save hooks.
+Local files open directly. Remote files open in a private temporary directory
+with their original filename and extension. Lazyftp watches saved contents and
+uploads stable snapshots while Neovim remains open, normally starting about
+300 ms after a save. Rapid saves may be combined; the latest saved contents
+are uploaded in order. Unsaved buffer changes are not uploaded.
+
+Exit Neovim to return to Lazyftp; it finishes outstanding saves and refreshes
+the listing. Upload failures stop automatic uploads and are reported on return,
+including the preserved working-copy path for recovery. Detected remote changes
+also stop uploads rather than overwrite them. Conflict detection uses size and
+modification time and is best-effort: FTP cannot atomically guard against another
+writer, and changes with identical metadata cannot be detected. Editing is
+disabled in the read-only demo and while a transfer queue is active.
+
 ## Real local FTP + Blob + S3 lab
 
 ```sh
