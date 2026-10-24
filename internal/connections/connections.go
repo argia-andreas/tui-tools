@@ -1,5 +1,5 @@
-// Package connections discovers remote names and persists opt-in, non-secret bookmarks.
-// It never reads rclone's configuration contents.
+// Package connections discovers remotes, persists opt-in non-secret bookmarks,
+// and prepares private rclone configurations for explicit connection setup.
 package connections
 
 import (
