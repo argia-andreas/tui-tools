@@ -355,9 +355,7 @@ func configureSelected(t *testing.T, m tea.Model, cleanup bool) tea.Model {
 	}
 	m = press(m, "tab")
 	m = press(m, "enter")
-	m = press(m, "empty")
-	m = press(m, "enter")
-	if !strings.Contains(m.View(), "Destination queue: empty") || !strings.Contains(m.View(), "[ ] Delete original after confirmed resend") {
+	if !strings.Contains(m.View(), "Destination queue: orders") || !strings.Contains(m.View(), "[ ] Delete original after confirmed resend") || strings.Contains(m.View(), "Change queue") || strings.Contains(m.View(), "CHOOSE QUEUE") {
 		t.Fatal(ansi.Strip(m.View()))
 	}
 	if cleanup {
@@ -379,7 +377,7 @@ func TestSelectedDLQCopyAndOptionalExactOriginalCleanup(t *testing.T) {
 		m = configureSelected(t, m, cleanup)
 		m = press(m, "enter") // prepare, not send
 		view := ansi.Strip(m.View())
-		if !strings.Contains(view, "ID: orders-dlq-0002") || !strings.Contains(view, "Resend destination: empty") || strings.Contains(view, "type delete:") {
+		if !strings.Contains(view, "ID: orders-dlq-0002") || !strings.Contains(view, "Resend destination: orders") || strings.Contains(view, "type delete:") {
 			t.Fatal(view)
 		}
 		if strings.Contains(view, "Lock until:") != cleanup {
@@ -391,12 +389,12 @@ func TestSelectedDLQCopyAndOptionalExactOriginalCleanup(t *testing.T) {
 		resources, _ := s.Discover(context.Background())
 		var destination explorer.Resource
 		for _, r := range resources {
-			if r.Queue == "empty" {
+			if r.Queue == "orders" {
 				destination = r
 			}
 		}
 		before, _ := s.Counts(context.Background(), destination)
-		if before.Active != 0 {
+		if before.Active != 128 {
 			t.Fatal("preparation sent before confirmation")
 		}
 		m = press(m, "tab")
@@ -420,8 +418,16 @@ func TestSelectedDLQCopyAndOptionalExactOriginalCleanup(t *testing.T) {
 		if found == cleanup || page.Messages[0].ID != "orders-dlq-0001" {
 			t.Fatal("cleanup removed a neighbor or retained selected original")
 		}
+		after, _ := s.Counts(context.Background(), destination)
+		if after.Active != 129 {
+			t.Fatal("resend did not add exactly one copy to the source queue")
+		}
 		copies, _ := s.Peek(context.Background(), destination, false, 0, 20)
-		if len(copies.Messages) != 1 || !strings.Contains(string(copies.Messages[0].Body), "orders-dlq-0002") || copies.Messages[0].ID == "orders-dlq-0002" {
+		for copies.NextSequence != nil {
+			copies, _ = s.Peek(context.Background(), destination, false, *copies.NextSequence, 20)
+		}
+		copy := copies.Messages[len(copies.Messages)-1]
+		if !strings.Contains(string(copy.Body), "orders-dlq-0002") || copy.ID == "orders-dlq-0002" {
 			t.Fatal("wrong selected content, destination or new ID")
 		}
 	}
@@ -439,7 +445,7 @@ func TestSelectedReviewBackAndCompactBodyCannotSend(t *testing.T) {
 			for _, size := range [][2]int{{80, 24}, {160, 24}, {160, 48}} {
 				m, _ = m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 				assertFrame(t, m, size[0], size[1])
-				for _, want := range []string{"[x] Delete original after confirmed resend", "Review resend", "Destination queue: empty", "100 messages / 5s", "delivery counts"} {
+				for _, want := range []string{"[x] Delete original after confirmed resend", "Review resend", "Destination queue: orders", "100 messages / 5s", "delivery counts"} {
 					if !strings.Contains(m.View(), want) {
 						t.Fatalf("configuration hid %q: %s", want, ansi.Strip(m.View()))
 					}
@@ -542,9 +548,27 @@ func TestSelectedDisappearedMessageNeverFallsBackToNeighbor(t *testing.T) {
 	}
 }
 
-func TestSelectedDestinationFilterOwnsQuitAndNavigationLetters(t *testing.T) {
-	m := workspace(t)
+func TestSelectedQueueShortcutAndSubscriptionDestinationFilter(t *testing.T) {
+	m := press(workspace(t), "]")
+	m = press(press(press(m, "ctrl+p"), "resend selected"), "enter")
+	if !strings.Contains(m.View(), "Destination queue: orders") || strings.Contains(m.View(), "CHOOSE QUEUE") || strings.Contains(m.View(), "Change queue") {
+		t.Fatal("queue shortcut did not configure a direct resend: " + ansi.Strip(m.View()))
+	}
+	m = press(m, "esc")
+	if !strings.Contains(m.View(), "SELECTED MESSAGE / OPEN") || !strings.Contains(m.View(), "Resend to queue") {
+		t.Fatal("back from queue configuration opened a picker")
+	}
+	m = press(workspace(t), "tab")
+	for range 4 {
+		m = press(m, "j")
+	}
+	m = press(m, "j")                         // queues group
+	m = press(m, "h")                         // collapse queues
+	m = press(press(press(m, "j"), "j"), "j") // topics, events, billing
 	m = press(m, "]")
+	if !strings.Contains(m.View(), "events/billing / DEAD-LETTER") {
+		t.Fatal(ansi.Strip(m.View()))
+	}
 	m = press(m, "ctrl+p")
 	m = press(m, "send selected")
 	m = press(m, "enter")

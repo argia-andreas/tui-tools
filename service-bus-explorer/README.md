@@ -57,13 +57,18 @@ Cancel / release, Resend copy and Delete original buttons with visible focus.
 Below 110 columns or 35 rows, the held body moves to a separate read-only page
 (`PgDn` / `PgUp`); Enter cannot submit a hidden confirmation from that page.
 
-## Resend the selected DLQ message to a queue
+## Resend the selected DLQ message
 
 Highlight a DLQ message and press `Enter` to open it without acquiring a lock.
-Choose **Send copy to…**, filter/select an existing queue in the connected
-namespace, then choose **Review resend**. Ctrl+P also offers **Send selected DLQ
-message to queue…**. Unwatched queues are included; topic destinations and
-cross-namespace copies are not part of this flow.
+For a queue's DLQ, choose **Resend to queue**, optionally enable deletion below,
+then choose **Review resend**. The destination is fixed to that same queue's
+Active messages; there is no queue picker. Ctrl+P also offers **Resend selected
+DLQ message to this queue…**.
+
+Subscription DLQs have no parent queue, so they retain the explicit **Send copy
+to…** queue picker. Unwatched queues in the connected namespace are included;
+this flow does not silently send back to the topic or cause topic fan-out.
+Topic destinations and cross-namespace copies are not part of this flow.
 
 **Delete original after confirmed resend** is unchecked by default:
 

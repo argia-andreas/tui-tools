@@ -30,7 +30,11 @@ func (m Model) actions() []action {
 		if m.dlq {
 			choices = append(choices, action{"receive", "Receive next DLQ message… (acquire lock, then review)"})
 			if !m.loading && len(m.page.Messages) > 0 {
-				choices = append(choices, action{"selected-copy", "Send selected DLQ message to queue…"})
+				label := "Send selected DLQ message to queue…"
+				if m.resource.Queue != "" {
+					label = "Resend selected DLQ message to this queue…"
+				}
+				choices = append(choices, action{"selected-copy", label})
 			}
 		}
 	}

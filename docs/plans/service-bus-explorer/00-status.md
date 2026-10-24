@@ -5,6 +5,28 @@
 - Gate 3 — Program Design: APPROVED 2026-10-23; SDK-internal recovery accepted 2026-10-24 (no application-level retries)
 - Gate 4 — Slice plan: APPROVED 2026-10-23
 
+### Same-queue resend usability correction — 2026-10-24
+
+- Andreas tested the extension and requested the normal queue-DLQ action go
+  directly back to that same queue, not ask him to choose from every queue.
+  This supersedes the queue-picker step below for queue sources only.
+- Implemented **Resend to queue**: queue identity fixed to the source, straight
+  to unchecked optional deletion and review; no Change queue button. Ctrl+P
+  follows the same direct path; Escape returns to the selected-message view.
+- Subscription DLQs retain explicit queue routing: they have no parent queue;
+  this correction does not silently send to a topic or introduce fan-out.
+  No Store/SDK/retry/settlement contract changed.
+- Race suite, vet, ten Python guards, fixture PTY and fresh-seeded serial
+  emulator integration/PTY pass. UI/fixture tests independently verify one copy
+  added to orders Active (128→129), exact-selected retention/deletion and no
+  picker, including Ctrl+P and Back. Subscription filter coverage stays green.
+- The first fixture PTY run exposed its existing read-before-page-load race;
+  it now waits for an actual selected message row before parsing, not a sleep.
+- Inspected final default/checked configuration, held review/outcome and 80×24
+  configurations, plus real keyboard/pointer video and 5-fps contact sheet.
+  Evidence: `.amp/in/artifacts/service-bus-same-queue/`; earlier picker captures
+  below are historical. Temporary preview/browser stopped after capture.
+
 ### Selected-message extension — 2026-10-24
 
 - Product change approved by Andreas: select/open a DLQ message, choose a queue,

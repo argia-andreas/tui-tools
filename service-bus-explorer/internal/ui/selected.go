@@ -25,8 +25,14 @@ func (m Model) openSelected(destination bool) (tea.Model, tea.Cmd) {
 	}
 	m.reviewID++
 	m.review = reviewState{phase: "selected", selected: true, message: m.page.Messages[m.message]}
+	if m.resource.Queue != "" {
+		m.review.destination = m.resource
+	}
 	if destination {
 		m.review.phase = "destination"
+		if m.resource.Queue != "" {
+			m.review.phase = "configure"
+		}
 	}
 	m.status = "SELECTED DLQ MESSAGE · read-only peek · no lock acquired"
 	return m, nil
@@ -67,7 +73,10 @@ func (m Model) selectedKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	key := msg.String()
 	if key == "esc" {
 		if m.review.phase == "configure" {
-			m.review.phase, m.review.query, m.review.queueIndex = "destination", "", 0
+			m.review.phase, m.review.query, m.review.queueIndex, m.review.choice = "destination", "", 0, 0
+			if m.resource.Queue != "" {
+				m.review.phase = "selected"
+			}
 		} else if m.review.phase == "destination" {
 			m.review.phase, m.review.choice = "selected", 0
 		} else {
@@ -113,6 +122,9 @@ func (m Model) selectedKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	choices := 2
 	if m.review.phase == "configure" {
 		choices = 4
+		if m.resource.Queue != "" {
+			choices = 3
+		}
 	}
 	switch key {
 	case "tab", "down", "right":
@@ -135,6 +147,9 @@ func (m Model) selectedKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case 1:
 			if m.review.phase == "selected" {
 				m.review.phase, m.review.query, m.review.queueIndex, m.review.choice = "destination", "", 0, 0
+				if m.resource.Queue != "" {
+					m.review.phase = "configure"
+				}
 			} else {
 				return m.prepareSelected()
 			}
@@ -198,6 +213,9 @@ func (m Model) selectedView(width, height int) []string {
 	barHeight := 6
 	title := "SELECTED MESSAGE / OPEN"
 	label := "Send copy to…"
+	if m.resource.Queue != "" {
+		label = "Resend to queue"
+	}
 	if r.phase == "configure" {
 		title, label, barHeight = "CONFIGURE SELECTED RESEND", "Review resend", 8
 		add("Destination queue: "+r.destination.Queue, m.theme.Focus)
@@ -228,7 +246,7 @@ func (m Model) selectedView(width, height int) []string {
 	}
 	buttons := lipgloss.JoinHorizontal(lipgloss.Top, m.button("Cancel", r.choice == 0, m.theme.Focus),
 		m.paint(" \n \n ", m.theme.Foreground), m.button(label, r.choice == 1, m.theme.Focus))
-	if r.phase == "configure" {
+	if r.phase == "configure" && m.resource.Queue == "" {
 		buttons = lipgloss.JoinHorizontal(lipgloss.Top, buttons, m.paint(" \n \n ", m.theme.Foreground), m.button("Change queue", r.choice == 3, m.theme.Focus))
 	}
 	actions := strings.Split(buttons, "\n")

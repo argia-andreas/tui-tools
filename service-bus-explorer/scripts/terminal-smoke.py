@@ -55,7 +55,7 @@ def main():
                     break
                 stream.feed(decoder.decode(data))
             text = "\n".join(screen.display)
-            if want in text and (absent is None or absent not in text):
+            if (want.search(text) if isinstance(want, re.Pattern) else want in text) and (absent is None or absent not in text):
                 return text
         raise AssertionError(f"Expected {want!r}, absent {absent!r}\n" + "\n".join(screen.display))
 
@@ -71,21 +71,21 @@ def main():
     def dlq_review():
         # A non-first highlighted row, not receive-next, is the resend source.
         for cleanup in (False, True):
+            wait(re.compile(r"› \d+\s+orders-dlq-"))
             selected_row = next(row for row in screen.display if re.search(r"› \d+\s+orders-dlq-", row))
             text = send("j", "orders / DEAD-LETTER", selected_row)
             selected_id = re.search(r"› \d+\s+(orders-dlq-\d{4})", text).group(1)
             send("\r", "SELECTED MESSAGE / OPEN")
             wait("ID: " + selected_id)
-            send("\t\r", "CHOOSE QUEUE")
-            send("empty", "Filter queues: empty_")
-            send("\r", "Destination queue: empty")
+            text = send("\t\r", "Destination queue: orders")
+            assert "CHOOSE QUEUE" not in text and "Change queue" not in text
             wait("[ ] Delete original after confirmed resend")
             if cleanup:
                 send("\t\t\r", "[x] Delete original after confirmed resend")
                 send("\x1b[A", "› Review resend")
             else:
                 send("\t", "› Review resend")
-            send("\r", "Resend destination: empty")
+            send("\r", "Resend destination: orders")
             wait("ID: " + selected_id)
             if cleanup:
                 wait("EXACT SELECTED ORIGINAL")
