@@ -21,17 +21,28 @@ import (
 )
 
 func TestHTTPSReadBoundary(t *testing.T) {
-	response := `{"timed_out":false,"_shards":{"failed":0},"hits":{"total":{"value":1,"relation":"eq"},"hits":[{"_source":{"@timestamp":"2026-10-23T14:26:00Z","message":"fixture-secret-hidden","fields":{"large":9007199254740993}}}]}}`
+	response := `{"pit_id":"latest-pit","timed_out":false,"_shards":{"failed":0},"hits":{"hits":[{"_index":"logview-lab-events","_id":"one","sort":[1792765560000,1],"_source":{"@timestamp":"2026-10-23T14:26:00Z","message":"fixture-secret-hidden","fields":{"large":9007199254740993}}}]}}`
 	status := http.StatusOK
 	var leaked atomic.Bool
 	sink := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { leaked.Store(r.Header.Get("Authorization") != "") }))
 	defer sink.Close()
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/logview-lab-events/_search" || r.Header.Get("Authorization") != "ApiKey test-key" {
+		if r.Header.Get("Authorization") != "ApiKey test-key" {
+			t.Error("incorrect read scope")
+		}
+		if r.Method == "DELETE" && r.URL.Path == "/_pit" {
+			_, _ = w.Write([]byte(`{"succeeded":true}`))
+			return
+		}
+		if r.Method == "POST" && r.URL.Path == "/logview-lab-events/_pit" {
+			_, _ = w.Write([]byte(`{"id":"initial-pit"}`))
+			return
+		}
+		if r.Method != "POST" || r.URL.Path != "/_search" {
 			t.Error("incorrect read scope")
 		}
 		var query map[string]any
-		if json.NewDecoder(r.Body).Decode(&query) != nil || query["size"] != float64(500) {
+		if json.NewDecoder(r.Body).Decode(&query) != nil || query["size"] != float64(501) || query["pit"] == nil {
 			t.Error("incorrect bounded query")
 		}
 		w.Header().Set("Location", sink.URL)
@@ -50,7 +61,7 @@ func TestHTTPSReadBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer client.Shutdown(context.Background())
 	service, err := logs.NewService(client, fixture.Policy())
 	if err != nil {
 		t.Fatal(err)
@@ -103,7 +114,7 @@ func TestLocalLab(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer client.Close()
+	defer client.Shutdown(context.Background())
 	service, err := logs.NewService(client, c.Policy())
 	if err != nil {
 		t.Fatal(err)

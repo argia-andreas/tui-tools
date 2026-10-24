@@ -9,29 +9,60 @@ import (
 
 type Window struct{ Start, End time.Time }
 type Limits struct{ Events, Bytes int }
-type Scope struct{ Source string }
+type Scope struct {
+	Source   string
+	Services []string
+}
+type MessageFilter struct {
+	Mode, Text    string
+	CaseSensitive bool
+}
+type FieldFilter struct {
+	Path  string
+	Value json.RawMessage
+}
 type Query struct {
-	Scope  Scope
-	Window Window
-	Limits Limits
+	Scope    Scope
+	Window   Window
+	Limits   Limits
+	Levels   []string
+	Message  MessageFilter
+	TraceIDs []string
+	Fields   []FieldFilter
 }
 
 // Event is untrusted provider data and never goes directly to presentation.
 type Event struct {
+	Ref                                        NativeRef
 	Time                                       time.Time
 	Level, Service, Instance, Message, TraceID string
 	Fields                                     map[string]json.RawMessage
 }
 
+type NativeRef struct{ Index, ID string }
+
 type NativePage struct {
-	Events []Event
-	More   bool
+	Events  []Event
+	More    bool
+	Cursor  string
+	Partial bool
 }
 
-// The tracer bullet introduces only the provider operation it actually uses.
-// Paging, context and suggestions arrive with their vertical slices.
+// Small scripted providers may support Search alone; real history/suggestions
+// providers implement HistoryProvider. Context/follow remain later slices.
 type Provider interface {
 	Search(context.Context, Query, string) (NativePage, error)
+}
+
+// History and suggestions are optional for small scripted test providers.
+type HistoryProvider interface {
+	Provider
+	Close(context.Context, string) error
+	Values(context.Context, Query, string, string) (Values, error)
+}
+type Values struct {
+	Items         []string
+	More, Partial bool
 }
 
 type SafeEvent struct {
@@ -46,6 +77,8 @@ func (e SafeEvent) Text(field string) string {
 }
 
 type Page struct {
-	Events []SafeEvent
-	More   bool
+	Events  []SafeEvent
+	More    bool
+	Next    string
+	Partial bool
 }

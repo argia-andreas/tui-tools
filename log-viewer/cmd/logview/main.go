@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -24,6 +25,7 @@ func run() int {
 	flags := flag.NewFlagSet("logview", flag.ContinueOnError)
 	useFixture := flags.Bool("fixture", false, "open fictional offline logs; makes no network connections")
 	configPath := flags.String("config", "", "open an explicit local Elasticsearch lab source configuration")
+	searchesPath := flags.String("searches", "", "private saved-search file; written only by explicit named save")
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -33,6 +35,14 @@ func run() int {
 	if *useFixture == (*configPath != "") || flags.NArg() != 0 {
 		fmt.Fprintln(os.Stderr, "Choose --fixture or --config <local lab source file>.")
 		return 2
+	}
+	if *searchesPath == "" {
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Cannot determine saved-search location; choose --searches explicitly.")
+			return 1
+		}
+		*searchesPath = filepath.Join(dir, "logview", "searches.json")
 	}
 	var provider logs.Provider
 	var err error
@@ -47,7 +57,7 @@ func run() int {
 			var client *elastic.Client
 			client, err = elastic.New(c)
 			if err == nil {
-				defer client.Close()
+				defer client.Shutdown(context.Background())
 				provider = client
 				query, policy, localLab = c.Query(), c.Policy(), true
 			}
@@ -62,9 +72,10 @@ func run() int {
 		fmt.Fprintln(os.Stderr, "Invalid source output policy.")
 		return 1
 	}
+	defer service.Shutdown(context.Background())
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
-	_, err = tea.NewProgram(ui.New(ui.Options{Service: service, Query: query, Theme: theme.Midnight(), Context: ctx, LocalLab: localLab}), tea.WithAltScreen(), tea.WithContext(ctx)).Run()
+	_, err = tea.NewProgram(ui.New(ui.Options{Service: service, Query: query, Theme: theme.Midnight(), Context: ctx, LocalLab: localLab, SearchesPath: *searchesPath}), tea.WithAltScreen(), tea.WithContext(ctx)).Run()
 	if err != nil && ctx.Err() == nil {
 		fmt.Fprintln(os.Stderr, "Terminal viewer failed.")
 		return 1

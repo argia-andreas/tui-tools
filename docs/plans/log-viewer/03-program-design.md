@@ -71,6 +71,7 @@ untrusted data: neither UI nor MCP gets a provider directly.
 type Window struct { Start, End time.Time } // UTC instants; [start, end)
 type Limits struct { Events, Bytes int; Timeout time.Duration }
 type MessageFilter struct { Mode, Text string; CaseSensitive bool }
+type FieldFilter struct { Path string; Value json.RawMessage } // indexed safe scalar only
 type Scope struct {
     Source string
     Targets []string // configured target IDs, NEVER caller-provided URLs/indices
@@ -81,6 +82,7 @@ type Query struct {
     Window Window
     Levels []string // explicit set; Unknown is never INFO
     Instances, TraceIDs []string // exact context/correlation predicates
+    Fields []FieldFilter // AND, source-supported normalized JSON-pointer paths
     Message MessageFilter
     Order string // "newest" or "oldest"; cursor binds ordering too
     Limits Limits
@@ -122,6 +124,34 @@ when implemented; no fake stream or unused goroutine abstraction now. `Values`
 arguments are permitted native field path and keyword, bounded by Query limits.
 Configured mapping selects native object paths explicitly (JSON pointers), not
 heuristically splitting dots in keys that may themselves contain dots.
+
+### Slice 3 refinement — saved and inspected-field filters
+
+Andreas requested on 2026-10-24 that app filters be reusable and that filtering by
+trace ID or a field in an inspected event require no query syntax. Slice 3 includes
+an inspector `f` scalar-field picker, before Slice 4's expansion/yank/palette work.
+The picker adds an exact typed predicate to the current query; all existing
+app/time/level/message constraints remain. The normal `f` editor also offers trace
+IDs and named saves/restores persist the complete predicate set and absolute window.
+No automatic query history or event persistence.
+
+The current local source maps exact app to ECS `service.name` (keyword), trace to
+`trace.id`, instance to `service.node.name`, level to `log.level`, plus explicit
+indexed scalars `fields.job.id`, `fields.job.attempt`, `fields.job.retryable`,
+`fields.http.status_code`, `fields.order.id`, and `fields.region`. Strings, int64s
+and booleans retain their types. Unknown/object/array/null/redacted or unindexed
+fields explain unavailable; never silently fall back to local filtering. This is
+not discovery of the company's `app.keyword` or arbitrary `.keyword` inference.
+The old local lab's unindexed object mapping needs an explicit owned-fixture
+reseed/migration; normal startup must not destructively reset data.
+
+Incremental Slice 3 service methods preserve existing `Search(ctx, Query)` callers
+and add `Next(ctx, opaqueHandle)`, `Close`, `Shutdown`, `Values`, and `FilterFields`.
+Continuation handles are consumed once, bind a frozen query, expire after 2 minutes
+and never expose PIT/native tokens. The later MCP SearchRequest facade remains
+deferred. Optional HistoryProvider keeps small Search-only scripted test sources
+valid while real/fake adapters expose close/suggestions. Session caps remain
+16 cursors, 10,000 retained events and 32 MiB; budgets stop history honestly.
 
 ### Authorized investigation contract
 

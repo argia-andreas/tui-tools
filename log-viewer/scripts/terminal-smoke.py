@@ -2,6 +2,8 @@
 """Exercise the real offline logview executable through a terminal, no mocks."""
 import codecs
 import fcntl
+import copy
+import json
 import os
 import pty
 import select
@@ -10,6 +12,7 @@ import struct
 import subprocess
 import sys
 import termios
+import tempfile
 import time
 
 import pyte
@@ -17,6 +20,9 @@ import pyte
 
 def main():
     lab = "--lab" in sys.argv
+    search = "--search" in sys.argv
+    private = tempfile.TemporaryDirectory(prefix="logview-terminal-")
+    searches = os.path.join(private.name, "searches.json")
     for args in ([], ["--live"], ["--fixture", "unexpected"]):
         result = subprocess.run(["./bin/logview", *args], capture_output=True, text=True)
         assert result.returncode == 2, (args, result.returncode)
@@ -34,6 +40,7 @@ def main():
     env = dict(os.environ, TERM="xterm-256color", COLORTERM="truecolor", CLICOLOR="1")
     env.pop("NO_COLOR", None)
     args = ["--config", ".lab/source.json"] if lab else ["--fixture"]
+    args += ["--searches", searches]
     proc = subprocess.Popen(["./bin/logview", *args], stdin=slave, stdout=slave,
                             stderr=slave, env=env, start_new_session=True)
     os.close(slave)
@@ -59,6 +66,127 @@ def main():
     def send(keys, want, absent=None):
         os.write(master, keys.encode())
         return wait(want, absent)
+
+    def search_scenarios():
+        count = "lab events" if lab else "fictional events"
+        # Both text editors own q/y/Space; cancelling neither quits nor writes.
+        send("S", "SAVE NAMED SEARCH")
+        send("q y ", "> q y ")
+        send("\x1b", "● LOGS")
+        assert not os.path.exists(searches)
+        send("f", "FILTER EDITOR")
+        send("q y ", "q y ")
+        send("\x1b", "22 " + count)
+        assert not os.path.exists(searches)
+        send("S", "SAVE NAMED SEARCH")
+        send("all\r", "Saved search explicitly")
+        assert os.stat(searches).st_mode & 0o077 == 0
+
+        # Keyword suggestions are NOT applied unless explicitly selected.
+        send("f", "FILTER EDITOR")
+        send("payment", "[ ] payment-worker")
+        send("\r", "Selected: payment-worker")
+        send("\x15checkout", "[ ] checkout-api")
+        send("\r", "Selected: payment-worker OR checkout-api")
+        send("\x13", "22 " + count)
+        send("f", "FILTER EDITOR")
+        send("\x18", "Selected: ALL")
+        send("payment", "[ ] payment-worker")
+        send("\r", "Selected: payment-worker")
+        send("\t\t\t\x15WARN+", "› Levels")
+        text = send("\x13", "Search loaded")
+        assert "App exact: payment-worker" in text
+        assert "WARN,ERROR,FATAL" in text
+        assert "Legacy record without severity" not in text
+
+        # Restore ALL, then exact app-only query for event-derived predicates.
+        send("R", "RESTORE SAVED SEARCH")
+        send("\r", "22 " + count)
+        send("f", "FILTER EDITOR")
+        send("payment", "[ ] payment-worker")
+        send("\r", "Selected: payment-worker")
+        send("\x13", "Search loaded")
+        send("\r", "● INSPECTOR")
+        send("f", "FILTER FROM EVENT")
+        send("\x1b", "● INSPECTOR")
+        send("f", "› /trace.id")
+        text = send("\r", "Search loaded")
+        assert "/trace.id=" in text and "App exact: payment-worker" in text
+        send("f", "FILTER FROM EVENT")
+        send("j", "› /fields/job/attempt = 1")
+        text = send("\r", "Search loaded")
+        assert "/fields/job/attempt=1" in text and "App exact: payment-worker" in text
+        send("S", "SAVE NAMED SEARCH")
+        send("app trace attempt\r", "Saved search explicitly")
+        with open(searches, encoding="utf-8") as f:
+            saved = json.load(f)
+        exact = saved[1]["Query"]
+        assert exact["Scope"]["Services"] == ["payment-worker"]
+        assert [f["Path"] for f in exact["Fields"]] == ["/trace.id", "/fields/job/attempt"]
+        assert exact["Fields"][1]["Value"] == 1
+
+        # Local literal find covers FULL safe structured data and explicit case.
+        send("/", "LOCAL LITERAL FIND")
+        send("q y ", "> q y ")
+        send("\x15SWEDENCENTRAL\x14", "Case sensitive: true")
+        send("\r", "No local literal matches")
+        send("/\x14", "Case sensitive: false")
+        send("\r", "Local literal match")
+        send("n", "Local literal match")
+        send("N", "Local literal match")
+        send("\x1b", "● LOGS")
+        send("R", "RESTORE SAVED SEARCH")
+        send("\r", "22 " + count)
+        send("R", "RESTORE SAVED SEARCH")
+        send("\x1b[B\r", "/fields/job/attempt=1")
+        send("\x1b", "● LOGS")
+        send("f", "FILTER EDITOR")
+        send("\t\t\t\t\t\tq y ", "› Exact field predicates")
+        send("\x1b[B\r", "1 exact field predicates active")
+        text = send("\x13", "Search loaded")
+        assert "/fields/job/attempt=1" not in text
+        assert "/trace.id=" in text and "App exact: payment-worker" in text
+
+        # A private test-only saved query uses page size 3: actual history with
+        # the normal tiny dataset, not a mandatory 501+ seed or a UI mock.
+        history = copy.deepcopy(saved[0])
+        history["Name"] = "history page three"
+        history["Query"]["Limits"]["Events"] = 3
+        with open(searches, "w", encoding="utf-8") as f:
+            json.dump([history], f)
+        send("R", "RESTORE SAVED SEARCH")
+        send("\r", "3 " + count)
+        send("\r", "● INSPECTOR")
+        text = send("o", "6 " + count)
+        assert "Settlement batch completed" in text
+        send("o", "9 " + count)
+        send("\x1b", "● LOGS")
+
+        # Empty, UNKNOWN, phrase and offset validation all exercise real reads.
+        with open(searches, "w", encoding="utf-8") as f:
+            json.dump([saved[0]], f)
+        send("R", "RESTORE SAVED SEARCH")
+        send("\r", "22 " + count)
+        send("f", "FILTER EDITOR")
+        send("\t\x152026-10-23T14:26:00", "› Start inclusive")
+        send("\x13", "Start: RFC3339 requires")
+        send("\x152026-10-23T16:26:00+02:00", "16:26:00+02:00")
+        send("\t\t\x15UNKNOWN", "› Levels")
+        text = send("\x13", "1 " + count)
+        assert "Legacy record without severity" in text
+        send("f", "FILTER EDITOR")
+        send("\t\t\t\x15ALL\tno-such-message-xyz", "› Message")
+        send("\x13", "No events in this window")
+        send("f", "FILTER EDITOR")
+        send("\t\t\t\t\x15Payment gateway timeout", "› Message")
+        send("\x13", "1 " + count)
+        resize(80, 24); os.kill(proc.pid, signal.SIGWINCH)
+        wait("● LOGS")
+        send("f", "FILTER EDITOR")
+        send("\t", "› Start inclusive")
+        send("\x1b", "● LOGS")
+        resize(160, 48); os.kill(proc.pid, signal.SIGWINCH)
+        wait("q quit")
 
     try:
         text = wait("Local Elasticsearch" if lab else "Offline fictional data")
@@ -103,17 +231,24 @@ def main():
         wait("Resize to at least 60")
         resize(160, 48); os.kill(proc.pid, signal.SIGWINCH)
         wait("q quit")
+        if search:
+            search_scenarios()
+        else:
+            assert not os.path.exists(searches), "ordinary navigation wrote saved searches"
         os.write(master, b"q")
         proc.wait(timeout=5)
         assert proc.returncode == 0
         for forbidden in (b"fixture-secret-", b"\x1b]52;", b"https://invalid.example", "\u202e".encode(), b"Q0FOQVJZ"):
             assert forbidden not in transcript, repr(forbidden)
         print(f"PASS: {'local Elastic TLS' if lab else 'fixture'} PTY — explicit mode, 22 safe events, multiline inspector, focus, navigation, resize recovery, unavailable actions, clean exit")
+        if search:
+            print("PASS: search PTY — exact app OR, WARN+/UNKNOWN, offset validation, phrase/empty, safe structured literal find/case/n/N, inspector trace+typed field AND, explicit private save/restore, anchored older history, narrow editor")
     finally:
         if proc.poll() is None:
             proc.terminate()
             proc.wait(timeout=5)
         os.close(master)
+        private.cleanup()
 
 
 if __name__ == "__main__":

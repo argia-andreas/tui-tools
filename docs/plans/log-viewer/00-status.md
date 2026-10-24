@@ -7,7 +7,7 @@
 
 ## Scope
 
-Slices 1–2 implement the independent fixture/local Elastic workbench under `log-viewer/`.
+Slices 1–3 implement the independent fixture/local Elastic workbench under `log-viewer/`.
 No LazyFTP/Service Bus code, docs or root setup changes. Midnight semantic colors
 and shared layout/focus conventions are reused without cross-module internal
 imports or changes to the existing apps. Local private lab startup is authorized;
@@ -18,7 +18,7 @@ SIGNAL is a provisional mockup label, not an approved product name.
 
 - [x] Slice 1 — fixture workbench tracer bullet, verified 2026-10-24.
 - [x] Slice 2 — real local Elasticsearch happy path, verified 2026-10-24.
-- [ ] Slice 3 — app/time/level/message search, history and saved searches.
+- [x] Slice 3 — app/time/level/message search, history and saved searches, verified 2026-10-24.
 - [ ] Slice 4 — field yank, inspector and command palette.
 - [ ] Slice 5 — context, trace and follow/pause/resume.
 - [ ] Slice 6 — default-deny read-only MCP.
@@ -106,8 +106,9 @@ locally but not tracked. The preview/browser are stopped after verification.
   behavioral tests. Archive bytes/startup are now verified by Slice 2; clipboard
   receipt is NOT verified. Docker image digest remains a prerequisite before
   optional Docker support.
-- Gate 4 is approved; Slices 1–2 are implemented and verified. Stop at this checkpoint
-  and ask “Continue to slice 3, or re-steer?” Read 04-slices.md for acceptance and
+- Gate 4 is approved; Slices 1–3 are implemented and verified. Andreas explicitly
+  requested parallel command-palette work; that part of Slice 4 continues in its
+  own thread after the pushed Slice 3 checkpoint. Read 04-slices.md for acceptance and
   delivery rules. Keep subsequent work/questions here; do not create another thread
   unless Andreas asks. Scoped verified commits/pushes to main are authorized.
 - Painter boards 01–04 under `.amp/in/artifacts/log-viewer/` remain static fictional
@@ -181,3 +182,61 @@ locally but not tracked. The preview/browser are stopped after verification.
   SSO, cloud hosting or production policy. Docker remains deferred.
 - Current continuation thread:
   https://ampcode.com/threads/T-01a16e7e-a5c4-753b-abc3-acfe490a8fa2
+
+## Slice 3 result and evidence
+
+- Exact app multiselect (OR), explicit half-open RFC3339 UTC windows, severity
+  including UNKNOWN/WARN+, analyzed message phrase, and exact trace IDs compose
+  with AND across facets. App suggestions use bounded case-insensitive substring
+  matching, not backend query syntax. Local literal find searches full decoded
+  policy-safe values with case toggle and n/N navigation; fixture phrase behavior
+  is labeled approximate rather than pretending to emulate Elasticsearch.
+- Andreas requested saved app filters and easy inspect-to-filter. Inspector `f`
+  now offers trace and explicitly indexed typed scalar fields, preserving existing
+  facets. Unindexed/object/null/redacted values explain unavailability. Individual
+  predicates can be removed. Production `app.keyword` mapping is not inferred;
+  the lab uses ECS `service.name` and ten approved normalized pointer mappings.
+- `S`/`R` explicitly save/restore whole named queries for the same source. Private
+  owned directory/file, atomic replacement, strict bounded JSON, at most 50 names.
+  No automatic writes, credentials, events or cursors; saved filter values may
+  themselves be sensitive. Startup does not create a saved-search file.
+- Frozen PIT/search_after history uses descending timestamp/native tie-break and
+  chronological page display. Older pages prepend without changing selected event
+  identity. Random one-use query-bound cursors expire after two minutes idle;
+  replay/concurrent advancement cannot both succeed. PIT resources close on end,
+  error, expiry and shutdown. At most 16 sessions; history explicitly stops at
+  10,000 events / 32 MiB rather than silently evicting the selected event.
+- `make -C log-viewer check test-terminal test-integration test-terminal-lab`:
+  PASS (format, vet, race tests, fixture and actual local TLS PTY). Both PTYs print
+  `PASS: search PTY` for app OR, WARN+/UNKNOWN, offset validation, phrase/empty,
+  safe structured literal find/case/n/N, inspector trace+typed field AND, explicit
+  private save/restore, anchored older history and narrow editor. Stale search and
+  advanced-history completions close their returned cursors.
+- Actual TLS integration: 600 unique equal-time references exactly once across
+  500+100 rows; append excluded from existing PIT, fresh search returns 601;
+  frozen/closed/replayed/foreign cursors fail. Verified all ten typed field paths,
+  exact 9007199254740993 versus 9007199254740992, missing/custom UNKNOWN, phrase
+  semantics, and literal operator characters in suggestions. An opt-in temporary
+  public-service probe waited 122 seconds: expired real history rejected without
+  data or broader fallback; probe removed after PASS.
+- Explicit `reseed-indexed-fields` migrated only the owned disposable test index.
+  Scenario IDs use a separate historical window and were removed after integration.
+  Final `python3 log-viewer/scripts/lab.py check`: `TLS verified; read=22;
+  owned_write=403; forbidden_read=403; rss_mib=939.81`. No production connection.
+- Inspected real 2× screenshots under
+  [slice3](../../../.amp/in/artifacts/log-viewer/slice3/): default, filter editor,
+  exact app results, inspected-field picker, saved-search picker, narrow editor,
+  empty results and offset validation. At 80×24 the editor shows the current field
+  instead of all fields; Tab still reaches every field. Narrow summaries/help use
+  ellipsis rather than overflowing. No preview renderer changes enter the app.
+- Inspected 5-fps contact sheet of the 11.6-second real keyboard/moving-pointer
+  [workflow clip](../../../.amp/in/artifacts/log-viewer/slice3/09-filter-workflow.mp4):
+  filter editor, reduced app results, inspector field picker, further narrowed
+  results and saved picker. Independent PTY assertions verify save/restore results.
+  Same private ttyd/xterm fallback method as previous slices. Warm lab remains;
+  preview/browser stopped after review. No production, clipboard, palette, follow,
+  context or MCP success is claimed by this checkpoint.
+- Andreas requested verified improvements pushed early/often and explicitly asked
+  for command palette in parallel. Its owner is
+  https://ampcode.com/threads/T-01a16ebc-d13a-7286-b3a8-29fb6f28b215
+  and must pull this checkpoint before implementation. Full Slice 4 is not complete.

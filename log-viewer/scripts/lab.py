@@ -335,17 +335,32 @@ def serve():
 def seed():
     owned()
     mapping = {"settings": {"number_of_shards": 1, "number_of_replicas": 0}, "mappings": {
-        "dynamic": "strict", "properties": {
+        "dynamic": False, "properties": {
             "@timestamp": {"type": "date"}, "log": {"properties": {"level": {"type": "keyword"}}},
             "service": {"properties": {"name": {"type": "keyword"}, "node": {"properties": {
                 "name": {"type": "keyword"}}}}}, "message": {"type": "text"},
             "trace": {"properties": {"id": {"type": "keyword"}}},
-            "fields": {"type": "object", "enabled": False}}}}
+            "fields": {"type": "object", "dynamic": False, "properties": {
+                "job": {"properties": {"id": {"type": "keyword"},
+                    "attempt": {"type": "long", "coerce": False}, "retryable": {"type": "boolean"}}},
+                "http": {"properties": {"status_code": {"type": "long", "coerce": False}}},
+                "order": {"properties": {"id": {"type": "long", "coerce": False}}},
+                "region": {"type": "keyword"}}}}}}
     # Fixed exact targets and deterministic IDs; reruns overwrite, never delete indices.
     for target in (TARGET, FORBIDDEN):
         status, _ = request("HEAD", "/" + target, expected=(200, 404))
         if status == 404:
             request("PUT", "/" + target, mapping)
+        elif target == TARGET:
+            _, existing = request("GET", "/" + TARGET + "/_mapping")
+            for path, kind in (("fields.job.id", "keyword"), ("fields.job.attempt", "long"),
+                               ("fields.job.retryable", "boolean"), ("fields.http.status_code", "long"),
+                               ("fields.order.id", "long"), ("fields.region", "keyword")):
+                node = existing.get(TARGET, {}).get("mappings", {})
+                for part in path.split("."):
+                    node = node.get("properties", {}).get(part, {})
+                if node.get("type") != kind:
+                    raise LabError("old owned lab mapping: explicitly run reseed-indexed-fields (replaces disposable lab target only)")
     events = json.loads((ROOT / "internal/fixture/events.json").read_text())
     for number, event in enumerate(events):
         native = {"@timestamp": event["Time"], "service": {"name": event["Service"],
@@ -359,6 +374,15 @@ def seed():
     for target in (TARGET, FORBIDDEN):
         request("POST", f"/{target}/_refresh")
     print(f"seed: {len(events)} fixed historical ECS events; forbidden sentinel; refresh complete")
+
+
+def reseed_indexed_fields():
+    # Explicit operator-only migration. enabled:false cannot be changed in place.
+    # Never infer a target from config or accept caller-supplied paths/URLs.
+    owned()
+    request("DELETE", "/" + TARGET, expected=(200, 404))
+    seed()
+    print("reseed-indexed-fields: replaced ONLY owned disposable lab target; indexed scalar allowlist enabled")
 
 
 def check():
@@ -378,6 +402,40 @@ def check():
     print(f"check: TLS verified; read={expected}; owned_write=403; forbidden_read=403; rss_mib={rss()}")
 
 
+def scenario(action):
+    """Only fixed disposable Slice 3 IDs, outside the baseline's time window."""
+    owned()
+    numbers = range(606) if action == "remove" else (range(605) if action == "add" else (605,))
+    for number in numbers:
+        path = f"/{TARGET}/_doc/slice3-history-{number:04d}"
+        if action == "remove":
+            request("DELETE", path, expected=(200, 404))
+            continue
+        native = {"@timestamp": "2026-10-24T12:00:00Z",
+                  "service": {"name": ("slice3-alpha" if number % 2 == 0 else "slice3-beta")},
+                  "message": "Paging marker exact phrase café",
+                  "fields": {"scenario": "slice3"}}
+        # 600 equal-time matching rows plus five asymmetric controls.
+        if number < 600 or number == 605:
+            native["log"] = {"level": "WARN"}
+        elif number == 600:
+            native["service"]["name"] = "slice3-outsider"
+            native["log"] = {"level": "WARN"}
+        elif number == 601:
+            native["log"] = {"level": "INFO"}
+        elif number == 602:
+            native["fields"]["order"] = {"id": 9007199254740993}
+        elif number == 603:
+            native["log"] = {"level": "WARN"}
+            native["message"] = "Paging marker phrase exact café"
+        elif number == 604:
+            native["log"] = {"level": "custom"}
+            native["fields"]["order"] = {"id": 9007199254740992}
+        request("PUT", path, native, expected=(200, 201))
+    request("POST", f"/{TARGET}/_refresh")
+    print(f"scenario: {action}; fixed disposable Slice 3 IDs only; baseline retained")
+
+
 def down():
     owned()
     run(["amp", "orb", "service", "stop", SERVICE])
@@ -387,10 +445,15 @@ def down():
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("install", "up", "seed", "check", "down", "_serve"))
+    parser.add_argument("command", choices=("install", "up", "seed", "check", "down", "_serve",
+                                            "scenario-add", "scenario-append", "scenario-remove", "reseed-indexed-fields"))
     command = parser.parse_args().command
     try:
-        {"install": install, "up": up, "seed": seed, "check": check, "down": down, "_serve": serve}[command]()
+        if command.startswith("scenario-"):
+            scenario(command.removeprefix("scenario-"))
+        else:
+            {"install": install, "up": up, "seed": seed, "check": check, "down": down,
+             "_serve": serve, "reseed-indexed-fields": reseed_indexed_fields}[command]()
     except (LabError, OSError, ValueError, KeyError, tarfile.TarError, zipfile.BadZipFile) as exc:
         # Never include arbitrary exception text, which can contain response data.
         message = str(exc) if isinstance(exc, LabError) else type(exc).__name__ + " (details withheld)"
