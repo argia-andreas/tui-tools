@@ -1,10 +1,10 @@
 # Mockup reference library
 
-These six boards preserve the visual exploration in chronological order. They are generated design references, not implemented screenshots, passing tests, exact theme imports, or promises of every action shown. **Tandem remains an unapproved working name.**
+These boards preserve the visual exploration in chronological order. They are generated design references, not implemented screenshots, passing tests, exact theme imports, or promises of every action shown. **Tandem remains an unapproved working name.**
 
 ## Current direction
 
-Use the full-height, independently collapsible sidebar layout from board 04 and familiar coding-theme palettes from board 06. The two central file panes are transfer endpoints; the transfer drawer occupies only the center, never the sidebars. Ctrl+P is the primary action palette. Confirmation modals are separate from choosing an action. The product and program-design documents take precedence over accidental generated labels, figures or shortcuts.
+The user approved **board 08, Files first**, for default startup: real local files on the left, an unconnected destination on the right, no visible sidebars or empty transfer drawer. Midnight is the default palette. The full-height, independently collapsible sidebars from board 04 remain available on demand. The two central file panes are transfer endpoints; the transfer drawer occupies only the center, never the sidebars. Ctrl+P is the primary action palette. Confirmation modals are separate from choosing an action. The user also approved implementing the connection wizard in boards 10–11. Board 12 is an MCP settings proposal, not an implemented permission editor. The product and program-design documents take precedence over accidental generated labels, figures or shortcuts.
 
 | Board | Exploration | Status |
 | --- | --- | --- |
@@ -14,6 +14,12 @@ Use the full-height, independently collapsible sidebar layout from board 04 and 
 | [04 — Command palette](04-command-palette.png) | Full-height sidebars, fuzzy copy search, preview actions | Current layout and palette reference |
 | [05 — Dark, warm and light themes](05-dark-warm-light-themes.png) | Night, Ember, Paper | Evidence that layout should work independently of theme |
 | [06 — Coding-theme studies](06-coding-theme-studies.png) | Catppuccin Mocha, Tokyo Night, Gruvbox Dark, Dracula | Latest approved visual direction; palette-inspired only |
+| [07 — Connection-first startup](07-startup-connection-first.png) | Focused connection chooser | Alternative, not selected; empty search should be omitted |
+| [08 — Files-first startup](08-startup-files-first.png) | Local browsing and disconnected destination | Approved for implementation |
+| [09 — Quick-launch startup](09-startup-quick-launch.png) | Three-action launcher | Alternative, not selected |
+| [10 — Connection wizard](10-connection-wizard.png) | Storage type, FTP details, test and save | Approved; FTPS default, read-only test, explicit persistence |
+| [11 — Cloud authentication](11-cloud-authentication.png) | Azure identity and S3 profile forms | Approved direction; authentication depends on available provider tooling |
+| [12 — MCP permissions](12-mcp-permissions.png) | Default deny and exact folder-scoped grants | Proposed settings view; existing server still reads JSON policy |
 
 ## Known mockup inconsistencies
 
@@ -23,5 +29,7 @@ Use the full-height, independently collapsible sidebar layout from board 04 and 
 - Some backgrounds retain a selection highlight behind a modal. Modal input ownership and active focus must be unambiguous in the real app.
 - Sample running transfers do not mean the first demo slice implements transfers. Unsupported actions must explain their unavailability, never simulate success.
 - Fonts/icons and exact colors must be checked in an actual terminal, with a portable icon-free fallback.
+- Boards 10–11 illustrate authentication choices, not verified provider sign-in capabilities. Azure CLI sign-in requires installed/authenticated Azure CLI; the current implementation must not invent a browser login. Listing success never proves write permissions. FTP password obscuring is reversible, not encryption; persistence must be explicit.
+- Board 12 shows remote rows behind a “Not connected” label; that is a generated inconsistency. MCP remains a client-launched stdio process, not a background HTTP service. Policy changes require restarting the MCP client/server; interactive credentials never create grants.
 
 The earlier `workspace.html` is an initial static sketch, retained for history but superseded by these boards. Do not treat it as a live preview of the application.
