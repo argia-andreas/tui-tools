@@ -54,8 +54,8 @@ func (m Model) reviewView(width, height int) []string {
 		}
 		actions = append(actions, cleanup)
 		buttons := lipgloss.JoinHorizontal(lipgloss.Top,
-			m.button("Cancel / release", r.choice == 0, m.theme.Focus), " ",
-			m.button("Resend copy", r.choice == 1, m.theme.Focus), "  ",
+			m.button("Cancel / release", r.choice == 0, m.theme.Focus), m.paint(" \n \n ", m.theme.Foreground),
+			m.button("Resend copy", r.choice == 1, m.theme.Focus), m.paint("  \n  \n  ", m.theme.Foreground),
 			m.button("Delete original", r.choice == 3, m.theme.DeadLetter))
 		actions = append(actions, strings.Split(buttons, "\n")...)
 		if r.choice == 3 {

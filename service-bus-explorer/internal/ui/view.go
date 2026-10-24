@@ -236,10 +236,11 @@ func (m Model) messageView(width, height int) []string {
 	if width < 70 {
 		actions = "More ^P"
 	}
+	gap := m.paint(" \n \n ", m.theme.Foreground)
 	toolbar := strings.Split(lipgloss.JoinHorizontal(lipgloss.Top,
-		m.button("Active [", !m.dlq, m.theme.Focus), " ",
-		m.button("DLQ ]", m.dlq, m.theme.Focus), " ",
-		m.button("Refresh r", false, m.theme.Focus), " ",
+		m.button("Active [", !m.dlq, m.theme.Focus), gap,
+		m.button("DLQ ]", m.dlq, m.theme.Focus), gap,
+		m.button("Refresh r", false, m.theme.Focus), gap,
 		m.button(actions, false, m.theme.Focus)), "\n")
 	for i, line := range toolbar {
 		toolbar[i] = line + m.paint(strings.Repeat(" ", max(0, width-lipgloss.Width(line))), m.theme.Foreground)
