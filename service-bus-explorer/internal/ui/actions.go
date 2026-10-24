@@ -27,6 +27,9 @@ func (m Model) actions() []action {
 	}
 	if m.screen == "messages" {
 		choices = append(choices, action{"inspector", "Toggle message inspector"}, action{"refresh", "Refresh this peek page (no receive)"})
+		if m.dlq {
+			choices = append(choices, action{"receive", "Receive next DLQ message… (acquire lock, then review)"})
+		}
 	}
 	if m.screen == "messages" || (m.screen != "settings" && len(m.visible()) > 0) {
 		choices = append(choices, action{"active", "Peek Active messages (no locks)"}, action{"dlq", "Peek DLQ messages (no locks)"})
@@ -68,7 +71,7 @@ func (m Model) paletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace {
 			// Limit pasted queries, and never let printable q/j/k escape this field.
 			m.query += clean(string(msg.Runes), false)
-			if msg.Type == tea.KeySpace {
+			if msg.Type == tea.KeySpace && len(msg.Runes) == 0 {
 				m.query += " "
 			}
 			m.query = string([]rune(m.query)[:min(128, len([]rune(m.query)))])
@@ -80,6 +83,8 @@ func (m Model) paletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 	switch id {
+	case "receive":
+		return m.acquire()
 	case "dashboard", "queues", "topics", "settings":
 		if m.cancel != nil {
 			m.cancel()

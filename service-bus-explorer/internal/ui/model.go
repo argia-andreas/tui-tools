@@ -71,6 +71,8 @@ type Model struct {
 	action               int
 	collapsed            map[branch]bool
 	status               string
+	review               reviewState
+	reviewID             uint64
 }
 
 func New(store explorer.Store, options Options) Model {
@@ -201,6 +203,9 @@ func (m Model) hasInspector() bool {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if next, cmd, handled := m.reviewUpdate(msg); handled {
+		return next, cmd
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -269,8 +274,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		key := msg.String()
 		if key == "ctrl+c" {
-			m.stop()
-			return m, tea.Quit
+			return m.quit()
 		}
 		if m.palette {
 			return m.paletteKey(msg)
@@ -280,8 +284,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if key == "q" {
-			m.stop()
-			return m, tea.Quit
+			return m.quit()
 		}
 		if key == "b" {
 			return m.execute("sidebar")

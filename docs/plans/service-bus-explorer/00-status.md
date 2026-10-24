@@ -2,7 +2,7 @@
 
 - Gate 1 — Product: APPROVED 2026-10-23
 - Gate 2 — Architecture: APPROVED 2026-10-23 for independent app/lab, layered testing and independent-first reuse boundary
-- Gate 3 — Program Design: APPROVED 2026-10-23
+- Gate 3 — Program Design: retry-control decision reopened 2026-10-24; all other approved contracts unchanged
 - Gate 4 — Slice plan: APPROVED 2026-10-23
 
 ## Project boundary
@@ -19,7 +19,7 @@ This is an independent side project in the same repository as LazyFTP, not a Laz
 - Fast local feedback is a core requirement: deterministic fixture tests plus seeded broker integration, with commands to send, drain, dead-letter and reset disposable data.
 - Topic-subscription replay sends to the original topic with an explicit warning about delivery to other matching subscriptions. Queue replay sends to the original queue.
 - User approved receive-next DLQ acquisition followed by review of the actual locked message. A peek-selected message cannot be acquired by sequence using the supported SDK contract. Never imply that acquiring next acts on the selected preview; cancellation/release can affect delivery count.
-- Gates 1–4 approved. User approved continuing through Slice 3 after reviewing earlier results. Slice 3 is implemented and verified; pause for review before Slice 4. Interactive mutations and bulk operations remain deferred. MCP has its own parallel product proposal, not UI-scope implementation authorization.
+- User approved Slice 4. Its fixture delivery, Azure delivery and reviewed-action UI are drafted locally, but implementation/real-mutation verification is paused on a newly verified SDK retry-control conflict. See the blocker in `03-program-design.md`; do not silently relax no-retry or claim Slice 4 complete. Bulk operations remain deferred. MCP has its own parallel product proposal, not UI-scope implementation authorization.
 - Docker daemon and emulator now run as supervised orb services `servicebus-docker` and `servicebus-lab`. No resize was needed for the tested ~4 GB orb. Live lab configuration is outside the repo at `/home/user/.local/share/servicebus-explorer-lab/`.
 - Messaging/discovery/queue replay/topic fan-out/drain probes passed. JavaScript SDK count reads failed to parse missing details; the .NET SDK returned incorrect zeros. Do not fake aggregate dashboard totals from bounded peeks or seed expectations.
 - Architecture selects a separate Go module and terminal UI under `service-bus-explorer/`, with direct Azure SDK access and its own reproducible lab commands. Read `04-slices.md` for the approved sequence. Go SDK 1.11.0 discovery and message browsing now run against the emulator; cloud access remains unimplemented.
@@ -50,7 +50,7 @@ This is an independent side project in the same repository as LazyFTP, not a Laz
 - [x] Slice 1 — runnable fixture workspace
 - [x] Slice 2 — real local broker browsing and reproducible lab
 - [x] Slice 3 — complete read-only workspace and themes
-- [ ] Slice 4 — reviewed single-message DLQ actions
+- [ ] Slice 4 — reviewed single-message DLQ actions (drafted; blocked on SDK retry decision)
 - [ ] Slice 5 — portable developer handoff and polish
 
 Approved sequence. See `04-slices.md` for checks and ownership. Show actual terminal captures/recordings when results are ready.

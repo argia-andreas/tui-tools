@@ -2,6 +2,45 @@
 
 Gate 3 approved 2026-10-23. This document contains approved future contracts, not implemented application code. Application implementation follows a separately approved Gate 4 slice plan in `04-slices.md`.
 
+## Slice 4 blocker — retry control (2026-10-24)
+
+The pinned SDK contradicts the approved assumption that `MaxRetries: -1`
+disables every automatic send/settlement retry. Gate 3 is reopened **only for
+this decision**; no alternative below is approved yet.
+
+Verified directly in azservicebus 1.11.0 source (not inferred from a failing
+broker run):
+
+- `messageSettler.go`, `settleWithRetries`: passes `RetryOptions{}` instead of
+  the stored client options. Complete/Abandon can also fall through from the
+  receiver to the management link after a settlement error.
+- `internal/amqpLinks.go`, `AMQPLinksImpl.Retry`: on the first link error, calls
+  `args.ResetAttempts()` for an immediate recovery attempt, even when configured
+  with negative maximum retries. It invokes the operation again after recovery.
+
+The draft app submits each operation once and treats transport errors as unknown,
+but that does not establish a single wire attempt. Keeping the original/new ID
+reduces some risks; it does not eliminate duplicate processing or make send and
+cleanup atomic.
+
+Decision needed before continuing Slice 4:
+
+1. Preserve strict no-automatic-retry: approve a scoped dependency patch, with
+   failure-injection checks for send/link recovery and settlement/fallback. No
+   unsafe access to SDK private fields or silent module-cache edits.
+2. Explicitly accept SDK-internal recovery and narrow the contract to no
+   **application-level** retries. Update user-visible wording, risk documentation
+   and tests accordingly; never promise one wire attempt or exactly-once.
+
+Local draft: fixture held deliveries, reviewed-action UI, typed delete, default
+retention/optional cleanup, late-acquisition release and terminal outcomes;
+Azure conversion/acquisition/settlement and serial integration checks. Final
+`go test -race ./...`, `go vet ./...` and whitespace checks passed. Earlier PTY
+checks passed, while the new mutation PTY exposed doubled space input in the
+palette; the draft fixes this and awaits rerun. Real Slice 4 broker mutations,
+rendered review captures and final integration proof have **not** run. Slice 4
+remains unchecked; do not describe the draft as delivered or retry-safe.
+
 ## Boundaries and dependency baseline
 
 - Independent module and binary under `service-bus-explorer/`, working binary name `sbx` (not a final product name). No imports of LazyFTP internals or changes to its files, root build/setup, lab or documentation.

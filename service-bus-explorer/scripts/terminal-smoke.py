@@ -5,6 +5,7 @@ import codecs
 import fcntl
 import os
 import pty
+import re
 import select
 import signal
 import struct
@@ -67,6 +68,29 @@ def main():
         send(query, "> " + query + "_")
         return send("\r", want, "Ctrl+P / ACTIONS")
 
+    def dlq_review():
+        action("receive next", "ACTUAL RECEIVED MESSAGE")
+        text = wait("› Cancel / release original")
+        assert re.search(r"ID: orders-dlq-\d{4}", text)
+        assert "[ ] Remove original" in text
+        send("\r", "Original release confirmed")
+        send("\r", "orders / DEAD-LETTER")
+        action("receive next", "ACTUAL RECEIVED MESSAGE")
+        retained_id = re.search(r"ID: (orders-dlq-\d{4})", wait("New MessageID:")).group(1)
+        send("\t", "› Resend new copy to origin")
+        send("\r", "no cleanup requested")
+        wait("Original release confirmed")
+        send("\r", "orders / DEAD-LETTER")
+        wait(retained_id)  # resend must not implicitly delete the acquired original
+        action("receive next", "ACTUAL RECEIVED MESSAGE")
+        deleted_id = re.search(r"ID: (orders-dlq-\d{4})", wait("New MessageID:")).group(1)
+        send("\t\t\t", "› Delete original")
+        send("\r", "type delete: _")
+        send("delete", "type delete: delete_")
+        send("\r", "Deletion confirmed")
+        send("\r", "orders / DEAD-LETTER")
+        wait("PEEK ONLY", deleted_id)
+
     try:
         if args.emulator:
             text = wait("Emulator connected")
@@ -88,6 +112,7 @@ def main():
             send("]", "orders / DEAD-LETTER")
             wait("orders-dlq-0001")
             assert "PEEK ONLY" in "\n".join(screen.display)
+            dlq_review()
             send("[", "orders-active-0001", "orders-dlq-0001")
             resize(80, 24)
             os.kill(proc.pid, signal.SIGWINCH)
@@ -95,7 +120,7 @@ def main():
             os.write(master, b"q")
             proc.wait(timeout=5)
             assert proc.returncode == 0
-            print("PASS: real emulator PTY — discovery, unavailable counts, Active/DLQ, paging/refresh, resize, clean exit")
+            print("PASS: real emulator PTY — discovery, unavailable counts, paging/refresh, receive/review, cancel/release, resend retaining original, typed delete, resize, clean exit")
             return
         # The footer arrives after the complete frame; matching the first card
         # could return while the PTY is still streaming the remaining rows.
@@ -164,6 +189,8 @@ def main():
         resize(160, 48)
         os.kill(proc.pid, signal.SIGWINCH)
         wait("INSPECTOR")
+        send("]", "orders / DEAD-LETTER")
+        dlq_review()
         action("settings", "Color theme: midnight")
         send("\r", "Color theme: gruvbox")
         # First watch row follows the five layout/save controls.
@@ -196,7 +223,7 @@ def main():
         os.write(master, b"q")
         proc.wait(timeout=5)
         assert proc.returncode == 0
-        print("PASS: real PTY — 12 cards, table/tree, Active/DLQ, paging, resize, fuzzy palette, three theme colors, save/restart watchlist, clean exit")
+        print("PASS: real PTY — layouts/palette/themes, receive/review, cancel/release, retained-original resend, typed delete, save/restart watchlist, resize, clean exit")
     finally:
         if proc.poll() is None:
             proc.terminate()
