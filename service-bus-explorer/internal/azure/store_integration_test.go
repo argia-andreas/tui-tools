@@ -5,6 +5,7 @@ package azure_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -13,7 +14,10 @@ import (
 	"servicebusexplorer/internal/explorer"
 )
 
-// Requires the isolated lab seeded by scripts/lab.py; never targets Azure.
+// Requires the isolated lab freshly seeded by scripts/lab.py; never targets Azure.
+// SERIAL: do not use t.Parallel or run another lab command/test process during
+// this test. Mutation subtests run only after all seeded browsing assertions.
+// Reseed afterwards: the topic fanout probes intentionally leave active copies.
 func TestSeededEmulatorBrowsing(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
@@ -104,10 +108,6 @@ func TestSeededEmulatorBrowsing(t *testing.T) {
 	if err != nil || len(empty.Messages) != 0 || empty.NextSequence != nil {
 		t.Fatalf("empty queue: %+v, %v", empty, err)
 	}
-	if _, err := store.ReceiveNextDLQ(ctx, orders); err == nil {
-		t.Fatal("read-only backend allowed lock acquisition")
-	}
-
 	// Independent consumer proves browsing did not acquire or settle the message.
 	// Use the known-empty lab queue and remove only this probe after verification.
 	client, err := sb.NewClientFromConnectionString("Endpoint=sb://127.0.0.1:5673;SharedAccessKeyName=RootManageSharedAccessKey;SharedAccessKey=SAS_KEY_VALUE;UseDevelopmentEmulator=true;", &sb.ClientOptions{RetryOptions: sb.RetryOptions{MaxRetries: -1}})
@@ -146,4 +146,179 @@ func TestSeededEmulatorBrowsing(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log("PASS: Go SDK discovery, byte-checked bodies/properties, paging/refresh, Active/DLQ/subscriptions, unavailable counters; independent receive proves peek preserved availability")
+	t.Run("DLQReplayRetentionAndSeparateCleanup", func(t *testing.T) {
+		testQueueReplay(t, ctx, store, client, byName["empty"])
+	})
+	t.Run("DLQTopicReplayFansOutAndRetainsOriginal", func(t *testing.T) {
+		testTopicReplay(t, ctx, store, byName["events/billing"], byName["events/shipping"])
+	})
+}
+
+func testQueueReplay(t *testing.T, ctx context.Context, store *azure.Store, client *sb.Client, target explorer.Resource) {
+	t.Helper()
+	sender, err := client.NewSender(target.Queue, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sender.Close(context.Background())
+	receiver, err := client.NewReceiverForQueue(target.Queue, &sb.ReceiverOptions{ReceiveMode: sb.ReceiveModePeekLock})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer receiver.Close(context.Background())
+	id, correlation, subject, contentType := fmt.Sprintf("slice4-original-%d", time.Now().UnixNano()), "slice4-correlation", "binary-preservation", "application/octet-stream"
+	ttl := 90 * time.Minute
+	pastSchedule := time.Now().Add(-time.Hour)
+	body := bytes.Repeat([]byte{0, 255, 65, 10, 27}, 18000)
+	if err := sender.SendMessage(ctx, &sb.Message{MessageID: &id, CorrelationID: &correlation, Subject: &subject, ContentType: &contentType, TimeToLive: &ttl,
+		ScheduledEnqueueTime: &pastSchedule, Body: body, ApplicationProperties: map[string]any{"business": "preserve", "binary": []byte{0, 255}, "number": int64(42)}}, nil); err != nil {
+		t.Fatal(err)
+	}
+	active := receiveOne(t, ctx, receiver)
+	if active.MessageID != id {
+		t.Fatal("expected isolated empty queue; reseed lab before this test")
+	}
+	reason, description := "slice4-reason", "slice4-description"
+	if err := receiver.DeadLetterMessage(ctx, active, &sb.DeadLetterOptions{Reason: &reason, ErrorDescription: &description}); err != nil {
+		t.Fatal(err)
+	}
+	d, err := store.ReceiveNextDLQ(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Abandon(context.Background())
+	preview := d.Snapshot()
+	if preview.ID != id || preview.DeadLetterReason != reason || preview.DeadLetterDescription != description || !preview.PreviewTruncated || len(preview.Body) != 64*1024 || !d.LockedUntil().After(time.Now()) {
+		t.Fatalf("held delivery preview: %+v", preview)
+	}
+	preview.Body[0] = 99
+	preview.Properties["binary"].([]byte)[0] = 99
+	if _, err := store.ReceiveNextDLQ(ctx, target); err == nil {
+		t.Fatal("store allowed another held delivery")
+	}
+	replayID := id + "-replay"
+	result, err := d.Resend(ctx, replayID)
+	if err != nil || result.State != "confirmed" || result.MessageID != replayID {
+		t.Fatalf("resend: %+v, %v", result, err)
+	}
+	if second, err := d.Resend(ctx, id+"-duplicate"); err == nil || second.State != "rejected" {
+		t.Fatal("repeated send was allowed")
+	}
+	copy := receiveOne(t, ctx, receiver)
+	if copy.MessageID != replayID || !bytes.Equal(copy.Body, body) || valueString(copy.CorrelationID) != correlation || valueString(copy.Subject) != subject || valueString(copy.ContentType) != contentType || copy.TimeToLive == nil || *copy.TimeToLive != ttl || copy.ApplicationProperties["business"] != "preserve" || copy.ApplicationProperties["number"] != int64(42) || !bytes.Equal(copy.ApplicationProperties["binary"].([]byte), []byte{0, 255}) {
+		t.Fatal("replay lost full body, correlation, TTL or application fields")
+	}
+	if _, ok := copy.ApplicationProperties["DeadLetterReason"]; ok {
+		t.Fatal("replay retained DLQ reason")
+	}
+	if _, ok := copy.ApplicationProperties["DeadLetterErrorDescription"]; ok {
+		t.Fatal("replay retained DLQ description")
+	}
+	if copy.ScheduledEnqueueTime != nil {
+		t.Fatal("replay retained scheduled enqueue time")
+	}
+	if err := receiver.CompleteMessage(ctx, copy, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Abandon(ctx); err != nil {
+		t.Fatal(err)
+	}
+	retained, err := store.ReceiveNextDLQ(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer retained.Abandon(context.Background())
+	if retained.Snapshot().ID != id || retained.Snapshot().DeadLetterReason != reason {
+		t.Fatal("confirmed replay removed/changed original")
+	}
+	// Separate explicit authorization: delete the retained original without sending.
+	if err := retained.Complete(ctx); err != nil {
+		t.Fatal(err)
+	}
+	page, err := store.Peek(ctx, target, true, 0, 20)
+	if err != nil || len(page.Messages) != 0 {
+		t.Fatalf("cleanup did not remove only original: %+v, %v", page, err)
+	}
+	page, err = store.Peek(ctx, target, false, 0, 20)
+	if err != nil || len(page.Messages) != 0 {
+		t.Fatalf("repeated submission made another copy: %+v, %v", page, err)
+	}
+	t.Log("PASS: full 90KB body and binary properties preserved independently of preview; new ID/correlation/TTL, no schedule/DLQ fields; original retained until separate Complete")
+}
+
+func testTopicReplay(t *testing.T, ctx context.Context, store *azure.Store, billing, shipping explorer.Resource) {
+	t.Helper()
+	d, err := store.ReceiveNextDLQ(ctx, billing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer d.Abandon(context.Background())
+	original := d.Snapshot()
+	id := fmt.Sprintf("slice4-topic-replay-%d", time.Now().UnixNano())
+	result, err := d.Resend(ctx, id)
+	if err != nil || result.State != "confirmed" {
+		t.Fatalf("topic resend: %+v, %v", result, err)
+	}
+	for _, target := range []explorer.Resource{billing, shipping} {
+		copy := awaitPeekID(t, ctx, store, target, false, id)
+		if !bytes.Equal(copy.Body, original.Body) || copy.Subject != original.Subject || copy.ContentType != original.ContentType || copy.DeadLetterReason != "" || copy.DeadLetterDescription != "" {
+			t.Fatalf("topic replay changed business content in %s", target.Name())
+		}
+	}
+	if err := d.Abandon(ctx); err != nil {
+		t.Fatal(err)
+	}
+	retained := awaitPeekID(t, ctx, store, billing, true, original.ID)
+	if retained.DeadLetterReason != original.DeadLetterReason || !bytes.Equal(retained.Body, original.Body) {
+		t.Fatal("topic replay removed/changed original")
+	}
+	t.Log("PASS: original billing DLQ retained; replay reached BOTH billing and shipping; reseed required to remove test fanout copies")
+}
+
+func receiveOne(t *testing.T, parent context.Context, receiver *sb.Receiver) *sb.ReceivedMessage {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	messages, err := receiver.ReceiveMessages(ctx, 1, nil)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("receive one: %d messages, %v", len(messages), err)
+	}
+	return messages[0]
+}
+
+func valueString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+func awaitPeekID(t *testing.T, parent context.Context, store *azure.Store, target explorer.Resource, dlq bool, id string) explorer.Message {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	defer cancel()
+	for ctx.Err() == nil {
+		var from int64
+		for range 100 {
+			page, err := store.Peek(ctx, target, dlq, from, 20)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, message := range page.Messages {
+				if message.ID == id {
+					return message
+				}
+			}
+			if page.NextSequence == nil {
+				break
+			}
+			from = *page.NextSequence
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	t.Fatalf("message %s not found in %s dlq=%v", id, target.Name(), dlq)
+	return explorer.Message{}
 }
