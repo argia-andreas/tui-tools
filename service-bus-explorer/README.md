@@ -2,9 +2,9 @@
 
 An independent keyboard-first terminal workspace, alongside—but not part of—LazyFTP.
 **Two explicit modes:** deterministic offline fixtures, or the independent local
-Service Bus emulator. Browsing is read-only; the current Slice 4 implementation
-also includes explicitly reviewed DLQ actions. Automated, PTY and real-emulator
-checks pass; final visual verification remains pending (not a completed slice).
+Service Bus emulator. Browsing is read-only; Slice 4 also includes explicitly
+reviewed single-message DLQ actions. Automated, PTY, real-emulator and final
+rendered-state/interaction checks passed on Linux (2026-10-24).
 No cloud connection or MCP access exists.
 Layout, theme and dashboard
 watchlists can be saved explicitly; credentials and MCP grants cannot.
@@ -51,7 +51,7 @@ Settings and Ctrl+P provide Midnight, Gruvbox and Light themes, layout controls,
 watchlist editing and Save preferences. Printable keys—including `q`, `j`, and
 `k`—belong to the palette query while it is open.
 
-## Slice 4 DLQ actions — final visual verification pending
+## Slice 4 — reviewed single-message DLQ actions
 
 “Receive next DLQ message…” acquires one message for review; it does **not** act
 on the highlighted peek row. Review shows the actual received message, source,
@@ -68,7 +68,14 @@ converted. Race/fixture/PTY and seeded real-broker checks pass, including the
 90 KB body and supported scalar properties, TTL/correlation, retained original,
 separate cleanup and topic fan-out. Emulator binary application properties are
 explicitly rejected by the broker; cloning them is unit-tested, not a successful
-broker round trip. Final rendered states/recording remain to be reviewed.
+broker round trip. Actual review renders were inspected in all three themes and
+at 80×24, including the compact read-only body page. Real-emulator cancel/release,
+typed delete/deletion outcome and topic fan-out warnings were also inspected.
+Unknown send, expired review and confirmed-send/uncertain-cleanup screens were
+inspected with temporary offline fixture wrappers, not induced broker failures.
+The inspected keyboard/pointer recording shows a retained-original resend and
+the final **Lock release confirmed** wording. Evidence is indexed in the
+[Slice 4 completion record](../docs/plans/service-bus-explorer/00-status.md#slice-4-completed--2026-10-24).
 
 **Gate 3 retry adjustment approved by Andreas on 2026-10-24:** trust the pinned
 SDK's internal retry/recovery, without an SDK patch. The application submits each
@@ -175,10 +182,14 @@ make -C service-bus-explorer integration-test
 
 This exercises the real Go SDK and real TUI against the emulator: discovery,
 Active/DLQ/subscription browsing, explicit page cursors, refresh, message bodies,
-empty queues and unavailable counters. It does not prove cloud authentication,
-accurate Azure runtime counts, or the current Slice 4 interactive resend/delete
-flows. Slice 4 verification and evidence remain pending; the earlier browsing
-checks are not proof of these mutation paths.
+empty queues and unavailable counters. Slice 4 checks additionally cover the
+90 KB body/scalar-property replay, independent source/replay TTL, original
+retention, separate cleanup and topic fan-out; real-emulator PTY covers
+receive/review, cancel/release, retained-original resend and typed delete.
+Run against a fresh seed: the checks leave replay copies and delete one reviewed
+Orders DLQ message. These checks do not prove cloud authentication, accurate
+Azure runtime counts, binary-property broker preservation or native Mac/Windows
+execution. Unknown outcomes are exercised deterministically offline.
 
 Design, future lab commands and the known emulator count limitation are recorded
 in [the independent project plan](../docs/plans/service-bus-explorer/00-status.md).

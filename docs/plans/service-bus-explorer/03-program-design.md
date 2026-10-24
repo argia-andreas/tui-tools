@@ -44,9 +44,13 @@ real broker integration and emulator PTY also pass (2026-10-24). The 90 KB body,
 supported scalar properties, source/replay 37-minute TTL, new ID/correlation,
 original retention, separate cleanup and topic fan-out were executed. Binary
 application-property rejection is tested separately as an emulator limitation.
-Final review/theme/compact/error-state visual evidence remains pending in the
-new continuation thread. Slice 4 remains unchecked until that final verification;
-no cloud or MCP implementation is implied. See `00-status.md` for the handoff.
+Final review/theme/compact/outcome renders and keyboard/pointer video were
+inspected in the continuation thread on 2026-10-24. Fresh fixture/race/vet/guard
+and serial seeded emulator integration/PTY checks also passed there. Unknown,
+expired and partial outcomes use explicitly offline simulations; actual emulator
+captures cover review, release, typed delete and topic warnings. Slice 4 is
+complete; no cloud or MCP implementation is implied. See `00-status.md` for
+commands, evidence and remaining validation boundaries.
 
 ## Boundaries and dependency baseline
 

@@ -11,7 +11,7 @@ This is an independent side project in the same repository as LazyFTP, not a Laz
 
 ## Notes for a fresh session
 
-- Slices 1–3 run as an independent terminal application with explicit `--fixture` or `--emulator` selection. The app's emulator connection is real and read-only; no cloud connection or MCP server exists. Runtime emulator counters remain unavailable, never synthesized from seed or peek results.
+- Slices 1–4 run as an independent terminal application with explicit `--fixture` or `--emulator` selection. The app's emulator connection is real: browsing remains read-only, with explicit reviewed single-message DLQ actions. No cloud connection or MCP server exists. Runtime emulator counters remain unavailable, never synthesized from seed or peek results.
 - Read all documents in this folder before continuing, including `02-architecture.md`, `local-development-notes.md` and `mockups/README.md`. Preserve the distinction between user requirements, recommendations and open decisions.
 - Current dashboard default has expanded collapsible navigation, 12 visible grid boxes, optional denser table, and queue inclusion editing behind Settings. Twelve is not a watchlist limit.
 - Preserve read-only peek defaults and explicit mutation review. Resending is not an atomic move; send and original cleanup are separate effects.
@@ -19,8 +19,8 @@ This is an independent side project in the same repository as LazyFTP, not a Laz
 - Fast local feedback is a core requirement: deterministic fixture tests plus seeded broker integration, with commands to send, drain, dead-letter and reset disposable data.
 - Topic-subscription replay sends to the original topic with an explicit warning about delivery to other matching subscriptions. Queue replay sends to the original queue.
 - User approved receive-next DLQ acquisition followed by review of the actual locked message. A peek-selected message cannot be acquired by sequence using the supported SDK contract. Never imply that acquiring next acts on the selected preview; cancellation/release can affect delivery count.
-- User approved Slice 4 and explicitly accepted trusting SDK recovery rather than patching it. Fixture delivery, Azure delivery and reviewed-action UI are implemented; final verification is in progress. No app-level send/settlement/replay retries; SDK recovery/fallback may repeat wire attempts. Do not promise exactly-once or mark Slice 4 complete before final evidence. Bulk operations remain deferred. MCP has its own parallel product proposal, not UI-scope implementation authorization.
-- Docker daemon and emulator now run as supervised orb services `servicebus-docker` and `servicebus-lab`. No resize was needed for the tested ~4 GB orb. Live lab configuration is outside the repo at `/home/user/.local/share/servicebus-explorer-lab/`.
+- Slice 4 is complete with final evidence below. User explicitly accepted trusting SDK recovery rather than patching it. No app-level send/settlement/replay retries; SDK recovery/fallback may repeat wire attempts. Do not promise exactly-once. Bulk operations remain deferred. MCP has its own parallel product proposal, not UI-scope implementation authorization. Ask before continuing Slice 5.
+- Current orb's Docker daemon and reusable emulator run as supervised services `servicebus-docker` and `sbx-explorer-lab`; actual RAM is 7.8 GiB. Private generated lab credentials are outside Git at `~/.local/share/sbx-explorer-lab/`. Earlier `servicebus-lab` / ~4 GB observations below describe the old capability-spike orb, not this one.
 - Messaging/discovery/queue replay/topic fan-out/drain probes passed. JavaScript SDK count reads failed to parse missing details; the .NET SDK returned incorrect zeros. Do not fake aggregate dashboard totals from bounded peeks or seed expectations.
 - Architecture selects a separate Go module and terminal UI under `service-bus-explorer/`, with direct Azure SDK access and its own reproducible lab commands. Read `04-slices.md` for the approved sequence. Go SDK 1.11.0 discovery and message browsing now run against the emulator; cloud access remains unimplemented.
 - User agreed to independent-first development: adapt proven small theme/layout/testing patterns, extract a minimal shared library only once common contracts stabilize. Gate 3 pins the FTP reference revision; no live dependency, FTP migration or framework now. Do not change LazyFTP files or contact its thread for updates.
@@ -28,7 +28,7 @@ This is an independent side project in the same repository as LazyFTP, not a Laz
 - User requested parallel implementation where useful. Gate 4 records disjoint lab/theme task ownership; main thread integrates and verifies. Do not send work or updates to the FTP thread.
 - Future agent MCP must deny by default and separately allowlist reads and optional resends. Dashboard visibility must not grant agent access.
 - User confirmed parallel Service Bus MCP work, prioritizing finishing the current UI result first. Separate proposal: `../service-bus-mcp/01-product.md`. It adds independent DLQ deletion grants and queue-only resend destinations; lock/acquisition authority and read-only-first launch need product review. No MCP code exists.
-- Slice 1 commands from repo root: `make -C service-bus-explorer run-fixture`, `test`, `terminal-test`. Go 1.27.3 required; Python/pyte setup in the app README. This orb's Go is `/home/user/.local/toolchains/go/bin/go`; override Make's `GO` when absent from PATH.
+- Slice 1 commands from repo root: `make -C service-bus-explorer run-fixture`, `test`, `terminal-test`. Go 1.27.3 required; Python/pyte setup in the app README. Current orb has `go` 1.27.3 on PATH (`/home/user/.local/bin/go`); the earlier `/home/user/.local/toolchains/go/bin/go` override belongs to the old orb.
 - Verification: race-enabled Go tests, `go vet`, and real-PTY navigation/layout/paging/resize/exit checks passed. Inspected actual dark-theme renders for grid/table, collapsed sidebar, Active/DLQ inspector and compact layout; saved keyboard recording under workspace `.amp/in/artifacts/service-bus-slice1/`. No claim of Azure/native macOS/Windows verification.
 - Slice 2 adds `run-emulator`, `integration-test`, and `lab-up/status/down/reset/seed/send/peek/dead-letter/drain`. See app README for explicit EULA/confirmation flags. This orb needs `LAB_FLAGS="--sudo --orb ..."`; pass the Go override above. `lab-seed` always destroys/recreates only the disposable project's data.
 - New reusable lab: supervised service / Compose project `sbx-explorer-lab`, fixed loopback AMQP 5673 and management 5301. SQL credentials live outside Git at `~/.local/share/sbx-explorer-lab/compose.env`, private permissions. The older 5672/5300 spike was not changed.
@@ -42,10 +42,10 @@ This is an independent side project in the same repository as LazyFTP, not a Laz
 - Slice 3 checks: race-enabled Go suite, vet, Python lab guards, expanded fixture real-PTY save/restart/theme/palette/resize checks, seeded Go broker integration and emulator PTY. A temporary production-timer probe fired after 30.03 seconds and refreshed all 14 resources without input; removed after validation to avoid permanent slow tests. Public UI tests cover same-name namespaces, empty watchlists, 29-resource table, all themes/ASCII widths, controlled stale reads, tree groups and inspector scrolling/control-text safety.
 - Actual Slice 3 captures/keyboard tour live in workspace `.amp/in/artifacts/service-bus-slice3/`, with a reference index. Default/theme/Settings/empty/narrow/focused-inspector states were inspected; stale-count rendering uses a deliberately failing offline fixture wrapper, not a claim about cloud counters. Temporary capture helpers are removed and services stopped after verification.
 - Source design conversation: https://ampcode.com/threads/T-01a16a8a-2a84-7615-ae4e-5cd2d7fd57f1
-- Continue discussion in that Service Bus thread. Do not send progress updates to the FTP thread.
+- Current continuation: https://ampcode.com/threads/T-01a16e75-df92-720e-b3c2-4052f34bb7f5. Deliver to Andreas here, not the FTP thread.
 - User authorized implementation, frequent commits/pushes and pulling when needed, including delegated threads; put that instruction in handoffs. Use disjoint ownership and separate branches for independent threads, integrate with checks, never force-push. No Azure writes/deployments are authorized.
 
-## Slice 4 continuation — 2026-10-24
+## Slice 4 continuation handoff — 2026-10-24 (historical; completed below)
 
 - Andreas requested a good checkpoint committed/pushed to `main`, then a new
   thread using the newly configured 8 GB orb settings. The old orb still reports
@@ -105,12 +105,63 @@ This is an independent side project in the same repository as LazyFTP, not a Laz
   to continue to Slice 5. Do not restart approved gates or patch the SDK. Do not
   contact the FTP thread or modify its files. MCP remains separately gated.
 
+## Slice 4 completed — 2026-10-24
+
+- Continuation orb used the project's configured default size and reports
+  **7.8 GiB RAM** (`free -h`), unlike the old 3.8 GiB orb. Go 1.27.3 and ttyd
+  1.7.7 were already installed. Docker daemon was started as supervised
+  `servicebus-docker`; missing Compose plugin was installed outside Git as
+  v2.39.4. The initial seed attempt stopped before messaging because Compose
+  was absent; after installation, the guarded reset/seed completed from scratch.
+- Repeated `make test terminal-test PYTHON=/home/user/workspace/repo/.venv/bin/python`
+  and `go vet ./...` in `service-bus-explorer/`: all race-enabled Go tests,
+  ten Python guards, fixture PTY and vet passed. Then ran
+  `make lab-seed LAB_FLAGS="--sudo --orb --accept-eula --confirm-disposable"`
+  and serial `make integration-test PYTHON=/home/user/workspace/repo/.venv/bin/python`:
+  Go broker checks and real-emulator PTY passed. No integration consumers ran
+  concurrently. The body/scalar-property, independent TTL, retention, separate
+  cleanup and topic fan-out assertions passed again on this new orb.
+- Inspected actual 160×48 held-message review in Midnight, Gruvbox and Light,
+  plus 80×24 Light review and its read-only body page. Default Cancel and
+  cleanup-off controls remain visible. The compact status line deliberately
+  ellipsizes; full action help and critical review controls remain readable.
+  Actual emulator captures cover Orders review/cancel/release, typed delete,
+  confirmed deletion and Billing subscription review with topic fan-out warning.
+- Inspected fixture confirmed-send/retained-original outcome, and deterministic
+  unknown-send, expired-lock and confirmed-send/uncertain-cleanup renders.
+  These last three use temporary offline Store/Delivery wrappers, not induced
+  broker failures. Unknown send simulation first accepts the fixture copy,
+  then hides its acknowledgement. Expiry simulation shortens the presented
+  deadline; partial simulation accepts the send but reports cleanup uncertainty.
+  Production behavior and permanent regression tests were not changed.
+- Recaptured the real keyboard/pointer tour at 1100×680/DPR2, 5 fps. Inspected
+  every frame through a 5-fps contact sheet: palette → actual held-message review
+  with Cancel default → Tab to resend → confirmed send, original retained and
+  **Lock release confirmed**. Pointer passes across neighboring terminal rows.
+  The TUI is keyboard-first; pointer movement is browser capture evidence, not
+  a claim of mouse-activated TUI controls.
+- Final evidence in this continuation orb:
+  `/home/user/workspace/repo/.amp/in/artifacts/service-bus-slice4/README.md`
+  indexes 14 inspected screenshots, `review-tour.mp4`, `review-tour.loop.webp`,
+  `sbx-fixture-checks.log`, `emulator-checks.log` and `seed.log`. The files are
+  thread artifacts, not tracked source files; this thread's final presentation
+  embeds the renders and recording.
+- Removed temporary Go capture harness; all five ttyd preview services/browser
+  sessions stopped. Disposable `sbx-explorer-lab` and `servicebus-docker` remain
+  running. The integration/PTY and subsequent visual delete leave replay copies
+  and remove two reviewed Orders DLQ messages in total; reset/seed before exact
+  baseline assertions. No cloud writes, SDK patch, root/LazyFTP changes or FTP
+  thread contact occurred. Native Mac/Windows, Azure counters/auth and broker
+  binary-property preservation remain unverified. MCP remains separately gated.
+- Slice 4 requires no further implementation. Next decision: continue Slice 5
+  portable developer handoff/polish, or re-steer; do not start it implicitly.
+
 ## Slices
 
 - [x] Slice 1 — runnable fixture workspace
 - [x] Slice 2 — real local broker browsing and reproducible lab
 - [x] Slice 3 — complete read-only workspace and themes
-- [ ] Slice 4 — reviewed single-message DLQ actions (implemented; final verification/handoff in progress)
+- [x] Slice 4 — reviewed single-message DLQ actions
 - [ ] Slice 5 — portable developer handoff and polish
 
 Approved sequence. See `04-slices.md` for checks and ownership. Show actual terminal captures/recordings when results are ready.
