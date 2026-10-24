@@ -73,6 +73,7 @@ type Model struct {
 	status                      string
 	navCursor                   int
 	disconnected                bool
+	destinationChoice           int
 	folderPath                  string
 }
 
@@ -192,6 +193,8 @@ func (m *Model) fixFocus() {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case OpenLocalFolderRequested:
+		return m.execute("folder")
 	case ConnectionOpened:
 		if msg.Browser != nil {
 			m.browser = msg.Browser
@@ -354,6 +357,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if key == "k" || key == "up" {
 				delta = -1
 			}
+			if m.focus == 2 && m.disconnected {
+				m.destinationChoice = max(0, min(1, m.destinationChoice+delta))
+				return m, nil
+			}
 			if m.focus == 0 {
 				m.navCursor = (m.navCursor + delta + len(m.locations)) % len(m.locations)
 			}
@@ -369,6 +376,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter":
 			if m.focus == 2 && m.disconnected {
+				if m.destinationChoice == 1 {
+					return m.execute("folder")
+				}
 				return m.execute("connect")
 			}
 			if m.focus == 0 {
@@ -564,7 +574,7 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		local := m.panes[0].location.Path
-		return m, func() tea.Msg { return ConnectRequested{Local: local} }
+		return m, func() tea.Msg { return ConnectRequested{Local: local, Destination: true} }
 	case "folder":
 		if reason := m.connectionDisabled(); reason != "" {
 			m.status = reason

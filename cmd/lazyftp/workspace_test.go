@@ -75,6 +75,79 @@ func TestDefaultStartupOpensConnectionsAndEscapeBrowsesLocallyWithoutRclone(t *t
 	}
 }
 
+func TestRightPaneLocalDestination(t *testing.T) {
+	for _, route := range []string{"arrows", "vim keys", "mouse", "chooser"} {
+		t.Run(route, func(t *testing.T) {
+			th, _ := theme.Get("")
+			left, right := t.TempDir(), t.TempDir()
+			for folder, name := range map[string]string{left: "left-only.txt", right: "right-only.txt"} {
+				if err := os.WriteFile(filepath.Join(folder, name), []byte("fixture"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			o, err := workspaceOptions(context.Background(), false, left, "", nil, "", th, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := workspace{model: ui.New(o), ctx: context.Background(), theme: th, bookmarkPath: filepath.Join(t.TempDir(), "connections.json")}
+			m, _ = updateWorkspace(m, tea.WindowSizeMsg{Width: 120, Height: 30})
+			m = runWorkspace(m, m.Init())
+			key := func(kind tea.KeyType) {
+				var cmd tea.Cmd
+				m, cmd = updateWorkspace(m, tea.KeyMsg{Type: kind})
+				m = runWorkspace(m, cmd)
+			}
+			key(tea.KeyTab)
+			switch route {
+			case "arrows":
+				key(tea.KeyDown)
+				key(tea.KeyUp)
+				key(tea.KeyEnter)
+				if m.picker == nil {
+					t.Fatal("Up did not select the remote option")
+				}
+				key(tea.KeyEsc)
+				if strings.Contains(ansi.Strip(m.View()), "OPEN LOCAL DESTINATION") {
+					t.Fatal("Escape opened the folder prompt instead of returning to the workspace")
+				}
+				key(tea.KeyDown)
+				key(tea.KeyEnter)
+			case "vim keys":
+				for _, r := range "jkj" {
+					m, _ = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+				}
+				key(tea.KeyEnter)
+			case "mouse":
+				m, _ = wizardClick(t, m, "Open local folder")
+			case "chooser":
+				key(tea.KeyEnter)
+				m, _ = wizardClick(t, m, "Browse local files")
+			}
+			if !strings.Contains(ansi.Strip(m.View()), "OPEN LOCAL DESTINATION") {
+				t.Fatalf("%s did not open the destination folder prompt:\n%s", route, m.View())
+			}
+			key(tea.KeyCtrlU)
+			m, _ = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(right)})
+			key(tea.KeyEnter)
+			view := ansi.Strip(m.View())
+			for _, label := range []string{"left-only.txt", "right-only.txt"} {
+				column := -1
+				for _, row := range strings.Split(view, "\n") {
+					if index := strings.Index(row, label); index >= 0 {
+						column = len([]rune(row[:index]))
+					}
+				}
+				if column < 0 || (label == "left-only.txt" && column >= 60) || (label == "right-only.txt" && column < 60) {
+					t.Fatalf("local destination lost %s:\n%s", label, view)
+				}
+			}
+			if strings.Contains(view, "Not connected") {
+				t.Fatal("destination remained disconnected")
+			}
+		})
+	}
+}
+
 func TestConnectionMotionCannotOutliveChooserOrChangeControls(t *testing.T) {
 	theme, _ := theme.Get("")
 	p := newPicker(nil, nil, t.TempDir(), "", "", theme)

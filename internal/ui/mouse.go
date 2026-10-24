@@ -177,12 +177,13 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if click {
 			connect, folder := destinationRows(l.height - l.drawer)
 			w := l.center - l.left
-			for _, button := range []struct {
+			for choice, button := range []struct {
 				row           int
 				label, action string
 			}{{connect, connectButton, "connect"}, {folder, folderButton, "folder"}} {
 				x := origin + 1 + max(0, (w-2-len(button.label))/2)
 				if msg.Y == 2+button.row && msg.X >= x && msg.X < x+len(button.label) {
+					m.destinationChoice = choice
 					return m.execute(button.action)
 				}
 			}

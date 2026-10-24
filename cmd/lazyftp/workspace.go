@@ -31,6 +31,7 @@ type workspace struct {
 	size                 tea.WindowSizeMsg
 	request              int
 	connectOnStart       string
+	pickerDestination    bool
 	discoveryCancel      context.CancelFunc
 }
 
@@ -135,6 +136,7 @@ func (m workspace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case ui.ConnectRequested:
 		m.closePicker()
+		m.pickerDestination = msg.Destination
 		p := newPicker(nil, nil, msg.Local, m.leftOverride, m.bookmarkPath, m.theme)
 		p.message = "Loading connections…"
 		if m.size.Width > 0 {
@@ -244,6 +246,10 @@ func (m workspace) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.picker = &p
 	if p.localFiles {
 		m.closePicker()
+		if m.pickerDestination {
+			m.model, cmd = m.model.Update(ui.OpenLocalFolderRequested{})
+			return m, cmd
+		}
 		return m, nil
 	}
 	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "esc" && cmd != nil {

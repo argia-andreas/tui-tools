@@ -13,7 +13,13 @@ import (
 
 // ConnectRequested asks the host to open its connection chooser without
 // discarding the workspace or its in-memory transfers.
-type ConnectRequested struct{ Local string }
+type ConnectRequested struct {
+	Local       string
+	Destination bool
+}
+
+// OpenLocalFolderRequested opens the right-pane folder prompt from the chooser.
+type OpenLocalFolderRequested struct{}
 
 // ConnectionOpened supplies endpoints chosen explicitly by the user.
 type ConnectionOpened struct {
@@ -41,11 +47,20 @@ func (m Model) destinationPane(w, h int) []string {
 		lines[connect-2] = m.paint(center("Choose a destination"), m.theme.Foreground)
 	}
 	if connect < len(lines) {
-		button := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection)).Render(connectButton)
-		lines[connect] = center(button)
+		lines[connect] = m.paint(center(connectButton), m.theme.Muted)
 	}
 	if folder < len(lines) {
 		lines[folder] = m.paint(center(folderButton), m.theme.Muted)
+	}
+	if m.focus == 2 {
+		row, label := connect, connectButton
+		if m.destinationChoice == 1 {
+			row, label = folder, folderButton
+		}
+		if row < len(lines) {
+			button := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection)).Render(label)
+			lines[row] = center(button)
+		}
 	}
 	return m.block("REMOTE Not connected", w, h, lines, m.focus == 2, m.theme.Remote)
 }
