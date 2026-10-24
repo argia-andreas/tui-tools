@@ -28,7 +28,7 @@ func main() {
 	rcloneConfig := flag.String("rclone-config", "", "Existing rclone config file (defaults to rclone environment/config)")
 	preset := flag.String("theme", "", "Theme preset (default midnight)")
 	config := flag.String("config", "", "Optional JSON theme configuration")
-	icons := flag.Bool("icons", false, "Enable Nerd Font filetype icons")
+	icons := flag.Bool("icons", true, "Show Nerd Font filetype icons (disable with --icons=false)")
 	flag.Parse()
 	t, err := theme.Load(*config, *preset)
 	if err != nil {
@@ -38,7 +38,7 @@ func main() {
 	if *config != "" {
 		data, err := os.ReadFile(*config)
 		var preferences struct {
-			Icons bool `json:"icons"`
+			Icons *bool `json:"icons"`
 		}
 		if err == nil {
 			err = json.Unmarshal(data, &preferences)
@@ -53,8 +53,8 @@ func main() {
 				explicitIcons = true
 			}
 		})
-		if !explicitIcons {
-			*icons = preferences.Icons
+		if !explicitIcons && preferences.Icons != nil {
+			*icons = *preferences.Icons
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())

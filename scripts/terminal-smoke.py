@@ -8,13 +8,14 @@ import select
 import signal
 import struct
 import subprocess
+import tempfile
 import termios
 import time
 
 import pyte
 
 
-def main():
+def main(args=(), icons=True):
     started = time.monotonic()
     master, slave = pty.openpty()
     screen = pyte.Screen(160, 40)
@@ -28,7 +29,7 @@ def main():
     resize(160, 40)
     env = dict(os.environ, TERM="xterm-256color", COLORTERM="truecolor", CLICOLOR="1")
     env.pop("NO_COLOR", None)
-    proc = subprocess.Popen(["./bin/lazyftp", "--demo"], stdin=slave, stdout=slave,
+    proc = subprocess.Popen(["./bin/lazyftp", "--demo", *args], stdin=slave, stdout=slave,
                             stderr=slave, env=env, start_new_session=True)
     os.close(slave)
 
@@ -73,6 +74,9 @@ def main():
     try:
         wait("README.md")
         wait("no network or disk writes")
+        folder_icon, markdown_icon = ("\uf07b", "\ue73e") if icons else ("▸", "≡")
+        wait(f"{folder_icon} src/")
+        wait(f"{markdown_icon} README.md")
         # Styled labels must not reset their trailing fill to the terminal's
         # default background (visible as dark rectangles in real terminals).
         expect_background(0, 40, "0b1423")
@@ -110,7 +114,7 @@ def main():
         send("\x1b", "README.md", "KEYBOARD SHORTCUTS")
         # Parent navigation above restores the initial cursor and selection for
         # the original keyboard-only scenario below.
-        send("j", "› ▸ src/")
+        send("j", f"› {folder_icon} src/")
         send("\r", "browser.go")
         send(" ", "1 selected")
         send("h", "README.md")
@@ -152,7 +156,7 @@ def main():
                     break
         proc.wait(timeout=0.2)
         assert proc.returncode == 0, proc.returncode
-        print(f"PTY smoke PASS: mouse navigation/selection/shortcuts, F1, "
+        print(f"PTY smoke PASS {args!r} (icons={icons}): mouse navigation/selection/shortcuts, F1, "
               f"keyboard navigation, selection, palette, themes, disabled actions, "
               f"sidebars, Blob fixture, resize, clean exit ({time.monotonic()-started:.2f}s)")
     finally:
@@ -164,3 +168,17 @@ def main():
 
 if __name__ == "__main__":
     main()
+    main(("--icons=false",), icons=False)
+    with tempfile.TemporaryDirectory() as directory:
+        config = os.path.join(directory, "config.json")
+        for preferences, overrides, icons in (
+            ('{"theme":"midnight"}', (), True),
+            ('{"icons":null}', (), True),
+            ('{"icons":true}', (), True),
+            ('{"icons":false}', (), False),
+            ('{"icons":false}', ("--icons",), True),
+            ('{"icons":true}', ("--icons=false",), False),
+        ):
+            with open(config, "w") as file:
+                file.write(preferences)
+            main(("--config", config, *overrides), icons=icons)

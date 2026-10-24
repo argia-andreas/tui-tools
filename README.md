@@ -61,11 +61,13 @@ Configuration uses semantic color roles, not executable editor theme files:
 
 `--theme` overrides the configured preset; explicit color overrides still apply.
 When neither specifies a preset, Midnight is used, including with custom colors.
-`--icons` enables Nerd Font glyphs if your terminal font supports them; the
-default uses portable filetype symbols with semantic colors, without requiring
-a special font. Select a Nerd Font (for example JetBrainsMono Nerd Font Mono)
-in your terminal settings, then use `--icons` or **Toggle filetype icons** in
-the command palette. Icons cover common code, document, data, image and archive
+Nerd Font filetype icons are enabled by default, including when `icons` is omitted
+from the configuration. Select a Nerd Font (for example JetBrainsMono Nerd Font
+Mono) in your terminal settings. Use `--icons=false`, `"icons": false` in the
+configuration (as above), or **Toggle filetype icons** in the command palette to
+switch to portable filetype symbols with semantic colors and no special font
+requirement. An explicit `--icons` or `--icons=false` overrides the configuration.
+Icons cover common code, document, data, image and archive
 extensions, including uppercase extensions; filenames share a fixed-width gutter.
 Unknown presets, roles, and invalid colors
 produce errors rather than silently falling back.
