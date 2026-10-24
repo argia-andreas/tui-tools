@@ -81,6 +81,10 @@ def main():
         send("S", "SAVE NAMED SEARCH")
         send("all\r", "Saved search explicitly")
         assert os.stat(searches).st_mode & 0o077 == 0
+        send("\x1b[Z", "● WORKSPACE")
+        send("\x1b[B", "› all")
+        send("\r", "22 " + count)
+        wait("● LOGS")
 
         # Keyword suggestions are NOT applied unless explicitly selected.
         send("f", "FILTER EDITOR")

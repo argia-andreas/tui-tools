@@ -311,3 +311,52 @@ locally but not tracked. The preview/browser are stopped after verification.
   inspector, contextual palette, field picker and return to inspector. Private
   ttyd preview/browser stopped after review; temporary helpers removed. No
   deployment, publishing, clipboard, follow or MCP behavior added.
+
+## Facet/sidebar/inspector visual refinement
+
+- Andreas selected **B: Facet navigator** after reviewing the
+  [two-direction Painter study](../../../.amp/in/artifacts/log-viewer/design-refinement/01-filter-inspector-options.png).
+  This refines the approved workbench, not backend semantics or an additional
+  provider. Filter navigation keeps App/Time/Levels/Message/Trace/Fields summaries
+  on the left and only the current editor on the right. Time retains two inputs;
+  existing Tab/Shift+Tab, Ctrl+S apply, Esc cancel and app-selection keys remain.
+  Contextual help replaces the full-screen instruction wall. User-entered labels
+  and values are cleaned before trusted styling, never after it.
+- Saved searches replace planned-provider sidebar filler. Names are filtered to
+  the current source, j/k/arrows navigate, Enter restores the actual query. An
+  explicit save updates cached metadata; workspace entry / R reload the private
+  file. Rendering has no filesystem side effects. Narrow terminals retain R and
+  repair hidden-sidebar focus. Tests use a different-source save as a negative
+  control, prove restored app predicates, immediate saved-name updates and resize.
+- Inspector keys/headings are cyan, values bright, ERROR red, numbers amber,
+  booleans mint and null/punctuation muted. Go stack function names, absolute
+  paths and line numbers receive conservative highlighting in place. Unknown
+  formats remain text, exact values/indentation/types remain intact, and the
+  existing policy-safe boundary is unchanged. Selected log rows retain selection
+  contrast; unselected ERROR retains semantic red.
+- Integrated the parallel compact-palette checkpoint before final checks,
+  preserving both palette-only and filter-only rendering branches and all palette
+  behavior. No other app code/docs changed. Full Slice 4 remains unchecked.
+- `make -C log-viewer check test-terminal test-terminal-lab`: PASS after integration
+  (format/vet/race, actual fixture and authenticated local TLS PTYs). Existing
+  app/trace/typed-predicate/find/save/history/palette paths pass. PTY now also
+  restores from the sidebar. Facet bounds cover all seven inputs at seven widths
+  × three heights. The initially incorrect use of ANSI left-truncation hid input
+  text; existing editor ownership/PTTY assertions caught it, and corrected input
+  display passes unchanged assertions. No backend adapter changes in this update.
+- Inspected final real 2× captures: [workbench with saves/colors](../../../.amp/in/artifacts/log-viewer/facets/01-workbench.png),
+  [App facet](../../../.amp/in/artifacts/log-viewer/facets/02-app-facet.png),
+  [Time facet](../../../.amp/in/artifacts/log-viewer/facets/03-time-facet.png),
+  [80×24 offset validation](../../../.amp/in/artifacts/log-viewer/facets/04-narrow-validation.png),
+  [80×24 stack/types](../../../.amp/in/artifacts/log-viewer/facets/05-narrow-stack.png).
+  Narrow validation wraps to preserve the full error. Inspected the 10.5-second
+  real keyboard/moving-pointer [clip](../../../.amp/in/artifacts/log-viewer/facets/06-keyboard.mp4)
+  at 5 fps: facet changes, cancel, saved sidebar restoration and inspector scroll.
+  Private ttyd/xterm fallback method is unchanged. Preview stopped after review;
+  private Elastic stays warm. No deployment or publishing.
+- Andreas then requested visible inspector field selection and y yank in a new
+  parallel thread: https://ampcode.com/threads/T-01a16ed6-8036-70ad-a14a-a93278d526bd.
+  Its baseline real PTY confirmed Enter focuses inspector and j/Up scroll at both
+  160×48 and 80×24; there is currently no field cursor and y remains unavailable.
+  That owner must pull this visual checkpoint before implementing. This checkpoint
+  does not claim field selection, clipboard receipt, follow, context or MCP.
