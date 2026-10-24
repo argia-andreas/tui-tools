@@ -26,6 +26,10 @@ func runWorkspace(m workspace, cmd tea.Cmd) workspace {
 		return m
 	}
 	msg := cmd()
+	if _, animated := msg.(connectionTick); animated {
+		// Animation is clock-driven; scenarios below drain finite async work only.
+		return m
+	}
 	if batch, ok := msg.(tea.BatchMsg); ok {
 		for _, child := range batch {
 			m = runWorkspace(m, child)
@@ -36,7 +40,7 @@ func runWorkspace(m workspace, cmd tea.Cmd) workspace {
 	return runWorkspace(m, cmd)
 }
 
-func TestDefaultStartupListsRealLocalFilesWithoutRcloneOrBookmarks(t *testing.T) {
+func TestDefaultStartupOpensConnectionsAndEscapeBrowsesLocallyWithoutRclone(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	theme, _ := theme.Get("")
 	local := t.TempDir()
@@ -50,27 +54,55 @@ func TestDefaultStartupListsRealLocalFilesWithoutRcloneOrBookmarks(t *testing.T)
 	if len(o.Locations) != 2 || o.Locations[0] != (storage.Location{Remote: "s3", Path: "/bucket/prefix"}) {
 		t.Fatalf("extra roots lost: %+v", o.Locations)
 	}
-	// A malformed bookmarks file must not be read by construction or Init.
+	// Broken bookmarks or a missing dependency must not prevent local browsing.
 	bookmarks := filepath.Join(t.TempDir(), "connections.json")
 	if err := os.WriteFile(bookmarks, []byte("not JSON"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	m := workspace{model: ui.New(o), ctx: context.Background(), theme: theme, bookmarkPath: bookmarks}
+	m := workspace{model: ui.New(o), ctx: context.Background(), theme: theme, bookmarkPath: bookmarks, connectOnStart: local}
 	m, _ = updateWorkspace(m, tea.WindowSizeMsg{Width: 120, Height: 30})
 	m = runWorkspace(m, m.Init())
 	view := ansi.Strip(m.View())
-	if !strings.Contains(view, "real-local.txt") || strings.Contains(view, "Open a connection") || strings.Contains(view, "Demo workspace") {
-		t.Fatalf("default did not retain local workspace:\n%s", view)
+	if !strings.Contains(view, "Open a connection") || !strings.Contains(view, "New connection") || strings.Contains(view, "real-local.txt") {
+		t.Fatalf("default did not show the connection chooser:\n%s", view)
 	}
-	// Failure is delayed until the explicit connection request, and is actionable.
-	m, cmd := updateWorkspace(m, ui.ConnectRequested{Local: local})
-	m = runWorkspace(m, cmd)
 	if !strings.Contains(m.View(), "Install rclone") {
 		t.Fatalf("missing dependency guidance: %s", m.View())
 	}
-	m, cmd = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyEsc})
+	m, cmd := updateWorkspace(m, tea.KeyMsg{Type: tea.KeyEsc})
 	if cmd != nil || !strings.Contains(m.View(), "real-local.txt") {
 		t.Fatal("cancel lost local workspace or quit")
+	}
+}
+
+func TestConnectionMotionCannotOutliveChooserOrChangeControls(t *testing.T) {
+	theme, _ := theme.Get("")
+	p := newPicker(nil, nil, t.TempDir(), "", "", theme)
+	p.width, p.height = 120, 40
+	m := workspace{model: workspaceProbe{events: "local files"}, picker: &p, request: 7}
+	before := ansi.Strip(m.View())
+	m, next := updateWorkspace(m, connectionTick(7))
+	after := ansi.Strip(m.View())
+	if before == after || next == nil {
+		t.Fatal("visible chooser did not animate")
+	}
+	// Motion is background-only: controls keep their positions and hit regions.
+	for _, label := range []string{"Open a connection", "New connection", "Browse local files"} {
+		if strings.Index(before, label) != strings.Index(after, label) {
+			t.Fatalf("animation moved %q", label)
+		}
+	}
+	m, cmd := updateWorkspace(m, connectionTick(6))
+	if cmd != nil || ansi.Strip(m.View()) != after {
+		t.Fatal("stale animation changed the current chooser")
+	}
+	m, cmd = wizardClick(t, m, "Browse local files")
+	if cmd != nil || m.View() != "local files" {
+		t.Fatal("local-files action did not dismiss the chooser")
+	}
+	m, cmd = updateWorkspace(m, connectionTick(7))
+	if cmd != nil || m.View() != "local files" {
+		t.Fatal("closed chooser kept animating")
 	}
 }
 
@@ -163,7 +195,8 @@ func TestWorkspaceConnectRestoresBookmarkAndPreservesExtraRoots(t *testing.T) {
 		if !strings.Contains(m.View(), "Saved") {
 			t.Fatal("bookmark not displayed")
 		}
-		m, cmd = updateWorkspace(m, tea.MouseMsg{X: 5, Y: 14, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+		m, _ = wizardClick(t, m, "Saved")
+		m, cmd = wizardClick(t, m, "[ Connect ]")
 		if cmd == nil {
 			t.Fatal("workspace connection command discarded")
 		}
@@ -189,11 +222,7 @@ func TestWorkspaceCanceledDiscoveryCannotReopenPickerAndCtrlCQuits(t *testing.T)
 	m := workspace{model: workspaceProbe{events: "workspace"}, ctx: context.Background(), theme: theme, bookmarkPath: filepath.Join(t.TempDir(), "bookmarks")}
 	m, discovery := updateWorkspace(m, ui.ConnectRequested{Local: t.TempDir()})
 	m, _ = updateWorkspace(m, tea.KeyMsg{Type: tea.KeyEsc})
-	result := discovery().(connectionsLoaded)
-	if !strings.Contains(result.picker.message, "could not discover") {
-		t.Fatalf("discovery did not respect cancellation: %s", result.picker.message)
-	}
-	m, _ = updateWorkspace(m, result)
+	m = runWorkspace(m, discovery)
 	if m.View() != "workspace" {
 		t.Fatal("stale discovery reopened picker")
 	}

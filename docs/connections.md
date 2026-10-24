@@ -1,18 +1,20 @@
 # Live startup and saved connections
 
-Start with `go run ./cmd/lazyftp`: real local files appear immediately, with an
-unconnected destination. No bookmarks or remote discovery are read at startup.
-Choose **Connect a remote** (or Tab to the destination and press Enter) to open
-the picker. It discovers **names only** using `rclone listremotes`, without
-dumping configuration or testing authentication. No remote is accessed until
-Connect, or an explicit read-only test in the new-connection wizard.
+Start with `go run ./cmd/lazyftp`: a centered **Open a connection** chooser shows
+bookmarks, existing remotes and **New connection**. It discovers **names only**
+using `rclone listremotes`, without dumping configuration or testing
+authentication. No remote is accessed until Connect, or an explicit read-only
+test in the new-connection wizard. Esc opens local browsing; from the file
+workspace, **Connect a remote** reopens the chooser.
 
 The picker uses the configured theme (Midnight by default): arrows select a
-connection, Tab/Shift+Tab move between controls, Enter selects/advances/activates,
-and Esc returns to the workspace. Click a connection, field, Connect or Save bookmark;
-the wheel scrolls connections. Type to append in fields, Backspace to remove a
-character, Ctrl+U to replace the whole field. Root and local folder are editable
-paths, not directory-browser dialogs. The local folder must already exist.
+connection, Tab/Shift+Tab move between controls, and Enter selects or activates.
+Selecting an existing connection opens its details: remote root, local folder,
+bookmark name, **Connect** and **Save bookmark**. Esc returns from details to the
+chooser, then to local files. Click rows and controls; the wheel scrolls
+connections. Type to append in fields, Backspace to remove a character, Ctrl+U
+to replace the whole field. Root and local folder are editable paths, not
+directory-browser dialogs. The local folder must already exist.
 The supported picker size is at least 60 columns × 21 rows.
 
 ## CLI compatibility and precedence
@@ -25,7 +27,7 @@ go run ./cmd/lazyftp --live --left ./downloads --right work-ftp:/incoming
 go run ./cmd/lazyftp --live --right work-ftp:/incoming \
   --remote work-blob:/container/assets --remote work-s3:/bucket/prefix
 
-# Files-first workspace with a chosen config; open the picker in-app
+# Connection chooser with a chosen config and separate bookmarks
 go run ./cmd/lazyftp --live --rclone-config /private/rclone.conf \
   --connections /private/bookmarks.json
 
@@ -37,8 +39,8 @@ go run ./cmd/lazyftp --demo
 - Repeatable `--remote remote:path` adds navigation roots after the initial right
   location. `--blob remote:path` remains a compatible additional root (before
   `--remote` roots); despite its name it is not restricted to Azure.
-- Without `--right`, the destination stays disconnected until requested. In the
-  picker, saved bookmarks appear first, then sorted discovered remote names.
+- Without `--right`, startup opens the chooser and stays disconnected until
+  Connect. Saved bookmarks appear first, then sorted discovered remote names.
   A bookmark restores its root and local folder. An explicitly supplied
   `--left` overrides that local default; it can still be edited in the picker.
 - `--rclone-config` is passed to discovery and live storage. Otherwise rclone's

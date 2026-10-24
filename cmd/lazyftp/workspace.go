@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -29,6 +30,7 @@ type workspace struct {
 	picker               *picker
 	size                 tea.WindowSizeMsg
 	request              int
+	connectOnStart       string
 	discoveryCancel      context.CancelFunc
 }
 
@@ -37,7 +39,20 @@ type connectionsLoaded struct {
 	picker  picker
 }
 
-func (m workspace) Init() tea.Cmd { return m.model.Init() }
+type connectionTick int
+
+func tickConnection(request int) tea.Cmd {
+	return func() tea.Msg { return connectionTick(request) }
+}
+
+func (m workspace) Init() tea.Cmd {
+	if m.connectOnStart != "" {
+		return tea.Batch(m.model.Init(), func() tea.Msg {
+			return ui.ConnectRequested{Local: m.connectOnStart}
+		})
+	}
+	return m.model.Init()
+}
 
 func (m workspace) String() string   { return m.View() }
 func (m workspace) GoString() string { return m.View() }
@@ -67,6 +82,13 @@ func (m *workspace) closePicker() {
 
 func (m workspace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case connectionTick:
+		if m.picker == nil || m.wizard != nil || int(msg) != m.request {
+			return m, nil
+		}
+		m.picker.frame++
+		request := m.request
+		return m, tea.Tick(250*time.Millisecond, func(time.Time) tea.Msg { return connectionTick(request) })
 	case wizardTested:
 		if m.wizard == nil || msg.owner != m.wizard || msg.request != m.wizard.request {
 			if msg.candidate != nil {
@@ -123,7 +145,7 @@ func (m workspace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		ctx, cancel := context.WithCancel(m.ctx)
 		m.discoveryCancel = cancel
 		request, config := m.request, m.config
-		return m, func() tea.Msg {
+		discover := func() tea.Msg {
 			var messages []string
 			if p.bookmarkPath == "" {
 				var err error
@@ -150,10 +172,12 @@ func (m workspace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			loaded.message, loaded.connectError = strings.Join(messages, "; "), p.connectError
 			return connectionsLoaded{request: request, picker: loaded}
 		}
+		return m, tea.Batch(discover, tickConnection(request))
 	case connectionsLoaded:
 		if m.picker != nil && msg.request == m.request {
 			p := msg.picker
 			p.width, p.height = m.picker.width, m.picker.height
+			p.frame = m.picker.frame
 			m.picker = &p
 			if m.discoveryCancel != nil {
 				m.discoveryCancel()
@@ -179,6 +203,7 @@ func (m workspace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.wizard.back()
 				if m.wizard.dismissed {
 					m.wizard = nil
+					return m, tickConnection(m.request)
 				}
 				return m, nil
 			}
@@ -188,10 +213,6 @@ func (m workspace) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if msg.String() == "ctrl+c" {
 				m.closePicker()
 				return m, tea.Quit
-			}
-			if msg.String() == "esc" {
-				m.closePicker()
-				return m, nil
 			}
 			return m.updatePicker(msg)
 		}
@@ -212,6 +233,7 @@ func (m workspace) updateWizard(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmd := m.wizard.input(msg)
 	if m.wizard.dismissed {
 		m.wizard = nil
+		return m, tea.Batch(cmd, tickConnection(m.request))
 	}
 	return m, cmd
 }
@@ -220,6 +242,16 @@ func (m workspace) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	next, cmd := m.picker.Update(msg)
 	p := next.(picker)
 	m.picker = &p
+	if p.localFiles {
+		m.closePicker()
+		return m, nil
+	}
+	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "esc" && cmd != nil {
+		// The chooser's standalone Quit means return to files, not exit the app.
+		// Details and help handle Back themselves without returning a command.
+		m.closePicker()
+		return m, nil
+	}
 	if p.newConnection {
 		if m.discoveryCancel != nil {
 			m.discoveryCancel()
@@ -259,16 +291,15 @@ func (m workspace) wizardOverlay() string {
 	rows := strings.Split(panel, "\n")
 	x := max(0, (w.width-lipgloss.Width(panel))/2)
 	y := max(0, (w.height-len(rows))/2)
-	background := strings.Split(ansi.Strip(m.model.View()), "\n")
 	dim := lipgloss.NewStyle().Foreground(lipgloss.Color(m.theme.Muted)).Background(lipgloss.Color(m.theme.Background))
 	lines := make([]string, w.height)
 	for i := range lines {
-		base := ""
-		if i < len(background) {
-			base = background[i]
+		base := strings.Repeat(" ", w.width)
+		if i == 0 {
+			base = ansi.Truncate("  LAZYFTP"+base, w.width, "")
+		} else if i == 1 || i == w.height-2 {
+			base = strings.Repeat("─", w.width)
 		}
-		base = ansi.Truncate(base, w.width, "")
-		base += strings.Repeat(" ", max(0, w.width-ansi.StringWidth(base)))
 		if i >= y && i-y < len(rows) {
 			row := rows[i-y]
 			lines[i] = dim.Render(ansi.Cut(base, 0, x)) + row + dim.Render(ansi.Cut(base, x+lipgloss.Width(row), w.width))

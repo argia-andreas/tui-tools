@@ -76,6 +76,7 @@ type connectionWizard struct {
 	remember, busy, verified         bool
 	dismissed                        bool
 	message                          string
+	messageScroll                    int
 	request                          int
 	cancel                           context.CancelFunc
 	candidate                        *connections.Candidate
@@ -198,6 +199,7 @@ func (w *connectionWizard) invalidate() {
 	}
 	w.request++
 	w.verified, w.busy = false, false
+	w.messageScroll = 0
 	w.sessions.release(w.candidate)
 	w.candidate = nil
 }
@@ -239,6 +241,7 @@ func (w *connectionWizard) test() tea.Cmd {
 }
 
 func (w *connectionWizard) connect() tea.Cmd {
+	w.messageScroll = 0
 	if !w.verified || w.candidate == nil || w.busy {
 		w.message = "Test these details successfully before connecting."
 		return nil
@@ -380,6 +383,14 @@ func (w *connectionWizard) input(msg tea.Msg) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	if k.String() == "pgdown" || k.String() == "pgup" {
+		if k.String() == "pgdown" {
+			w.messageScroll++
+		} else {
+			w.messageScroll = max(0, w.messageScroll-1)
+		}
+		return nil
+	}
 	switch k.String() {
 	case "tab", "down":
 		w.focus = (w.focus + 1) % w.count()
@@ -444,14 +455,34 @@ type wizardRow struct {
 }
 
 func (w *connectionWizard) rows() []wizardRow {
-	rows := []wizardRow{{"New connection", -1}, {"1 Type  ›  2 Details  ›  3 Test & connect", -1}, {"", -1}}
-	add := func(s string, focus int) { rows = append(rows, wizardRow{s, focus}) }
-	if w.step == 0 {
-		for i, s := range []string{"FTP / FTPS", "Azure Blob Storage", "S3 — AWS or compatible"} {
-			add(s, i)
+	_, _, width := w.geometry(0)
+	inner := max(54, width-6)
+	compact := w.height < 28
+	rows := []wizardRow{{"", -1}, {"New connection", -1}, {"", -1}}
+	progress := []string{"○ Type", "○ Details", "○ Test"}
+	for i := range progress {
+		if i < w.step {
+			progress[i] = strings.Replace(progress[i], "○", "✓", 1)
 		}
-		add("", -1)
-		add("Choose a connection type. No settings are saved yet.", -1)
+		if i == w.step {
+			progress[i] = strings.Replace(progress[i], "○", "●", 1)
+		}
+	}
+	rows = append(rows, wizardRow{strings.Join(progress, "  →  "), -1}, wizardRow{"", -1})
+	add := func(s string, focus int) { rows = append(rows, wizardRow{s, focus}) }
+	note := func(s string) {
+		for _, line := range strings.Split(ansi.Hardwrap(s, inner, true), "\n") {
+			add(line, -1)
+		}
+	}
+	if w.step == 0 {
+		descriptions := []string{"Connect to an FTP or FTPS server", "Microsoft Azure object storage", "Amazon S3 or compatible storage"}
+		for i, s := range []string{"⇄  FTP / FTPS", "☁  Azure Blob Storage", "▱  S3 — AWS or compatible"} {
+			add(s+"  ›", i)
+			add("   "+descriptions[i], i)
+			add("", -1)
+		}
+		note("No settings are saved yet.")
 		add("[ Back ]", 3)
 	} else if w.step == 1 {
 		for i, f := range w.fields() {
@@ -462,64 +493,95 @@ func (w *connectionWizard) rows() []wizardRow {
 			if len(f.options) > 0 {
 				v = "‹ " + v + " ›"
 			}
-			add(fmt.Sprintf("%-20s %s", f.label, v), i)
+			valueWidth := inner - 25
+			if v == "" {
+				v = "·"
+			}
+			v = ansi.Truncate(v, valueWidth, "…")
+			add(fmt.Sprintf("%-20s │ %s%s │", f.label, v, strings.Repeat(" ", valueWidth-ansi.StringWidth(v))), i)
+			if !compact {
+				add("", -1)
+			}
 		}
 		add("", -1)
 		add("[ Test connection — read-only ]", len(w.fields()))
 		add("[ Back ]", len(w.fields())+1)
+		note("Read-only test · Nothing saved yet.")
 		if w.kind == 0 && w.values["security"] == "Insecure FTP" {
-			add("Warning: FTP sends credentials and files unencrypted.", -1)
+			note("Warning: FTP sends credentials and files unencrypted.")
 		}
 		if w.kind == 1 && w.values["azure_auth"] == "Azure CLI session" {
-			add("Uses an existing az login session; no browser sign-in here.", -1)
+			note("Uses an existing az login session; no browser sign-in here.")
 		}
 	} else {
+		switch {
+		case w.busy:
+			add("◌ Read-only test / connection in progress", -1)
+		case w.verified:
+			add("✓ Ready to connect · Read access verified", -1)
+		default:
+			add("! Could not verify connection", -1)
+		}
+		add("", -1)
 		add("Connection: "+w.values["name"], -1)
 		add("Root: "+w.root(), -1)
-		add("Session temp config is removed on clean exit.", -1)
+		note("Session temp config is removed on clean exit.")
 		add("", -1)
-		add("[ Edit details ]", 0)
-		add("[ Test again — read-only ]", 1)
 		check := "[ ]"
 		if w.remember {
 			check = "[x]"
 		}
 		add(check+" Remember connection and credentials", 2)
-		add("Private rclone config file, not a keychain; not encrypted.", -1)
+		note("Private rclone config file, not a keychain; not encrypted.")
+		add("", -1)
 		label := "[ Connect for this session ]"
 		if w.remember {
 			label = "[ Save and connect ]"
 		}
 		add(label, 3)
+		add("[ Edit details ]", 0)
+		add("[ Test again — read-only ]", 1)
 		if w.busy {
 			add("[ Cancel / back ]", 100)
 		}
 	}
 	add("", -1)
-	if w.message != "" { // Wrap status so actionable help remains readable at 80 columns.
-		width := max(30, min(74, w.width-6))
-		words := strings.Fields(w.message)
-		line := ""
-		for _, word := range words {
-			if ansi.StringWidth(line+" "+word) > width {
-				add(line, -1)
-				line = word
-			} else if line == "" {
-				line = word
-			} else {
-				line += " " + word
+	message := strings.Fields(w.message)
+	var status []string
+	if len(message) > 0 {
+		status = strings.Split(ansi.Hardwrap(strings.Join(message, " "), inner, true), "\n")
+	}
+	// Collapse decorative space before sacrificing any controls or status help.
+	budget := w.height - 2
+	for len(rows)+len(status)+1 > budget {
+		removed := false
+		for i := len(rows) - 1; i >= 0; i-- {
+			if rows[i].text == "" {
+				rows = append(rows[:i], rows[i+1:]...)
+				removed = true
+				break
 			}
 		}
-		if line != "" {
-			add(line, -1)
+		if !removed {
+			break
 		}
 	}
-	add("Tab / ↑↓ focus · Enter select · ←→ options · Esc back", -1)
+	available := max(1, budget-len(rows)-1)
+	help := "Tab / ↑↓ focus · Enter select · ←→ options · Esc back"
+	if len(status) > available {
+		start := min(w.messageScroll, len(status)-available)
+		status = status[start : start+available]
+		help = "PgUp/PgDn help · Tab focus · Enter select · Esc back"
+	}
+	for _, line := range status {
+		add(line, -1)
+	}
+	add(help, -1)
 	return rows
 }
 
 func (w *connectionWizard) geometry(rows int) (x, y, width int) {
-	width = min(80, w.width)
+	width = min(76, w.width)
 	return max(0, (w.width-width)/2), max(0, (w.height-rows-2)/2), width
 }
 
@@ -531,8 +593,20 @@ func (w *connectionWizard) View() string {
 	_, _, width := w.geometry(len(rows))
 	var lines []string
 	for _, r := range rows {
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color(w.theme.Foreground)).Background(lipgloss.Color(w.theme.Background)).Width(width - 4)
-		if r.focus == w.focus {
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(w.theme.Foreground)).Background(lipgloss.Color(w.theme.Background)).Width(width - 6)
+		if r.focus < 0 {
+			style = style.Foreground(lipgloss.Color(w.theme.Muted))
+		}
+		if r.text == "New connection" || strings.Contains(r.text, "→") || strings.HasPrefix(r.text, "! ") {
+			style = style.Foreground(lipgloss.Color(w.theme.Focus)).Bold(true)
+		}
+		if strings.HasPrefix(r.text, "✓ ") {
+			style = style.Foreground(lipgloss.Color(w.theme.Success)).Bold(true)
+		}
+		if w.step == 2 && r.focus == 3 && !w.verified {
+			style = style.Foreground(lipgloss.Color(w.theme.Muted))
+		}
+		if r.focus == w.focus && (!w.busy || r.focus == 100) {
 			style = style.Foreground(lipgloss.Color(w.theme.SelectionText)).Background(lipgloss.Color(w.theme.Selection))
 		}
 		text := strings.Map(func(r rune) rune {
@@ -541,7 +615,7 @@ func (w *connectionWizard) View() string {
 			}
 			return r
 		}, r.text)
-		lines = append(lines, style.Render(ansi.Truncate(text, width-4, "…")))
+		lines = append(lines, style.Render(ansi.Truncate(text, width-6, "…")))
 	}
-	return lipgloss.NewStyle().Border(lipgloss.DoubleBorder()).BorderForeground(lipgloss.Color(w.theme.Focus)).Background(lipgloss.Color(w.theme.Background)).Padding(0, 1).Render(strings.Join(lines, "\n"))
+	return lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color(w.theme.Focus)).Background(lipgloss.Color(w.theme.Background)).Padding(0, 2).Render(strings.Join(lines, "\n"))
 }

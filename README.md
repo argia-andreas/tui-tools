@@ -2,8 +2,9 @@
 
 A terminal file-manager proof of concept with mouse/keyboard browsing and
 confirmed **file/folder upload/download for FTP, Azure Blob and S3 via rclone**.
-Start with real local files and choose a destination when ready. Copies always
-require confirmation; `--demo` explicitly opens the read-only fixture workspace.
+Start with a focused connection chooser: open a bookmark or configure a remote
+in-app. Esc opens local browsing. Copies always require confirmation; `--demo`
+explicitly opens the read-only fixture workspace.
 
 ## Setup and run
 
@@ -32,7 +33,7 @@ start storage servers, or require a Docker daemon. Start the disposable lab
 when needed with `make lab-up lab-seed`; no resume hook is required for these
 supervised services. The log viewer is design-only and has no runtime to install yet.
 
-`make build` writes `bin/lazyftp`; `make run` opens the files-first workspace.
+`make build` writes `bin/lazyftp`; `make run` opens the connection chooser.
 `make demo` explicitly launches the read-only fixtures. You can also launch the
 binary directly:
 
@@ -115,8 +116,9 @@ For another existing rclone profile:
   --remote my-blob:/container/prefix --remote my-s3:/bucket/prefix
 ```
 
-Or launch `./bin/lazyftp`, then choose **Connect a remote**. Use an existing
-connection or **New connection** to configure FTP/FTPS, Azure Blob or S3 in-app.
+Or launch `./bin/lazyftp` to choose an existing connection or **New connection**
+to configure FTP/FTPS, Azure Blob or S3 in-app. Selecting an existing connection
+opens its root/local-folder settings with separate Connect and Save bookmark actions.
 The wizard tests a read-only listing before connecting; new credentials are
 session-only unless you explicitly choose to remember them. `--live` remains a
 compatible alias for real mode. `--connections` selects a separate non-secret

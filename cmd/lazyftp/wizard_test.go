@@ -147,7 +147,7 @@ func TestWizardExplicitRememberSavesOnlyNewConnectionAcrossSessions(t *testing.T
 	// persistent target. Remember must not accidentally save session-only secrets.
 	m, cmd = updateWorkspace(m, ui.ConnectRequested{Local: t.TempDir()})
 	m = runWorkspace(m, cmd)
-	m, _ = updateWorkspace(m, tea.MouseMsg{X: 5, Y: 16, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m, _ = wizardClick(t, m, "New connection")
 	m = fillWizardFTP(m, "remembered")
 	m, cmd = wizardKey(m, "enter")
 	m = runWorkspace(m, cmd)
@@ -381,7 +381,7 @@ func TestWizardAzureCLIHelpAndInsecureFTPIsOptIn(t *testing.T) {
 	m, _ = wizardKey(m, "shift+tab")
 	m, _ = wizardKey(m, "shift+tab") // security
 	m, _ = wizardKey(m, "right")
-	if !strings.Contains(m.View(), "Implicit FTPS") || !strings.Contains(m.View(), "Port                 2121") {
+	if !strings.Contains(m.View(), "Implicit FTPS") || !strings.Contains(m.View(), "Port                 │ 2121") {
 		t.Fatal("implicit FTPS did not preserve an explicitly entered port")
 	}
 	m, _ = wizardKey(m, "right")
@@ -402,11 +402,92 @@ func TestWizardMouseBackReturnsToPickerWithoutClosingWorkspace(t *testing.T) {
 		t.Fatal("details Back did not restore type choice")
 	}
 	m, cmd = wizardClick(t, m, "[ Back ]")
-	if cmd != nil || !strings.Contains(m.View(), "Open a connection") {
+	m = runWorkspace(m, cmd)
+	if !strings.Contains(m.View(), "Open a connection") {
 		t.Fatal("type Back did not restore picker")
 	}
 	m, _ = wizardKey(m, "esc")
 	if !strings.Contains(m.View(), "workspace;") {
 		t.Fatal("mouse Back lost retained workspace")
+	}
+}
+
+func TestWizardResponsiveRowsAndPointerGeometry(t *testing.T) {
+	theme, _ := theme.Get("")
+	for _, size := range []tea.WindowSizeMsg{{Width: 60, Height: 22}, {Width: 80, Height: 24}, {Width: 100, Height: 36}} {
+		for kind := 0; kind < 3; kind++ {
+			for step := 0; step < 3; step++ {
+				w := newWizard(context.Background(), theme, "", "", "", &connectionSessions{}, 0)
+				w.width, w.height, w.kind, w.step = size.Width, size.Height, kind, step
+				w.values["s3_auth"], w.values["s3_provider"] = "Access keys", "S3-compatible"
+				w.values["azure_auth"] = "Azure CLI session"
+				w.values["name"], w.values["root"] = strings.Repeat("界", 100), strings.Repeat("/long-root", 30)
+				w.message = strings.Repeat("Check credentials and network. ", 30) + "END-OF-HELP"
+				view := ansi.Strip(w.View())
+				if len(strings.Split(view, "\n")) > size.Height {
+					t.Fatalf("vertical overflow at %+v kind=%d step=%d:\n%s", size, kind, step, view)
+				}
+				for _, row := range strings.Split(view, "\n") {
+					if ansi.StringWidth(row) != min(76, size.Width) {
+						t.Fatalf("incorrect card width at %+v: %q", size, row)
+					}
+				}
+				seen := map[int]bool{}
+				rows := w.rows()
+				x, y, _ := w.geometry(len(rows))
+				for index, row := range rows {
+					if row.focus >= 0 {
+						seen[row.focus] = true
+						continue
+					}
+					if row.text == "" {
+						focus := w.focus
+						w.input(tea.MouseMsg{X: x + 3, Y: y + index + 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+						if w.focus != focus || w.step != step {
+							t.Fatal("decorative padding activated an action")
+						}
+					}
+				}
+				for focus := 0; focus < w.count(); focus++ {
+					if !seen[focus] {
+						t.Fatalf("inaccessible control %d at %+v kind=%d step=%d", focus, size, kind, step)
+					}
+				}
+				for i := 0; i < 100; i++ {
+					w.input(tea.KeyMsg{Type: tea.KeyPgDown})
+				}
+				if !strings.Contains(w.View(), "END-OF-HELP") {
+					t.Fatal("long help cannot be read to the end")
+				}
+				for i := 0; i < 100; i++ {
+					w.input(tea.KeyMsg{Type: tea.KeyPgUp})
+				}
+				if !strings.Contains(w.View(), "Check credentials and network.") {
+					t.Fatal("long help cannot be read from the beginning")
+				}
+				// Hit the visible row through the same centered geometry as View.
+				label, wantStep := "[ Back ]", max(0, step-1)
+				if step == 2 {
+					label = "[ Edit details ]"
+				}
+				for index, row := range w.rows() {
+					if row.text == label {
+						w.input(tea.MouseMsg{X: x + 3, Y: y + index + 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+						if w.step != wantStep || (step == 0 && !w.dismissed) {
+							t.Fatalf("visible %s hit wrong action", label)
+						}
+						break
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestWizardTypeDescriptionMouseSelectsItsCard(t *testing.T) {
+	m, _, _ := setupWizard(t)
+	m, cmd := wizardClick(t, m, "Microsoft Azure object storage")
+	if cmd != nil || m.wizard.step != 1 || m.wizard.kind != 1 || !strings.Contains(m.View(), "Storage account") {
+		t.Fatal("description click did not select Azure")
 	}
 }

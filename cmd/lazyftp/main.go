@@ -78,7 +78,11 @@ func main() {
 	sessions := &connectionSessions{}
 	defer func() { cancel(); sessions.Close() }()
 	if !*demo {
-		m = workspace{model: m, ctx: ctx, theme: t, bookmarkPath: *bookmarks, config: *rcloneConfig, persistentConfig: *rcloneConfig, sessions: sessions, leftOverride: leftOverride, extra: options.Locations}
+		w := workspace{model: m, ctx: ctx, theme: t, bookmarkPath: *bookmarks, config: *rcloneConfig, persistentConfig: *rcloneConfig, sessions: sessions, leftOverride: leftOverride, extra: options.Locations}
+		if options.Disconnected {
+			w.connectOnStart = options.Left.Path
+		}
+		m = w
 	}
 	if _, err = tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		cancel()

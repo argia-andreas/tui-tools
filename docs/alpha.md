@@ -44,8 +44,8 @@ cd lazyftp_0.1.0-alpha.1_linux_amd64
 ```
 
 Choose the archive matching your operating system and architecture. Run in an
-interactive terminal. Default startup browses real local files with an
-unconnected destination; `--demo` explicitly selects read-only fixtures.
+interactive terminal. Default startup opens the connection chooser; Esc opens
+local browsing, and `--demo` explicitly selects read-only fixtures.
 macOS archives are unsigned/unnotarized; follow your organization's security
 policy rather than bypassing trust checks. No installer or privileged copy is
 required.
