@@ -33,6 +33,37 @@ func key(m picker, s string) picker {
 	return next.(picker)
 }
 
+func TestPickerVimNavigation(t *testing.T) {
+	theme, _ := theme.Get("")
+	for _, keys := range [][]string{{"j"}, {"j", "k", "j"}} {
+		m := newPicker(nil, nil, t.TempDir(), "", "", theme)
+		for _, k := range keys {
+			m = key(m, k)
+		}
+		local := key(m, "enter")
+		if !local.localFiles || local.newConnection {
+			t.Fatalf("%v did not choose local files", keys)
+		}
+		remote := key(key(m, "k"), "enter")
+		if !remote.newConnection || remote.localFiles {
+			t.Fatalf("%v then k did not choose new connection", keys)
+		}
+	}
+	m := newPicker([]string{"ftp", "blob", "s3"}, nil, t.TempDir(), "", "", theme)
+	for _, k := range []string{"j", "j", "k", "enter"} {
+		m = key(m, k)
+	}
+	if !strings.Contains(m.View(), "blob:") {
+		t.Fatal("j/k did not select the expected remote")
+	}
+	for _, k := range []string{"j", "k", "tab", "j", "k", "tab", "j", "k"} {
+		m = key(m, k)
+	}
+	if m.root != "/jk" || !strings.HasSuffix(m.local, "jk") || m.name != "jk" {
+		t.Fatal("navigation stole j/k from details fields")
+	}
+}
+
 // Find the visible label rather than coupling interactions to card positioning.
 func pickerClick(t *testing.T, m picker, label string) picker {
 	t.Helper()

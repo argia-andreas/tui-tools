@@ -105,7 +105,16 @@ func (m picker) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.help && msg.String() != "ctrl+c" && msg.String() != "esc" {
 			return m, nil
 		}
-		switch msg.String() {
+		key := msg.String()
+		if !m.details {
+			switch key {
+			case "j":
+				key = "down"
+			case "k":
+				key = "up"
+			}
+		}
+		switch key {
 		case "ctrl+c":
 			return m, tea.Quit
 		case "esc":
