@@ -11,10 +11,11 @@ import (
 )
 
 type Options struct {
-	Service *logs.Service
-	Query   logs.Query
-	Theme   theme.Theme
-	Context context.Context
+	Service  *logs.Service
+	Query    logs.Query
+	Theme    theme.Theme
+	Context  context.Context
+	LocalLab bool
 }
 
 type Model struct {
@@ -34,7 +35,11 @@ type loadedMsg struct {
 }
 
 func New(options Options) Model {
-	return Model{options: options, focus: 1, status: "Offline fictional data · no network · no MCP server"}
+	status := "Offline fictional data · no network · no MCP server"
+	if options.LocalLab {
+		status = "Local Elasticsearch · TLS · read-only key · seeded fictional data · no follow"
+	}
+	return Model{options: options, focus: 1, status: status}
 }
 
 func (m Model) Init() tea.Cmd {
@@ -136,7 +141,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "ctrl+p", "y", "Y", " ", "/", "f", "?":
 			feature := map[string]string{"ctrl+p": "Command palette", "y": "Field yank", "Y": "Field yank", " ": "Live follow", "/": "Local find", "f": "Filters", "?": "Command help"}[msg.String()]
-			m.status = fmt.Sprintf("%s is not available in this fixture slice · navigation only", feature)
+			m.status = fmt.Sprintf("%s is not available in this slice · navigation only", feature)
 		}
 	}
 	return m, nil

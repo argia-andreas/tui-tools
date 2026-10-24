@@ -1,0 +1,6 @@
+{
+  "version": "9.5.5",
+  "platform": "linux-x86_64",
+  "url": "https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-9.5.5-linux-x86_64.tar.gz",
+  "sha512": "36bf5d6897faeda3743841dfaece365330bb41880f907e4c45958964dd2803617d503cba66e99686124899cff944c983b01a2e08eaebd8f54c26db02bf709ced"
+}

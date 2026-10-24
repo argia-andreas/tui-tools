@@ -48,7 +48,11 @@ func (m Model) View() string {
 	if m.width < 60 || m.height < 16 {
 		return base.Render(fit("Resize to at least 60 × 16 · q quit", m.width))
 	}
-	header := m.style(t.Focus).Bold(true).Render(fit(" LOGVIEW  /  FIXTURE · OFFLINE", m.width))
+	mode := " LOGVIEW  /  FIXTURE · OFFLINE"
+	if m.options.LocalLab {
+		mode = " LOGVIEW  /  ELASTICSEARCH · LOCAL LAB · TLS"
+	}
+	header := m.style(t.Focus).Bold(true).Render(fit(mode, m.width))
 	window := fmt.Sprintf(" %s  %s–%s UTC  /  ALL levels  /  2 apps", m.options.Query.Window.Start.Format("2006-01-02"), m.options.Query.Window.Start.Format("15:04"), m.options.Query.Window.End.Format("15:04"))
 	header += "\n" + m.style(t.Muted).Render(fit(window, m.width)) + "\n" + base.Render(strings.Repeat(" ", m.width))
 	height := m.height - 7
@@ -66,10 +70,16 @@ func (m Model) View() string {
 		var panels []string
 		if left > 0 {
 			source := "  fixture / local"
+			if m.options.LocalLab {
+				source = "  local-elastic"
+			}
 			if m.focus == 0 {
-				source = m.style(t.SelectionText).Background(lipgloss.Color(t.Selection)).Render(fit("› fixture / local", left-4))
+				source = m.style(t.SelectionText).Background(lipgloss.Color(t.Selection)).Render(fit("›"+source[1:], left-4))
 			}
 			lines := []string{"", " SOURCES", "", source, "", " Fictional records", " No network access", "", " PROVIDERS · PLANNED", "", "  Elasticsearch", "  Azure Monitor", "  Kubernetes", "  Loki", "", " MCP · NOT RUNNING", " No grants or tools", "", " Fixed sample window", " No live collection"}
+			if m.options.LocalLab {
+				lines = []string{"", " SOURCES", "", source, "", " Seeded fictional logs", " HTTPS / read-only key", "", " PROVIDERS · PLANNED", "", "  Azure Monitor", "  Kubernetes", "  Loki", "", " MCP · NOT RUNNING", " No grants or tools", "", " Fixed lab window", " No live collection"}
+			}
 			panels = append(panels, m.panel("WORKSPACE", lines, left, height, 0))
 		}
 		panels = append(panels, m.logList(m.width-left-right, height))
@@ -87,7 +97,7 @@ func (m Model) View() string {
 	}
 	status := m.status
 	if m.page.More {
-		status = "Partial sample: read budget reached · no further paging in this slice"
+		status = "Partial results: read budget reached · no further paging in this slice"
 	}
 	return header + "\n" + body + "\n" + base.Render(fit(" ", m.width)) + "\n" + m.style(t.Focus).Render(fit(footer, m.width)) + "\n" + m.style(t.Muted).Render(fit(" "+status, m.width))
 }
@@ -134,7 +144,11 @@ func (m Model) logList(width, height int) string {
 		lines = append(lines, " "+row)
 	}
 	if !m.loaded {
-		lines = append(lines, " Loading offline sample…")
+		label := " Loading offline sample…"
+		if m.options.LocalLab {
+			label = " Querying local Elasticsearch…"
+		}
+		lines = append(lines, label)
 	}
 	if m.loaded && len(m.page.Events) == 0 && !m.loadError {
 		lines = append(lines, " No events in this window")
@@ -148,6 +162,9 @@ func (m Model) logList(width, height int) string {
 	count := fmt.Sprintf(" %d fictional events · focus: logs", len(m.page.Events))
 	if m.focus != 1 {
 		count = fmt.Sprintf(" %d fictional events · anchor %d", len(m.page.Events), m.selected+1)
+	}
+	if m.options.LocalLab {
+		count = strings.Replace(count, "fictional events", "lab events", 1)
 	}
 	lines = append(lines, m.style(t.Muted).Render(count))
 	return m.panel("LOGS / chronological", lines, width, height, 1)

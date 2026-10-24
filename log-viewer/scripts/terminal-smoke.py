@@ -8,6 +8,7 @@ import select
 import signal
 import struct
 import subprocess
+import sys
 import termios
 import time
 
@@ -15,6 +16,7 @@ import pyte
 
 
 def main():
+    lab = "--lab" in sys.argv
     for args in ([], ["--live"], ["--fixture", "unexpected"]):
         result = subprocess.run(["./bin/logview", *args], capture_output=True, text=True)
         assert result.returncode == 2, (args, result.returncode)
@@ -31,7 +33,8 @@ def main():
     resize(160, 48)
     env = dict(os.environ, TERM="xterm-256color", COLORTERM="truecolor", CLICOLOR="1")
     env.pop("NO_COLOR", None)
-    proc = subprocess.Popen(["./bin/logview", "--fixture"], stdin=slave, stdout=slave,
+    args = ["--config", ".lab/source.json"] if lab else ["--fixture"]
+    proc = subprocess.Popen(["./bin/logview", *args], stdin=slave, stdout=slave,
                             stderr=slave, env=env, start_new_session=True)
     os.close(slave)
 
@@ -58,8 +61,12 @@ def main():
         return wait(want, absent)
 
     try:
-        text = wait("Offline fictional data")
-        assert "22 fictional events" in text and "FIXTURE · OFFLINE" in text
+        text = wait("Local Elasticsearch" if lab else "Offline fictional data")
+        if lab:
+            assert "22 lab events" in text and "ELASTICSEARCH · LOCAL LAB · TLS" in text
+            assert "FIXTURE · OFFLINE" not in text and "No network access" not in text
+        else:
+            assert "22 fictional events" in text and "FIXTURE · OFFLINE" in text
         assert "● LOGS" in text and "● INSPECTOR" not in text
         assert "Payment gateway timeout" in text and "[REDACTED]" in text
         assert "8c3e7a21b9f04450" in text
@@ -101,7 +108,7 @@ def main():
         assert proc.returncode == 0
         for forbidden in (b"fixture-secret-", b"\x1b]52;", b"https://invalid.example", "\u202e".encode(), b"Q0FOQVJZ"):
             assert forbidden not in transcript, repr(forbidden)
-        print("PASS: fixture PTY — explicit mode, 22 safe events, multiline inspector, focus, navigation, resize recovery, unavailable actions, clean exit")
+        print(f"PASS: {'local Elastic TLS' if lab else 'fixture'} PTY — explicit mode, 22 safe events, multiline inspector, focus, navigation, resize recovery, unavailable actions, clean exit")
     finally:
         if proc.poll() is None:
             proc.terminate()

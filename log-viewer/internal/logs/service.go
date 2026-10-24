@@ -8,7 +8,7 @@ import (
 )
 
 // Service is the only provider access path. This slice supports one explicitly
-// configured fixture source. MCP authorization is deliberately not implemented.
+// configured source. MCP authorization is deliberately not implemented.
 type Service struct {
 	provider Provider
 	policy   OutputPolicy
