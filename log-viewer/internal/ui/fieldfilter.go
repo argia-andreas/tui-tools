@@ -85,6 +85,16 @@ func (m Model) openFieldPicker() (tea.Model, tea.Cmd) {
 		return choices[i].path < choices[j].path
 	})
 	m.editor = &editor{kind: "field", returnFocus: m.focus, choices: choices}
+	fields := m.inspectorFields()
+	if len(fields) > 0 {
+		path := fields[min(m.fieldIndex, len(fields)-1)].path
+		for i, c := range choices {
+			if c.path == path {
+				m.editor.suggestion = i
+				break
+			}
+		}
+	}
 	return m, nil
 }
 

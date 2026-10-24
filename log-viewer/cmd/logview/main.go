@@ -26,6 +26,7 @@ func run() int {
 	useFixture := flags.Bool("fixture", false, "open fictional offline logs; makes no network connections")
 	configPath := flags.String("config", "", "open an explicit local Elasticsearch lab source configuration")
 	searchesPath := flags.String("searches", "", "private saved-search file; written only by explicit named save")
+	trustOSC52 := flags.Bool("trust-osc52", false, "explicitly trust terminal clipboard transmission when native copy is unavailable")
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -75,7 +76,7 @@ func run() int {
 	defer service.Shutdown(context.Background())
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
-	_, err = tea.NewProgram(ui.New(ui.Options{Service: service, Query: query, Theme: theme.Midnight(), Context: ctx, LocalLab: localLab, SearchesPath: *searchesPath}), tea.WithAltScreen(), tea.WithContext(ctx)).Run()
+	_, err = tea.NewProgram(ui.New(ui.Options{Service: service, Query: query, Theme: theme.Midnight(), Context: ctx, LocalLab: localLab, SearchesPath: *searchesPath, TrustOSC52: *trustOSC52}), tea.WithAltScreen(), tea.WithContext(ctx)).Run()
 	if err != nil && ctx.Err() == nil {
 		fmt.Fprintln(os.Stderr, "Terminal viewer failed.")
 		return 1

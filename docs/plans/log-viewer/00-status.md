@@ -21,6 +21,7 @@ SIGNAL is a provisional mockup label, not an approved product name.
 - [x] Slice 3 — app/time/level/message search, history and saved searches, verified 2026-10-24.
 - [ ] Slice 4 — field yank, inspector and command palette.
   - [x] Command palette only, verified 2026-10-24; remaining Slice 4 work is not claimed.
+  - [x] Inspector field selection/expansion and y/Y, verified 2026-10-24; help and independent panel toggles remain pending.
 - [ ] Slice 5 — context, trace and follow/pause/resume.
 - [ ] Slice 6 — default-deny read-only MCP.
 
@@ -360,3 +361,73 @@ locally but not tracked. The preview/browser are stopped after verification.
   160×48 and 80×24; there is currently no field cursor and y remains unavailable.
   That owner must pull this visual checkpoint before implementing. This checkpoint
   does not claim field selection, clipboard receipt, follow, context or MCP.
+
+## Slice 4 — inspector cursor and safe yank checkpoint
+
+- Pulled the pushed facet/sidebar/colors checkpoint before editing shared UI.
+  The reported case was investigated on the unchanged executable in actual PTYs:
+  at both 160×48 and 80×24, Enter focused the inspector, j moved its line offset
+  1→2, and Up restored it. Keys were not dead: the missing behavior was a visible
+  field cursor, distinct from line scrolling. No guessed input-routing fix.
+- j/k/arrows now select visible native JSON-pointer fields with a mint highlight
+  only while inspector owns focus. Enter expands/collapses objects, arrays and
+  shortened multiline values. PgUp/PgDn scroll expanded text and retain visible
+  field ownership; g/G/Home/End select first/last visible field. Resize repairs
+  hidden focus while retaining the field for full-width detail entry. Existing
+  key/value/severity/Go-span semantic styling and policy-safe data are preserved.
+- y copies the entire selected safe string or stable JSON value; Y prefixes the
+  exact JSON pointer and `=`. Objects/arrays retain nested types and exact numbers.
+  The f picker starts at that same field, keeps unavailable reasons, and applies
+  the existing typed AND predicates without changing other facets. Palette adds
+  contextual yank actions; modal q/y/Space ownership, facets and saved sidebar pass.
+- Native pbcopy/wl-copy/xclip detection uses argv + stdin, never a shell with log
+  values, and a two-second timeout. Failure is explicit and never falls back to a
+  disk file. OSC52 requires deliberate `--trust-osc52` and reports “Copy sent”.
+  Both native completion and OSC52 explicitly label receipt unverified. Actual
+  receiving clipboard contents were NOT inspected; no host clipboard success is
+  claimed. Test-only capture commands validate payloads, not a real clipboard.
+- Added provider→SafeEvent incompleteness propagation. Incomplete events refuse
+  copy conservatively; a visual ellipsis alone does not restrict full-value yank.
+  Current adapters retain whole bounded events or reject them; page partiality
+  alone is not field truncation. Unit behavior checks exercise a long UTF-8 value
+  containing literal shell syntax, nested array/object, escaped pointer key,
+  9007199254740993, null/bool, redaction, collapse, selected f, resize, native exit
+  failure and timeout, and explicitly incomplete input. No field values in feedback.
+- `make -C log-viewer check test-terminal test-integration test-terminal-lab`: PASS
+  (format/vet/race, real fixture + authenticated TLS PTYs, actual Elastic tests).
+  Both PTYs additionally print `PASS: copy PTY — exact y/Y OSC52 payloads, full
+  multiline value, stable redacted object, selected f, 160×48→80×24 recovery;
+  transmission only, receiving clipboard NOT verified`. Default no-trust mode
+  excludes OSC52 and explains unavailability. Existing search/history/save/palette
+  and bounds checks pass. Real TLS integration retains 600 unique equal-time IDs
+  across 500+100 pages and exact typed predicates. Final lab check: `TLS verified;
+  read=22; owned_write=403; forbidden_read=403; rss_mib=952.20`.
+- Inspected actual DPR-2 terminal captures: [default](../../../.amp/in/artifacts/log-viewer/inspector/01-default.png),
+  [field selected](../../../.amp/in/artifacts/log-viewer/inspector/02-field-selected.png),
+  [unavailable clipboard](../../../.amp/in/artifacts/log-viewer/inspector/03-unavailable.png),
+  [expanded Go stack](../../../.amp/in/artifacts/log-viewer/inspector/04-expanded-stack.png),
+  [80×24 selected stack](../../../.amp/in/artifacts/log-viewer/inspector/05-narrow-selection.png),
+  [80×24 native failure](../../../.amp/in/artifacts/log-viewer/inspector/06-narrow-failure.png),
+  [80×24 paged stack continuation](../../../.amp/in/artifacts/log-viewer/inspector/08-paged-stack.png).
+  Failure capture uses a disposable wl-copy command returning exit 1, not a host
+  clipboard. Removed the transient ttyd size badge by waiting and recapturing.
+  A stronger paging regression initially failed because PageUp selected
+  the first viewport field even while the original field remained visible; fixed
+  to retain selection while any of its rows are visible. Actual narrow PageDown
+  and PageUp checks retain the stack path, with mint focus on the continuation.
+- Inspected all 5-fps frames of the final 19.8-second real keyboard/moving-pointer
+  [clip](../../../.amp/in/artifacts/log-viewer/inspector/07-keyboard.mp4): Enter,
+  j/arrows, neighboring rows, message expansion, y/Y native failures, selected
+  trace f picker and Esc restoring inspector. Same private ttyd/xterm DOM fallback;
+  this run uses 1473×884 and 751×452 CSS at 15px font for 160×48/80×24 cells.
+  Keep `--restore` consistent across setup and recorder commands, and wait for
+  actual Search loaded before input: a mixed-mode blank recording and a startup
+  input-race take were rejected, not published as evidence. Final commands also
+  assert the visible terminal state between actions. Capture rate is 10 fps.
+  Preview/browser stopped; disposable helpers removed; private TLS lab stays warm.
+- Scope is this inspector/yank checkpoint, not full Slice 4: keyboard help and
+  independent panel toggles remain pending. No follow/context/MCP, production
+  provider claim, deployment/publishing, or LazyFTP/Service Bus edits.
+- Delivery rebase preserved the concurrently pushed facet-pane navigation/draft
+  reset changes. Reran the full check/fixture/TLS integration/TLS PTY command on
+  that combined tree; pane wrapping, Time inputs and draft clear checks also pass.

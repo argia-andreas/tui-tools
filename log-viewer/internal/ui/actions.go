@@ -44,7 +44,7 @@ func (m Model) paletteActions() []action {
 	if m.focus == 2 {
 		filter, filterUnavailable = "Filter from selected event field", selected
 	}
-	return []action{
+	actions := []action{
 		{filter, "f", filterUnavailable},
 		{"Find literal in loaded safe data", "/", ""},
 		{"Inspect selected event", "enter", selected},
@@ -57,6 +57,10 @@ func (m Model) paletteActions() []action {
 		{"Return to logs", "esc", ""},
 		{"Quit log viewer", "q", ""},
 	}
+	if m.focus == 2 {
+		actions = append(actions, action{"Yank selected field value", "y", selected}, action{"Yank selected field key=value", "Y", selected})
+	}
+	return actions
 }
 
 func (m Model) paletteMatches() []action {

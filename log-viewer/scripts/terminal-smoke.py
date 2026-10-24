@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Exercise the real offline logview executable through a terminal, no mocks."""
 import codecs
+import base64
 import fcntl
 import copy
 import json
 import os
 import pty
+import re
 import select
 import signal
 import struct
@@ -39,6 +41,11 @@ def main():
     resize(160, 48)
     env = dict(os.environ, TERM="xterm-256color", COLORTERM="truecolor", CLICOLOR="1")
     env.pop("NO_COLOR", None)
+
+    # This baseline exercises honest unavailability independent of the host's
+    # display session. Deliberate OSC52 payload checks run separately below.
+    env.pop("DISPLAY", None)
+    env.pop("WAYLAND_DISPLAY", None)
     args = ["--config", ".lab/source.json"] if lab else ["--fixture"]
     args += ["--searches", searches]
     proc = subprocess.Popen(["./bin/logview", *args], stdin=slave, stdout=slave,
@@ -128,10 +135,12 @@ def main():
         send("\r", "● INSPECTOR")
         send("f", "FILTER FROM EVENT")
         send("\x1b", "● INSPECTOR")
-        send("f", "› /trace.id")
+        send("f", "FILTER FROM EVENT")
+        send("g", "› /trace.id")
         text = send("\r", "Search loaded")
         assert "/trace.id=" in text and "App exact: payment-worker" in text
         send("f", "FILTER FROM EVENT")
+        send("g", "› /trace.id")
         send("j", "› /fields/job/attempt = 1")
         text = send("\r", "Search loaded")
         assert "/fields/job/attempt=1" in text and "App exact: payment-worker" in text
@@ -228,11 +237,19 @@ def main():
         assert "Payment gateway timeout" in text and "[REDACTED]" in text
         assert "8c3e7a21b9f04450" in text
         send("\r", "● INSPECTOR", "● LOGS")
+        send("j", "› level:")
+        send("\x1b[A", "› time:")
+        for field in ("level", "service", "instance", "trace.id", "message"):
+            send("j", "› " + field + ":")
+        send("\r", "Order 8042 remains pending;")
+        for field in ("fields", "auth", "token", "duration_ms", "error", "stack_trace"):
+            send("j", "/" + field + " · safe" if field in ("fields",) else field)
+        send("\r", "/app/payments/worker/process.go:127")
         text = send("G", "region: swedencentral")
         assert "/app/payments/worker/process.go:127" in text
         assert "token: [REDACTED]" in text
         send("g", "POLICY-SAFE EVENT")
-        send("y", "Field yank is not available")
+        send("y", "Copy unavailable")
         send("\x10", "COMMAND PALETTE")
         send("q y \r", "No matching implemented actions")
         send("\x15fltfld", "› Filter from selected event field")
@@ -281,6 +298,7 @@ def main():
         assert proc.returncode == 0
         for forbidden in (b"fixture-secret-", b"\x1b]52;", b"https://invalid.example", "\u202e".encode(), b"Q0FOQVJZ"):
             assert forbidden not in transcript, repr(forbidden)
+        copy_scenarios(args, env)
         print(f"PASS: {'local Elastic TLS' if lab else 'fixture'} PTY — explicit mode, 22 safe events, multiline inspector, focus, navigation, resize recovery, unavailable actions, clean exit")
         print("PASS: palette PTY — modal q/y/Space, fuzzy field action, disabled history, find handoff, focus restore and narrow resize, safe output")
         if search:
@@ -291,6 +309,68 @@ def main():
             proc.wait(timeout=5)
         os.close(master)
         private.cleanup()
+
+
+def copy_scenarios(args, env):
+    master, slave = pty.openpty()
+    fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", 48, 160, 0, 0))
+    proc = subprocess.Popen(["./bin/logview", *args, "--trust-osc52"], stdin=slave,
+                            stdout=slave, stderr=slave, env=env, start_new_session=True)
+    os.close(slave)
+    transcript = bytearray()
+
+    def read_until(want):
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            if select.select([master], [], [], 0.1)[0]:
+                transcript.extend(os.read(master, 65536))
+            if want in transcript:
+                return
+        raise AssertionError("Copy PTY missing " + repr(want))
+
+    def key(value, want):
+        transcript.clear()
+        os.write(master, value.encode())
+        read_until(want.encode())
+
+    def copied(value, expected):
+        key(value, "Copy sent (OSC52)")
+        payloads = re.findall(rb"\x1b\]52;c;([^\x07]*)\x07", transcript)
+        assert len(payloads) == 1, payloads
+        assert base64.b64decode(payloads[0]).decode() == expected
+        assert b"receipt unverified" in transcript
+        assert b"fixture-secret-" not in transcript
+
+    try:
+        read_until(b"Search loaded")
+        key("\r", "INSPECTOR")
+        for path in ("level", "service", "instance", "trace.id"):
+            key("j", "/" + path + " ")
+        copied("y", "8c3e7a21b9f04450")
+        copied("Y", "/trace.id=8c3e7a21b9f04450")
+        key("j", "/message ")
+        copied("y", "Payment gateway timeout after 2000ms\nOrder 8042 remains pending; retry scheduled.")
+        key("j", "/fields ")
+        key("j", "/fields/auth ")
+        copied("y", '{"token":"[REDACTED]"}')
+        key("j", "/fields/auth/token ")
+        copied("y", "[REDACTED]")
+        transcript.clear()
+        fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", 24, 80, 0, 0))
+        os.kill(proc.pid, signal.SIGWINCH)
+        read_until(b"LOGS")
+        key("\r", "INSPECTOR")  # Hidden-panel repair returns to logs; Enter opens full-width.
+        copied("Y", "/fields/auth/token=[REDACTED]")
+        key("f", "FILTER FROM EVENT")
+        key("\r", "redacted value")
+        key("\x1b", "INSPECTOR")
+        os.write(master, b"q"); proc.wait(timeout=5)
+        assert proc.returncode == 0
+        print("PASS: copy PTY — exact y/Y OSC52 payloads, full multiline value, stable redacted object, selected f, 160×48→80×24 recovery; transmission only, receiving clipboard NOT verified")
+    finally:
+        if proc.poll() is None:
+            proc.terminate(); proc.wait(timeout=5)
+        os.close(master)
 
 
 if __name__ == "__main__":

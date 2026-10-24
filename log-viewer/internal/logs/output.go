@@ -127,7 +127,7 @@ func (s *Service) safeEvent(e Event) (SafeEvent, int, error) {
 		return SafeEvent{}, 0, fmt.Errorf("invalid provider event")
 	}
 	safe := s.safeValue(tree, nil).(map[string]any)
-	result := SafeEvent{Values: make(map[string]json.RawMessage)}
+	result := SafeEvent{Values: make(map[string]json.RawMessage), Incomplete: e.Incomplete}
 	bytes := 0
 	for _, field := range s.policy.Fields {
 		if value, ok := safe[field]; ok {

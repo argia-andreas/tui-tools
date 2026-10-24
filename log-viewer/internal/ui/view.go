@@ -121,7 +121,7 @@ func (m Model) View() string {
 	}
 	footer := " Ctrl+P actions  Tab focus  j/k move  Enter inspect  f filters  / find  n/N match  o older  r reload  S save  R restore  q quit"
 	if m.focus == 2 {
-		footer = " Ctrl+P actions  j/k scroll  g/G start/end  f exact field filter  / find  S save  R restore  Esc logs  q quit"
+		footer = " j/k fields  Enter expand  y value  Y key=value  f filter  PgUp/Dn scroll  Esc logs  Ctrl+P actions  q quit"
 	}
 	if m.focus == 0 {
 		footer = " j/k select  Enter open  R all saved searches  Tab next panel  Ctrl+P actions  q quit"
@@ -225,6 +225,14 @@ func (m Model) inspector(width, height int) string {
 	for len(shown) < height-3 {
 		shown = append(shown, "")
 	}
-	shown = append(shown, m.style(m.options.Theme.Muted).Render(fmt.Sprintf("  Lines %d–%d / %d · redacted", offset+1, min(len(lines), offset+visible), len(lines))))
+	label := fmt.Sprintf("  Lines %d–%d / %d · redacted", offset+1, min(len(lines), offset+visible), len(lines))
+	fields := m.inspectorFields()
+	if m.focus == 2 && len(fields) > 0 {
+		label = "  " + fields[min(m.fieldIndex, len(fields)-1)].path + " · safe"
+	}
+	if len(m.page.Events) > 0 && m.page.Events[m.selected].Incomplete {
+		label = "  INCOMPLETE · copy refused"
+	}
+	shown = append(shown, m.style(m.options.Theme.Muted).Render(label))
 	return m.panel("INSPECTOR", shown, width, height, 2)
 }

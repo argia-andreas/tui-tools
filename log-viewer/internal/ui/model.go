@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -18,6 +19,7 @@ type Options struct {
 	Context      context.Context
 	LocalLab     bool
 	SearchesPath string
+	TrustOSC52   bool
 }
 
 type Model struct {
@@ -42,6 +44,8 @@ type Model struct {
 	saved                                 []config.SavedSearch
 	savedError                            bool
 	workspaceRow                          int
+	fieldIndex                            int
+	collapsed, expanded                   map[string]bool
 }
 
 type loadedMsg struct {
@@ -83,9 +87,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editor.returnFocus = 1
 		}
 		m.keepVisible()
-		m.clampInspector()
+		m.revealField()
 	case loadedMsg:
 		return m.receivePage(msg)
+	case copiedMsg:
+		m.status = msg.status
 	case suggestionsMsg:
 		if m.editor != nil && m.editor.kind == "filter" && msg.generation == m.suggestionGeneration {
 			m.editor.suggestions = msg.values
@@ -166,9 +172,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			if m.focus == 0 {
 				return m.openWorkspaceRow()
+			} else if m.focus == 2 {
+				m.toggleField()
 			} else if len(m.page.Events) > 0 {
 				m.focus = 2
 				m.detail = m.width < 120
+				m.revealField()
 			}
 		case "j", "down", "k", "up", "pgdown", "pgup", "g", "G", "home", "end":
 			step := 1
@@ -200,19 +209,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.selected = max(0, min(m.selected, len(m.page.Events)-1))
 				m.inspectorOffset = 0
+				m.fieldIndex = 0
 				m.keepVisible()
 			} else if m.focus == 2 {
-				m.inspectorOffset += step
+				if msg.String() == "pgdown" || msg.String() == "pgup" {
+					m.inspectorOffset += step
+					m.clampInspector()
+					_, owners := m.inspectorRows(m.inspectorWidth())
+					visible := owners[m.inspectorOffset:min(len(owners), m.inspectorOffset+max(1, m.height-12))]
+					if !slices.Contains(visible, m.fieldIndex) {
+						m.fieldIndex = max(0, owners[m.inspectorOffset])
+					}
+					break
+				}
+				m.fieldIndex += step
 				if msg.String() == "g" || msg.String() == "home" {
-					m.inspectorOffset = 0
+					m.fieldIndex = 0
 				}
 				if msg.String() == "G" || msg.String() == "end" {
-					m.inspectorOffset = 1 << 30
+					m.fieldIndex = len(m.inspectorFields()) - 1
 				}
-				m.clampInspector()
+				m.revealField()
 			}
-		case "y", "Y", " ", "?":
-			feature := map[string]string{"y": "Field yank", "Y": "Field yank", " ": "Live follow", "?": "Command help"}[msg.String()]
+		case "y", "Y":
+			return m.yank(msg.String() == "Y")
+		case " ", "?":
+			feature := map[string]string{" ": "Live follow", "?": "Command help"}[msg.String()]
 			m.status = fmt.Sprintf("%s is not available in this slice · navigation only", feature)
 		}
 	}

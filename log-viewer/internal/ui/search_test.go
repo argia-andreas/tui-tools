@@ -98,7 +98,7 @@ func TestPaletteOwnsInputDispatchesExistingActionsAndRestoresFocus(t *testing.T)
 		t.Fatal("palette typing wrote a saved search")
 	}
 	d.key("ctrl+p")
-	if !strings.Contains(d.view(), "Filter from selected event field") || strings.Contains(d.view(), "Live follow") || strings.Contains(d.view(), "Yank") {
+	if !strings.Contains(d.view(), "Filter from selected event field") || strings.Contains(d.view(), "Live follow") {
 		t.Fatal("palette does not reflect implemented contextual actions")
 	}
 	d.key("fltfld") // Non-contiguous fuzzy match, not substring matching.
@@ -286,11 +286,13 @@ func TestExactAppsInspectedTypedPredicatesSaveAndRestore(t *testing.T) {
 	}
 	d.key("enter")
 	d.key("f")
+	d.key("g") // The picker starts on the inspector cursor; trace is first.
 	if !strings.Contains(d.view(), "› /trace.id") {
 		t.Fatal("trace scalar not offered")
 	}
 	d.key("enter")
 	d.key("f")
+	d.key("g")
 	d.key("j") // supported field after trace: numeric job attempt
 	if !strings.Contains(d.view(), "› /fields/job/attempt = 1") {
 		t.Fatal("typed event predicate not offered")

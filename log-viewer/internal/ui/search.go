@@ -50,6 +50,7 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	m.loading, m.loaded, m.loadError, m.budgetStopped = true, false, false, false
 	m.page = logs.Page{}
 	m.selected, m.top, m.inspectorOffset = 0, 0, 0
+	m.fieldIndex = 0
 	m.status = "Loading search · obsolete requests cancelled"
 	return m, tea.Batch(closeOld, m.searchCommand(false))
 }
@@ -192,7 +193,7 @@ func (m *Model) findNext(backwards bool) {
 			haystack = strings.ToLower(haystack)
 		}
 		if strings.Contains(haystack, needle) {
-			m.selected, m.inspectorOffset = i, 0
+			m.selected, m.inspectorOffset, m.fieldIndex = i, 0, 0
 			m.keepVisible()
 			m.status = fmt.Sprintf("Local literal match in LOADED safe data · case=%t · n/N next/previous", m.findCase)
 			return

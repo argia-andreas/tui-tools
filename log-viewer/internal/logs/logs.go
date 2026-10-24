@@ -37,6 +37,7 @@ type Event struct {
 	Time                                       time.Time
 	Level, Service, Instance, Message, TraceID string
 	Fields                                     map[string]json.RawMessage
+	Incomplete                                 bool
 }
 
 type NativeRef struct{ Index, ID string }
@@ -66,8 +67,9 @@ type Values struct {
 }
 
 type SafeEvent struct {
-	Handle string
-	Values map[string]json.RawMessage
+	Handle     string
+	Values     map[string]json.RawMessage
+	Incomplete bool
 }
 
 func (e SafeEvent) Text(field string) string {

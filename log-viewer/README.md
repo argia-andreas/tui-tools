@@ -17,7 +17,8 @@ An explicit `--fixture` or `--config` is required; no flags does not discover
 credentials or connect to a default source. The 22 embedded fictional events use a fixed
 2026-10-23 14:15–14:30 UTC window, two apps, multiline Go stacks, typed nested
 fields, missing severity, and deliberately hostile input. No network, credential
-loading, clipboard access, event persistence, or MCP server is started in fixture mode.
+loading, automatic clipboard access, event persistence, or MCP server is started
+in fixture mode. Clipboard access requires deliberate inspector `y`/`Y`.
 
 ### Local Elasticsearch lab (native Linux x86_64)
 
@@ -76,9 +77,10 @@ Times require RFC3339 with `Z` or an explicit offset, and use a half-open window
 `WARN+` means WARN/ERROR/FATAL, not UNKNOWN. Fixture phrase matching is an explicitly
 labeled approximation; Elasticsearch uses its analyzed phrase semantics.
 
-From the inspector, press `f`, choose a scalar field and Enter to add an exact AND
-filter without losing existing facets. Trace ID, app, instance, level and selected
-indexed structured fields are supported; object/null/redacted/unindexed fields
+From the inspector, press `f` to open the picker on the highlighted field, then
+Enter to add an exact AND filter without losing existing facets. Trace ID, app,
+instance, level and selected indexed structured fields are supported;
+object/null/redacted/unindexed fields
 explain why they cannot be used. Lab apps map to ECS `service.name`; production
 `app.keyword` mapping is not configured or inferred. In the filter editor's exact
 predicate row, Enter removes the selected predicate and Ctrl+R clears all of them.
@@ -100,17 +102,38 @@ Inspector keys are cyan, values bright, ERROR red, numbers amber and booleans mi
 Recognizable Go `stack_trace` function/path/line-number spans get restrained syntax
 color without rewriting content. Other stack formats remain ordinary text. This
 is presentation of policy-safe data, not a parser or a raw-data escape hatch.
-Inspector scrolling is still line-based; highlighted field selection and yank
-are being implemented separately, and no clipboard success is claimed here.
+`j/k` or arrows select a visible native field, with a mint row and exact JSON
+pointer at the inspector foot. Enter collapses/expands objects and arrays, or
+opens the full wrapped multiline value instead of its shortened one-line preview.
+PgUp/PgDn scroll expanded values; the visible continuation retains field focus.
+Selection survives width changes and full-width detail entry; hidden panels never
+keep keyboard ownership. `g/G` or Home/End select the first/last visible field.
+
+`y` sends the selected full policy-safe value, even when its preview ends in `…`;
+`Y` sends `JSON-pointer=value`. Strings remain text; other types, including objects
+and arrays, use stable compact JSON with exact numbers. Redaction is retained.
+An event flagged incomplete by its provider refuses copy conservatively, rather
+than claiming an available prefix is complete. Current fixture/Elastic adapters
+retain complete bounded events or fail closed; page partiality does not imply
+individual field truncation.
+
+Native copy detects `pbcopy` (macOS), `wl-copy` (Wayland), or `xclip` (X11), feeds
+stdin without a shell, and times out after two seconds. No native command means
+copy is unavailable unless you explicitly launch with `--trust-osc52`. That flag
+trusts the terminal clipboard path, including any SSH/tmux/terminal limitations.
+Native command completion and OSC52 “Copy sent” both report **receipt unverified**;
+neither proves the receiving clipboard accepted the value. Failure never claims
+success, exposes backend stderr, echoes a value, or falls back to a temporary file.
 
 ## Keyboard
 
 | Key | Available now |
 | --- | --- |
-| `j/k`, arrows | Select a log, or scroll the focused inspector |
-| `PgUp/PgDn`, `g/G`, Home/End | Move by a screen, or go to start/end |
+| `j/k`, arrows | Select a log or inspector field |
+| `PgUp/PgDn`, `g/G`, Home/End | Page/scroll, or select first/last visible item |
 | Tab / Shift+Tab | Cycle visible panels; only one owns bright focus |
-| Enter | Inspect the selected event; full-width details on narrow terminals |
+| Enter | Inspect event; expand/collapse inspector field; full-width details when narrow |
+| `y`, `Y` | Yank selected field value / JSON-pointer=value (policy-safe only) |
 | Esc | Return to logs, retaining selection |
 | `f` | Edit filters; from inspector, add an exact field predicate |
 | `/`, `n/N` | Literal find in loaded policy-safe values; next/previous match |
@@ -137,7 +160,7 @@ clears the fuzzy query. Esc restores the originating panel, repairing hidden foc
 on resize; results and selection are retained. The palette does not save anything
 until the separate named-save editor is explicitly submitted.
 
-`y/Y`, keyboard help and follow currently explain that they are unavailable.
+Keyboard help and follow currently explain that they are unavailable.
 No fake “copied,” “connected,” or “following” success is displayed. The provider
 names under “PROVIDERS · PLANNED” are not working connections. Local Elasticsearch
 is a working source in lab mode, not follow/streaming.
@@ -188,7 +211,14 @@ go -C log-viewer test ./internal/logs -run '^$' -fuzz FuzzSafeOutput -fuzztime 1
 actual executable and checks explicit startup mode, event/inspector contents,
 wide/narrow focus recovery, unavailable actions, secret/terminal-control exclusion,
 app OR and other facet composition, exact inspected fields, save/restore, literal
-find, older paging, editor cancellation, and clean exit. Fuzz seeds include escapes that could reconstruct a secret during
+find, older paging, editor cancellation, and clean exit. A separate trusted-OSC52
+PTY decodes exact y/Y payloads (including full multiline and redacted object
+values), exercises selected-field filtering and wide→narrow focus recovery.
+This verifies transmission, **not receiving clipboard contents**. Native-copy
+tests use disposable stdin capture/failure commands, including a timeout; these
+are not real host clipboard receivers. Inspected screenshots and the actual
+19.8-second keyboard/failure clip are indexed in the delivery status.
+Fuzz seeds include escapes that could reconstruct a secret during
 cleanup; redaction applies to both incoming and sanitized text.
 
 Midnight semantic color roles are app-owned values from the existing
