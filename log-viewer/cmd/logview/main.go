@@ -27,6 +27,7 @@ func run() int {
 	configPath := flags.String("config", "", "open an explicit local Elasticsearch lab source configuration")
 	searchesPath := flags.String("searches", "", "private saved-search file; written only by explicit named save")
 	trustOSC52 := flags.Bool("trust-osc52", false, "explicitly trust terminal clipboard transmission when native copy is unavailable")
+	settingsPath := flags.String("settings", "", "private user settings file; written only on preference changes")
 	if err := flags.Parse(os.Args[1:]); err != nil {
 		if err == flag.ErrHelp {
 			return 0
@@ -44,6 +45,14 @@ func run() int {
 			return 1
 		}
 		*searchesPath = filepath.Join(dir, "logview", "searches.json")
+	}
+	if *settingsPath == "" {
+		dir, err := os.UserConfigDir()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Cannot determine settings location; choose --settings explicitly.")
+			return 1
+		}
+		*settingsPath = filepath.Join(dir, "logview", "settings.json")
 	}
 	var provider logs.Provider
 	var err error
@@ -76,7 +85,7 @@ func run() int {
 	defer service.Shutdown(context.Background())
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM)
 	defer cancel()
-	_, err = tea.NewProgram(ui.New(ui.Options{Service: service, Query: query, Theme: theme.Midnight(), Context: ctx, LocalLab: localLab, SearchesPath: *searchesPath, TrustOSC52: *trustOSC52}), tea.WithAltScreen(), tea.WithContext(ctx)).Run()
+	_, err = tea.NewProgram(ui.New(ui.Options{Service: service, Query: query, Theme: theme.Midnight(), Context: ctx, LocalLab: localLab, SearchesPath: *searchesPath, TrustOSC52: *trustOSC52, SettingsPath: *settingsPath}), tea.WithAltScreen(), tea.WithContext(ctx)).Run()
 	if err != nil && ctx.Err() == nil {
 		fmt.Fprintln(os.Stderr, "Terminal viewer failed.")
 		return 1

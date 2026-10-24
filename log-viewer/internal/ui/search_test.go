@@ -71,7 +71,7 @@ func fixtureDriver(t *testing.T, size int) (*driver, string) {
 	if err := os.Chmod(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)
 	}
-	d := &driver{t: t, m: ui.New(ui.Options{Service: s, Query: q, Theme: theme.Midnight(), SearchesPath: path})}
+	d := &driver{t: t, m: ui.New(ui.Options{Service: s, Query: q, Theme: theme.Midnight(), SearchesPath: path, SettingsPath: filepath.Join(filepath.Dir(path), "settings.json")})}
 	d.apply(tea.WindowSizeMsg{Width: 160, Height: 48})
 	d.run(d.m.Init())
 	return d, path
@@ -191,10 +191,12 @@ func TestEditorsOwnTextAndCancelWithoutWritesOrFocusChanges(t *testing.T) {
 	d.key("esc")
 	before = d.view()
 	d.key("f")
+	d.key("i")
 	d.key("q y ")
 	if !strings.Contains(d.view(), "q y ") {
 		t.Fatal("filter editor lost text")
 	}
+	d.key("esc")
 	d.key("esc")
 	if d.view() != before {
 		t.Fatal("filter cancellation changed results")
@@ -274,6 +276,9 @@ func TestWorkspaceRestoresSameSourceSavedSearchAndSurvivesCollapse(t *testing.T)
 
 func TestExactAppsInspectedTypedPredicatesSaveAndRestore(t *testing.T) {
 	d, path := fixtureDriver(t, 500)
+	d.key(",")
+	d.key("enter") // Retain coverage of direct-entry mode when Vim is disabled.
+	d.key("ctrl+s")
 	d.key("f")
 	d.key("payment")
 	d.key("enter")
@@ -341,6 +346,9 @@ func TestExactAppsInspectedTypedPredicatesSaveAndRestore(t *testing.T) {
 
 func TestFacetPaneNavigationApplyAndClear(t *testing.T) {
 	d, path := fixtureDriver(t, 500)
+	d.key(",")
+	d.key("enter")
+	d.key("ctrl+s")
 	d.key("f")
 	d.key("payment")
 	d.key("enter")
@@ -431,6 +439,113 @@ func TestFacetPaneNavigationApplyAndClear(t *testing.T) {
 	cleared := saved[2].Query
 	if len(cleared.Scope.Services)+len(cleared.Fields)+len(cleared.TraceIDs)+len(cleared.Levels) != 0 || cleared.Message.Text != "" || cleared.Window != q.Window || cleared.Scope.Source != q.Scope.Source || cleared.Limits != q.Limits {
 		t.Fatalf("clear did not reset criteria while retaining window/source/limits: %+v", cleared)
+	}
+}
+
+func TestVimFacetModesAndSettings(t *testing.T) {
+	d, path := fixtureDriver(t, 500)
+	settingsPath := filepath.Join(filepath.Dir(path), "settings.json")
+	if _, err := os.Stat(settingsPath); !os.IsNotExist(err) {
+		t.Fatal("startup wrote settings")
+	}
+	d.key("f")
+	if !strings.Contains(d.view(), "Edit: App · NORMAL") {
+		t.Fatal("Vim mode was not enabled by default")
+	}
+	d.key("j")
+	if !strings.Contains(d.view(), "› [ ] payment-worker") {
+		t.Fatal("normal j typed text instead of navigating suggestions")
+	}
+	d.key(" ")
+	d.key("k")
+	d.key("enter")
+	d.key("jk")
+	if !strings.Contains(d.view(), "Edit: App · INSERT") || !strings.Contains(d.view(), "No suggestions") {
+		t.Fatal("Enter did not enter literal keyword input")
+	}
+	d.key("esc")
+	if !strings.Contains(d.view(), "Edit: App · NORMAL") || !strings.Contains(d.view(), "jk") {
+		t.Fatal("Esc discarded input or closed the editor")
+	}
+	d.key("i")
+	d.key("ctrl+u")
+	d.key("payment")
+	d.key("enter")
+	d.key("tab")
+	d.key("jjj")
+	d.key("tab")
+	d.key("i")
+	d.key("jki q y ")
+	d.key("esc")
+	if !strings.Contains(d.view(), "Edit: Message · NORMAL") || !strings.Contains(d.view(), "jki q y ") {
+		t.Fatal("INSERT j/k/i dispatched navigation or global shortcuts")
+	}
+	d.key("i")
+	d.key("tab")
+	if !strings.Contains(d.view(), "● FILTER EDITOR") || strings.Contains(d.view(), "INSERT") {
+		t.Fatal("Tab did not exit INSERT and switch panes")
+	}
+	d.key("ctrl+s")
+	d.key("S")
+	d.key("vim draft")
+	d.key("enter")
+	saved, err := config.LoadSearches(path)
+	if err != nil || len(saved) != 1 || saved[0].Query.Message.Text != "jki q y " || !reflect.DeepEqual(saved[0].Query.Scope.Services, []string{"payment-worker"}) {
+		t.Fatalf("Vim navigation corrupted draft or application: %v %+v", err, saved)
+	}
+	d.key("ctrl+p")
+	d.key("settings")
+	d.key("enter")
+	if !strings.Contains(d.view(), "Vim-style facet input: ON") {
+		t.Fatal("settings not reachable from palette")
+	}
+	d.key("enter")
+	d.key("esc")
+	d.key(",")
+	if !strings.Contains(d.view(), "Vim-style facet input: ON") {
+		t.Fatal("cancelled settings draft changed the preference")
+	}
+	d.key(" ")
+	if err := os.WriteFile(settingsPath, []byte(`{}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	d.key("ctrl+s")
+	if !strings.Contains(d.view(), "Settings save failed") {
+		t.Fatal("unsafe destination was reported as a successful preference save")
+	}
+	d.key("esc")
+	d.key(",")
+	if !strings.Contains(d.view(), "Vim-style facet input: ON") {
+		t.Fatal("failed settings save changed the active preference")
+	}
+	if err := os.Chmod(settingsPath, 0600); err != nil {
+		t.Fatal(err)
+	}
+	d.key(" ")
+	d.key("ctrl+s")
+	settings, err := config.LoadSettings(settingsPath)
+	if err != nil || settings.VimMode {
+		t.Fatalf("OFF preference was not persisted: %v %+v", err, settings)
+	}
+	// A fresh UI loads the persisted preference, not a process-only toggle.
+	restarted := &driver{t: t, m: ui.New(ui.Options{SettingsPath: settingsPath, Theme: theme.Midnight()})}
+	restarted.apply(tea.WindowSizeMsg{Width: 80, Height: 24})
+	restarted.key(",")
+	if !strings.Contains(restarted.view(), "Vim-style facet input: OFF") {
+		t.Fatal("preference did not survive a new model")
+	}
+	d.key("f")
+	d.key("jk")
+	if strings.Contains(d.view(), "NORMAL") || !strings.Contains(d.view(), "No suggestions") {
+		t.Fatal("OFF mode did not restore direct text entry")
+	}
+	d.key("esc")
+	d.key(",")
+	d.key("enter")
+	d.key("ctrl+s")
+	d.key("f")
+	if !strings.Contains(d.view(), "Edit: App · NORMAL") {
+		t.Fatal("ON preference did not restore Vim modes")
 	}
 }
 

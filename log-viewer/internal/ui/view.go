@@ -66,7 +66,11 @@ func (m Model) View() string {
 		for i := range lines {
 			lines[i] = strings.ReplaceAll(logs.Clean(lines[i]), "\n", " ↵ ")
 		}
-		return header + "\n" + m.panel(title, lines, m.width, m.height-2, m.focus) + "\n" + m.style(t.Focus).Render(fit(" Text owns keys · Esc cancels without changing results/focus", m.width))
+		help := " Text owns keys · Esc cancels without changing results/focus"
+		if m.editor.kind == "settings" {
+			help = " Enter/Space toggle · Ctrl+S save & back · Esc cancel"
+		}
+		return header + "\n" + m.panel(title, lines, m.width, m.height-2, m.focus) + "\n" + m.style(t.Focus).Render(fit(help, m.width))
 	}
 	q := m.options.Query
 	apps := strings.Join(q.Scope.Services, " OR ")
@@ -119,12 +123,12 @@ func (m Model) View() string {
 		}
 		body = lipgloss.JoinHorizontal(lipgloss.Top, panels...)
 	}
-	footer := " Ctrl+P actions  Tab focus  j/k move  Enter inspect  f filters  / find  n/N match  o older  r reload  S save  R restore  q quit"
+	footer := " Ctrl+P actions  Tab focus  j/k move  Enter inspect  f filters  , settings  / find  n/N match  o older  r reload  S save  R restore  q quit"
 	if m.focus == 2 {
-		footer = " j/k fields  Enter expand  y value  Y key=value  f filter  PgUp/Dn scroll  Esc logs  Ctrl+P actions  q quit"
+		footer = " j/k fields  Enter expand  y value  Y key=value  f filter  , settings  PgUp/Dn scroll  Esc logs  Ctrl+P actions  q quit"
 	}
 	if m.focus == 0 {
-		footer = " j/k select  Enter open  R all saved searches  Tab next panel  Ctrl+P actions  q quit"
+		footer = " j/k select  Enter open  R all saved searches  Tab next panel  , settings  Ctrl+P actions  q quit"
 	}
 	status := m.status
 	if m.loading {

@@ -18,6 +18,8 @@ type editor struct {
 	draft              logs.Query
 	inputs             [7]string
 	sidebar            bool
+	insert             bool
+	vimMode            bool
 	suggestions        logs.Values
 	suggestion         int
 	suggestionError    bool
@@ -158,6 +160,10 @@ func (m Model) edit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	e := m.editor
 	key := msg.String()
 	if key == "esc" {
+		if e.kind == "filter" && m.settings.VimMode && e.insert {
+			e.insert = false
+			return m, nil
+		}
 		if m.suggestionCancel != nil {
 			m.suggestionCancel()
 		}
@@ -173,6 +179,25 @@ func (m Model) edit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.editPalette(msg)
 	case "field":
 		return m.editField(msg)
+	case "settings":
+		switch key {
+		case "enter", " ":
+			e.vimMode = !e.vimMode
+		case "ctrl+s":
+			settings := config.Settings{VimMode: e.vimMode}
+			if m.options.SettingsPath != "" {
+				if err := config.SaveSettings(m.options.SettingsPath, settings); err != nil {
+					e.error = "Settings save failed · check private destination"
+					break
+				}
+			}
+			m.settings = settings
+			m.focus, m.editor = e.returnFocus, nil
+			m.status = "Settings applied for this session"
+			if m.options.SettingsPath != "" {
+				m.status = "Settings saved"
+			}
+		}
 	case "find":
 		switch key {
 		case "ctrl+t":
@@ -227,7 +252,7 @@ func (m Model) edit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.refresh()
 		}
 	case "filter":
-		if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && (e.sidebar || e.field == 1 || e.field == 2 || e.field == 6) {
+		if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && (e.sidebar || (m.settings.VimMode && !e.insert) || (!m.settings.VimMode && (e.field == 1 || e.field == 2 || e.field == 6))) {
 			var commands []tea.Cmd
 			for _, r := range msg.Runes {
 				next, cmd := m.edit(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
@@ -238,6 +263,7 @@ func (m Model) edit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if key == "tab" || key == "shift+tab" {
 			e.sidebar = !e.sidebar
+			e.insert = false
 			return m, nil
 		}
 		if key == "ctrl+l" {
@@ -272,9 +298,33 @@ func (m Model) edit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
-		// j/k navigate non-text fields only; app keywords and other text
-		// inputs must retain these characters literally.
-		if e.field == 1 || e.field == 2 || e.field == 6 {
+		if m.settings.VimMode {
+			if e.insert {
+				if key == "enter" {
+					e.insert = false
+					return m, nil
+				}
+				if key != "ctrl+s" && key != "ctrl+x" && key != "ctrl+r" {
+					before := e.inputs[e.field]
+					e.inputs[e.field] = appendInput(before, msg)
+					if e.field == 0 && before != e.inputs[0] {
+						return m.suggest()
+					}
+					return m, nil
+				}
+			} else {
+				if (key == "i" || key == "enter") && e.field != 6 {
+					e.insert = true
+					return m, nil
+				}
+				if key == " " && e.field == 0 {
+					key = "enter" // Toggle the chosen app without entering text.
+				}
+			}
+		}
+		// INSERT handled literal text above. NORMAL owns j/k everywhere;
+		// direct-entry mode reserves them only for non-text selectors.
+		if (m.settings.VimMode && !e.insert) || e.field == 1 || e.field == 2 || e.field == 6 {
 			if key == "j" {
 				key = "down"
 			} else if key == "k" {
@@ -336,7 +386,7 @@ func (m Model) edit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					apps = append(apps, app)
 				}
 				e.draft.Scope.Services = apps
-				// Keep the current suggestion list so repeated Enter toggles the
+				// Keep the current suggestion list so repeated toggles select the
 				// same exact value; the keyword itself is NEVER a filter.
 				break
 			}
@@ -354,9 +404,9 @@ func (m Model) edit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.suggestionGeneration++
 			return m.refresh()
 		default:
-			if e.field == 6 {
+			if e.field == 6 || (m.settings.VimMode && !e.insert) {
 				break
-			} // Predicate list owns keys, but is not text input.
+			} // Normal mode and predicate lists never own text input.
 			before := e.inputs[e.field]
 			e.inputs[e.field] = appendInput(before, msg)
 			if e.field == 0 && before != e.inputs[0] {
@@ -374,6 +424,21 @@ func (m Model) editorLines() (string, []string) {
 		return m.paletteLines()
 	case "field":
 		return m.fieldPickerLines()
+	case "settings":
+		value := "OFF"
+		if e.vimMode {
+			value = "ON (default)"
+		}
+		location := "No settings path · changes apply for this session only"
+		if m.options.SettingsPath != "" {
+			location = "Ctrl+S saves this preference for future sessions"
+		}
+		return "SETTINGS", []string{"", "› Vim-style facet input: " + value, "",
+			"Enter / Space toggle · Ctrl+S save & back · Esc cancel", "", location, "",
+			"NORMAL: j/k navigate · Enter or i starts typing",
+			"INSERT: j/k are text · Esc returns to NORMAL",
+			"Tab switches panes · Ctrl+S applies filters",
+			"OFF: type directly · Esc cancels facet editor", e.error}
 	case "find":
 		return "LOCAL LITERAL FIND", []string{"LOADED policy-safe event data only (all structured fields)", "Ctrl+T toggles case · Enter find · Esc cancel", fmt.Sprintf("Case sensitive: %t", e.caseSensitive), "> " + e.text}
 	case "save":

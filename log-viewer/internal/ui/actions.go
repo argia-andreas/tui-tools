@@ -54,6 +54,7 @@ func (m Model) paletteActions() []action {
 		{"Previous local find match", "N", find},
 		{"Save named search", "S", saved},
 		{"Restore saved search", "R", saved},
+		{"Settings", ",", ""},
 		{"Return to logs", "esc", ""},
 		{"Quit log viewer", "q", ""},
 	}

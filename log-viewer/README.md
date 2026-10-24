@@ -67,12 +67,30 @@ trace IDs. The facet navigator keeps the summary on the left and edits only one
 facet on the right. Tab/Shift+Tab switches focus between the sidebar and editor.
 In the sidebar, ↑/↓ or j/k selects a facet; in Time, those keys choose From or To.
 The focused pane is highlighted, and draft values survive pane switches.
-Ctrl+S applies and returns to logs from either pane; Esc returns without applying.
+Vim-style facet input is **on by default**:
+
+- **NORMAL**: ↑/↓ or j/k navigates; Enter or `i` starts typing in the selected
+  field. In App, Space toggles the chosen exact app; Enter/`i` edits the keyword.
+- **INSERT**: printable keys, including j/k, are literal text. Enter or Esc returns
+  to NORMAL without losing the draft; Tab returns to sidebar navigation.
+- Ctrl+S applies and returns to logs from either mode or pane. Esc in NORMAL
+  returns without applying.
+
 Ctrl+L clears all draft filter criteria except the time window; Ctrl+S applies the
-reset, or Esc cancels it. Apps OR together; different facets AND together. App suggestions use a
-separate case-insensitive substring keyword: Enter toggles an exact app selection,
-↑/↓ chooses a suggestion, and Ctrl+X clears app selections. Text inputs retain
-literal j/k characters; exact-field lists support both ↑/↓ and j/k navigation.
+reset. Apps OR together; different facets AND together. App suggestions use a
+separate case-insensitive substring keyword, not an applied predicate. Ctrl+X
+clears app selections. Exact-field lists support ↑/↓ and j/k; Enter removes a
+predicate, without entering INSERT.
+
+Press `,` or choose **Settings** in Ctrl+P to toggle **Vim-style facet input**.
+Enter/Space changes the draft preference, Ctrl+S saves it, and Esc cancels.
+Settings persist in the platform config directory's `logview/settings.json`;
+override with `--settings /private/dir/settings.json`. Files are read-only at
+startup and created only on an explicit settings save (directory 0700, file 0600).
+With Vim mode off, text fields accept typing immediately, Esc cancels the editor,
+and Enter toggles App suggestions as before. Find, save-name, and command-palette
+prompts always accept typing directly; the preference affects only facet input.
+
 Times require RFC3339 with `Z` or an explicit offset, and use a half-open window.
 `WARN+` means WARN/ERROR/FATAL, not UNKNOWN. Fixture phrase matching is an explicitly
 labeled approximation; Elasticsearch uses its analyzed phrase semantics.

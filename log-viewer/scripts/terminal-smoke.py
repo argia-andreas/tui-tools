@@ -25,6 +25,7 @@ def main():
     search = "--search" in sys.argv
     private = tempfile.TemporaryDirectory(prefix="logview-terminal-")
     searches = os.path.join(private.name, "searches.json")
+    settings = os.path.join(private.name, "settings.json")
     for args in ([], ["--live"], ["--fixture", "unexpected"]):
         result = subprocess.run(["./bin/logview", *args], capture_output=True, text=True)
         assert result.returncode == 2, (args, result.returncode)
@@ -47,7 +48,7 @@ def main():
     env.pop("DISPLAY", None)
     env.pop("WAYLAND_DISPLAY", None)
     args = ["--config", ".lab/source.json"] if lab else ["--fixture"]
-    args += ["--searches", searches]
+    args += ["--searches", searches, "--settings", settings]
     proc = subprocess.Popen(["./bin/logview", *args], stdin=slave, stdout=slave,
                             stderr=slave, env=env, start_new_session=True)
     os.close(slave)
@@ -73,6 +74,81 @@ def main():
     def send(keys, want, absent=None):
         os.write(master, keys.encode())
         return wait(want, absent)
+
+    def vim_scenarios():
+        count = "lab events" if lab else "fictional events"
+        assert not os.path.exists(settings), "startup/navigation wrote settings"
+
+        # Settings are draft-only until explicitly saved, from either opener.
+        send(",", "Vim-style facet input: ON (default)")
+        send("\r", "Vim-style facet input: OFF")
+        send("\x1b", "● LOGS")
+        assert not os.path.exists(settings), "cancelled settings wrote preferences"
+        send("\x10Settings", "› Settings")
+        send("\r", "Vim-style facet input: ON (default)")
+        send("\x1b", "● LOGS")
+
+        # The right App pane starts in NORMAL: j/k and arrows move, not type.
+        send("f", "● Edit: App")
+        wait("› [ ] checkout-api")
+        send("j", "› [ ] payment-worker")
+        send("k", "› [ ] checkout-api")
+        send("\x1b[B", "› [ ] payment-worker")
+        send(" ", "Selected: payment-worker")
+        send(" ", "Selected: ALL")
+        send("\x1b[A", "› [ ] checkout-api")
+
+        # Enter starts INSERT; j/k are literal keyword text, never selection.
+        send("\r", "● Edit: App")
+        text = send("jk", "No suggestions")
+        assert "jk" in text and "Selected: ALL" in text
+        text = send("\x1b", "● Edit: App")
+        assert "jk" in text, "INSERT Esc discarded keyword draft"
+        text = send("j", "● Edit: App")
+        assert "jk" in text and "jkj" not in text, "Esc did not return to NORMAL"
+        send("\x1b", "22 " + count)
+        send("f", "› [ ] checkout-api")
+        assert "jk" not in "\n".join(screen.display), "cancel retained keyword"
+
+        # Time navigation stays NORMAL; i owns literal Message input.
+        send("\tj\t", "› Start inclusive")
+        send("j", "› End exclusive")
+        send("k", "› Start inclusive")
+        send("\x1b[B", "› End exclusive")
+        send("\x1b[A", "› Start inclusive")
+        send("\tjj\t", "● Edit: Message")
+        text = send("ijk", "jk")
+        assert "● Edit: Message" in text
+        text = send("\r", "● Edit: Message")
+        assert "jk" in text, "INSERT Enter discarded message draft"
+        text = send("j", "● Edit: Message")
+        assert "jk" in text and "jkj" not in text, "Enter did not return to NORMAL"
+        text = send("i\t", "● FILTER EDITOR")
+        assert "jk" in text, "Tab discarded INSERT draft"
+        send("k", "Edit: Levels")  # Sidebar navigation, not inserted text.
+        send("\x1b", "22 " + count)
+
+        # Ctrl+S applies from either mode; an app keyword alone is no predicate.
+        send("f", "● Edit: App")
+        send("\x13", "22 " + count)
+        wait("● LOGS")
+        send("f", "● Edit: App")
+        send("ijk", "No suggestions")
+        send("\x13", "22 " + count)
+        wait("● LOGS")
+        assert not os.path.exists(settings), "filter actions wrote preferences"
+        assert not os.path.exists(searches), "filter actions wrote saved searches"
+
+        # Turn OFF explicitly before the unchanged direct-entry regression suite.
+        send(",", "Vim-style facet input: ON (default)")
+        send(" ", "Vim-style facet input: OFF")
+        send("\x13", "Settings saved")
+        wait("● LOGS")
+        with open(settings, encoding="utf-8") as f:
+            assert json.load(f) == {"vim_mode": False}
+        assert os.stat(settings).st_mode & 0o077 == 0
+        send(",", "Vim-style facet input: OFF")
+        send("\x1b", "● LOGS")
 
     def search_scenarios():
         count = "lab events" if lab else "fictional events"
@@ -233,6 +309,7 @@ def main():
             assert "FIXTURE · OFFLINE" not in text and "No network access" not in text
         else:
             assert "22 fictional events" in text and "FIXTURE · OFFLINE" in text
+        assert not os.path.exists(settings), "startup wrote default settings"
         assert "● LOGS" in text and "● INSPECTOR" not in text
         assert "Payment gateway timeout" in text and "[REDACTED]" in text
         assert "8c3e7a21b9f04450" in text
@@ -290,9 +367,11 @@ def main():
         resize(160, 48); os.kill(proc.pid, signal.SIGWINCH)
         wait("q quit")
         if search:
+            vim_scenarios()
             search_scenarios()
         else:
             assert not os.path.exists(searches), "ordinary navigation wrote saved searches"
+            assert not os.path.exists(settings), "ordinary navigation wrote settings"
         os.write(master, b"q")
         proc.wait(timeout=5)
         assert proc.returncode == 0
@@ -302,6 +381,7 @@ def main():
         print(f"PASS: {'local Elastic TLS' if lab else 'fixture'} PTY — explicit mode, 22 safe events, multiline inspector, focus, navigation, resize recovery, unavailable actions, clean exit")
         print("PASS: palette PTY — modal q/y/Space, fuzzy field action, disabled history, find handoff, focus restore and narrow resize, safe output")
         if search:
+            print("PASS: Vim facets PTY — default read-only startup, settings cancel/openers/private OFF save, NORMAL app/Time navigation, Space toggle, Enter/i literal INSERT, Esc/Enter NORMAL, Tab sidebar, cancel, Ctrl+S from both modes")
             print("PASS: search PTY — pane/facet focus and wrap, Time Start/End, draft clear/cancel/apply with time retained, exact app OR, WARN+/UNKNOWN, offset validation, phrase/empty, safe structured literal find/case/n/N, inspector trace+typed field AND, explicit private save/restore, anchored older history, narrow editor")
     finally:
         if proc.poll() is None:

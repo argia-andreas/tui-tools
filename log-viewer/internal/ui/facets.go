@@ -61,11 +61,32 @@ func (m Model) filterView(header string) string {
 	if e.sidebar {
 		navOwner, editOwner = m.focus, -1
 	}
+	title := "Edit: " + names[active]
+	modeHelp := "Tab panes · ↑/↓ j/k navigate · Ctrl+S apply & back"
+	cancelHelp := "Ctrl+L clear filters (keeps time) · Esc cancel"
+	if !e.sidebar && e.field != 1 && e.field != 2 && e.field != 6 {
+		modeHelp = "Tab panes · Type to edit · Ctrl+S apply & back"
+	}
+	if m.settings.VimMode {
+		mode := "NORMAL"
+		modeHelp = "Tab panes · j/k move · Enter/i type · Ctrl+S apply"
+		if e.sidebar {
+			modeHelp = "Tab edit facet · ↑/↓ j/k move · Ctrl+S apply"
+		} else if e.field == 6 {
+			modeHelp = "Tab panes · j/k move · Enter remove · Ctrl+S apply"
+		}
+		if e.insert {
+			mode = "INSERT"
+			modeHelp = "Tab panes · Enter/Esc normal · Ctrl+S apply & back"
+			cancelHelp = "Ctrl+U clear text · Ctrl+L clear filters (keeps time)"
+		}
+		title += " · " + mode
+	}
 	body := lipgloss.JoinHorizontal(lipgloss.Top,
 		m.panel("FILTER EDITOR", nav, left, height, navOwner),
-		m.panel("Edit: "+names[active], lines, right, height, editOwner))
-	semantics := m.style(t.Muted).Render(fit(" Ctrl+L clear filters (keeps time) · Esc cancel", m.width))
-	keys := m.style(t.Focus).Render(fit(" Tab panes · ↑/↓ j/k navigate · Ctrl+S apply & back", m.width))
+		m.panel(title, lines, right, height, editOwner))
+	semantics := m.style(t.Muted).Render(fit(" "+cancelHelp, m.width))
+	keys := m.style(t.Focus).Render(fit(" "+modeHelp, m.width))
 	return header + "\n" + body + "\n" + semantics + "\n" + keys
 }
 
@@ -104,7 +125,7 @@ func (m Model) facetLines(width int) []string {
 				mark = "[x] "
 			}
 			color := t.Foreground
-			if i == e.suggestion && !e.sidebar {
+			if i == e.suggestion && !e.sidebar && !e.insert {
 				prefix, color = "› ", t.Focus
 			}
 			lines = append(lines, m.style(color).Render(prefix+mark+oneLine(app)))
@@ -120,11 +141,25 @@ func (m Model) facetLines(width int) []string {
 		if e.suggestions.More || e.suggestions.Partial {
 			lines = append(lines, muted("Partial suggestions · narrow keyword"))
 		}
-		return append(lines, "", muted("↑/↓ choose · Enter toggle · Ctrl+X clear apps"))
+		help := "↑/↓ choose · Enter toggle · Ctrl+X clear apps"
+		if m.settings.VimMode {
+			help = "↑/↓ j/k choose · Space toggle · Enter/i keyword"
+			if e.insert {
+				help = "Type keyword · Enter/Esc normal · Ctrl+X clear apps"
+			}
+		}
+		return append(lines, "", muted(help))
 	case 1, 2:
 		lines := input("Start inclusive RFC3339", 1)
 		lines = append(lines, input("End exclusive RFC3339", 2)...)
-		return append(lines, muted("↑/↓ or j/k choose From/To · Ctrl+U clears text"),
+		help := "↑/↓ or j/k choose From/To · Ctrl+U clears text"
+		if m.settings.VimMode {
+			help = "↑/↓ j/k choose From/To · Enter/i type"
+			if e.insert {
+				help = "Type timestamp · Ctrl+U clears · Esc normal"
+			}
+		}
+		return append(lines, muted(help),
 			muted("Z or explicit offset · UTC [from, to)"))
 	case 3:
 		return append(input("Levels", 3), muted("ALL / UNKNOWN / WARN+ / exact levels"),

@@ -20,6 +20,7 @@ type Options struct {
 	LocalLab     bool
 	SearchesPath string
 	TrustOSC52   bool
+	SettingsPath string
 }
 
 type Model struct {
@@ -46,6 +47,7 @@ type Model struct {
 	workspaceRow                          int
 	fieldIndex                            int
 	collapsed, expanded                   map[string]bool
+	settings                              config.Settings
 }
 
 type loadedMsg struct {
@@ -68,6 +70,15 @@ func New(options Options) Model {
 	}
 	ctx, cancel := context.WithCancel(options.Context)
 	m := Model{options: options, focus: 1, status: status, generation: 1, requestContext: ctx, cancel: cancel, loading: true}
+	m.settings = config.DefaultSettings()
+	if options.SettingsPath != "" {
+		settings, err := config.LoadSettings(options.SettingsPath)
+		if err != nil {
+			m.status = "Settings unavailable · using defaults · check private settings file"
+		} else {
+			m.settings = settings
+		}
+	}
 	m.reloadSaved()
 	return m
 }
@@ -109,6 +120,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Sequence(m.closeCursor(m.page.Next), tea.Quit)
 		case "ctrl+p":
 			m.editor = &editor{kind: "palette", returnFocus: m.focus}
+		case ",":
+			m.editor = &editor{kind: "settings", returnFocus: m.focus, vimMode: m.settings.VimMode}
 		case "f":
 			if m.focus == 2 {
 				return m.openFieldPicker()
