@@ -63,10 +63,15 @@ seeding never reset it.
 
 Press `f` from logs to edit exact app selections, time, levels, message phrase and
 trace IDs. The facet navigator keeps the summary on the left and edits only one
-facet on the right. Tab/Shift+Tab moves between inputs (Time has From and To);
-contextual help stays with the current facet. Apps OR together; different facets AND together. App suggestions use a
+facet on the right. Tab/Shift+Tab switches focus between the sidebar and editor.
+In the sidebar, ↑/↓ or j/k selects a facet; in Time, those keys choose From or To.
+The focused pane is highlighted, and draft values survive pane switches.
+Ctrl+S applies and returns to logs from either pane; Esc returns without applying.
+Ctrl+L clears all draft filter criteria except the time window; Ctrl+S applies the
+reset, or Esc cancels it. Apps OR together; different facets AND together. App suggestions use a
 separate case-insensitive substring keyword: Enter toggles an exact app selection,
-Ctrl+X clears app selections, Tab moves fields, and Ctrl+S applies the query.
+↑/↓ chooses a suggestion, and Ctrl+X clears app selections. Text inputs retain
+literal j/k characters; exact-field lists support both ↑/↓ and j/k navigation.
 Times require RFC3339 with `Z` or an explicit offset, and use a half-open window.
 `WARN+` means WARN/ERROR/FATAL, not UNKNOWN. Fixture phrase matching is an explicitly
 labeled approximation; Elasticsearch uses its analyzed phrase semantics.

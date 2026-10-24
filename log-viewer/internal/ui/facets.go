@@ -57,11 +57,15 @@ func (m Model) filterView(header string) string {
 	for i := range lines {
 		lines[i] = " " + lines[i]
 	}
+	navOwner, editOwner := -1, m.focus
+	if e.sidebar {
+		navOwner, editOwner = m.focus, -1
+	}
 	body := lipgloss.JoinHorizontal(lipgloss.Top,
-		m.panel("FILTER EDITOR", nav, left, height, -1),
-		m.panel("Edit: "+names[active], lines, right, height, m.focus))
-	semantics := m.style(t.Muted).Render(fit(" Apps OR · facets AND · UTC [from, to)", m.width))
-	keys := m.style(t.Focus).Render(fit(" Tab/Shift+Tab facet · Ctrl+S apply · Esc cancel", m.width))
+		m.panel("FILTER EDITOR", nav, left, height, navOwner),
+		m.panel("Edit: "+names[active], lines, right, height, editOwner))
+	semantics := m.style(t.Muted).Render(fit(" Ctrl+L clear filters (keeps time) · Esc cancel", m.width))
+	keys := m.style(t.Focus).Render(fit(" Tab panes · ↑/↓ j/k navigate · Ctrl+S apply & back", m.width))
 	return header + "\n" + body + "\n" + semantics + "\n" + keys
 }
 
@@ -70,7 +74,7 @@ func (m Model) facetLines(width int) []string {
 	muted := func(s string) string { return m.style(t.Muted).Render(oneLine(s)) }
 	input := func(label string, index int) []string {
 		prefix, color := "  ", t.Muted
-		if e.field == index {
+		if e.field == index && !e.sidebar {
 			prefix, color = "› ", t.Focus
 		}
 		value := oneLine(e.inputs[index])
@@ -100,7 +104,7 @@ func (m Model) facetLines(width int) []string {
 				mark = "[x] "
 			}
 			color := t.Foreground
-			if i == e.suggestion {
+			if i == e.suggestion && !e.sidebar {
 				prefix, color = "› ", t.Focus
 			}
 			lines = append(lines, m.style(color).Render(prefix+mark+oneLine(app)))
@@ -120,7 +124,8 @@ func (m Model) facetLines(width int) []string {
 	case 1, 2:
 		lines := input("Start inclusive RFC3339", 1)
 		lines = append(lines, input("End exclusive RFC3339", 2)...)
-		return append(lines, muted("Z or explicit offset · Ctrl+U clears text"))
+		return append(lines, muted("↑/↓ or j/k choose From/To · Ctrl+U clears text"),
+			muted("Z or explicit offset · UTC [from, to)"))
 	case 3:
 		return append(input("Levels", 3), muted("ALL / UNKNOWN / WARN+ / exact levels"),
 			muted("WARN+ = WARN, ERROR, FATAL"), muted("Exact levels: comma-separated"))
@@ -133,7 +138,11 @@ func (m Model) facetLines(width int) []string {
 	case 5:
 		return append(input("Trace IDs", 5), muted("Exact values · comma-separated OR"))
 	default:
-		lines := []string{m.style(t.Focus).Render("› Exact field predicates"),
+		prefix, color := "› ", t.Focus
+		if e.sidebar {
+			prefix, color = "  ", t.Muted
+		}
+		lines := []string{m.style(color).Render(prefix + "Exact field predicates"),
 			muted(fmt.Sprintf("%d exact field predicates active", len(e.draft.Fields))), ""}
 		if len(e.draft.Fields) == 0 {
 			lines = append(lines, muted("None · add from inspector with f"))
@@ -142,11 +151,11 @@ func (m Model) facetLines(width int) []string {
 		start := max(0, e.predicate-visible+1)
 		for i := start; i < min(len(e.draft.Fields), start+visible); i++ {
 			f, mark, color := e.draft.Fields[i], "  ", t.Foreground
-			if i == e.predicate {
+			if i == e.predicate && !e.sidebar {
 				mark, color = "› ", t.Focus
 			}
 			lines = append(lines, m.style(color).Render(mark+oneLine(f.Path+"="+string(f.Value))))
 		}
-		return append(lines, "", muted("↑/↓ choose · Enter remove · Ctrl+R clear all"))
+		return append(lines, "", muted("↑/↓ or j/k choose · Enter remove · Ctrl+R clear fields"))
 	}
 }

@@ -86,6 +86,21 @@ def main():
         send("\r", "22 " + count)
         wait("● LOGS")
 
+        # Tab and Shift+Tab switch panes; only the sidebar cycles facets.
+        # Reverse/forward movement wraps, while Time owns Start/End movement.
+        send("f", "FILTER EDITOR")
+        send("\x1b[Zk", "Edit: Exact fields")
+        send("\x1b[A", "Edit: Trace IDs")
+        send("j", "Edit: Exact fields")
+        send("\x1b[B", "Edit: App")
+        send("j\t", "› Start inclusive")
+        send("j", "› End exclusive")
+        send("k", "› Start inclusive")
+        send("\x1b[B", "› End exclusive")
+        send("\x1b[A", "› Start inclusive")
+        send("\t\x1b[Z", "› Start inclusive")
+        send("\x1b", "22 " + count)
+
         # Keyword suggestions are NOT applied unless explicitly selected.
         send("f", "FILTER EDITOR")
         send("payment", "[ ] payment-worker")
@@ -97,7 +112,7 @@ def main():
         send("\x18", "Selected: ALL")
         send("payment", "[ ] payment-worker")
         send("\r", "Selected: payment-worker")
-        send("\t\t\t\x15WARN+", "› Levels")
+        send("\tjj\t\x15WARN+", "› Levels")
         text = send("\x13", "Search loaded")
         assert "App exact: payment-worker" in text
         assert "WARN,ERROR,FATAL" in text
@@ -145,7 +160,7 @@ def main():
         send("\x1b[B\r", "/fields/job/attempt=1")
         send("\x1b", "● LOGS")
         send("f", "FILTER EDITOR")
-        send("\t\t\t\t\t\tq y ", "› Exact field predicates")
+        send("\tk\tq y ", "› Exact field predicates")
         send("\x1b[B\r", "1 exact field predicates active")
         text = send("\x13", "Search loaded")
         assert "/fields/job/attempt=1" not in text
@@ -172,22 +187,32 @@ def main():
         send("R", "RESTORE SAVED SEARCH")
         send("\r", "22 " + count)
         send("f", "FILTER EDITOR")
-        send("\t\x152026-10-23T14:26:00", "› Start inclusive")
+        send("\tj\t\x152026-10-23T14:26:00", "› Start inclusive")
         send("\x13", "Start: RFC3339 requires")
         send("\x152026-10-23T16:26:00+02:00", "16:26:00+02:00")
-        send("\t\t\x15UNKNOWN", "› Levels")
+        send("\tj\t\x15UNKNOWN", "› Levels")
         text = send("\x13", "1 " + count)
         assert "Legacy record without severity" in text
+
+        # Clear is draft-only until applied and retains the explicit time window.
         send("f", "FILTER EDITOR")
-        send("\t\t\t\x15ALL\tno-such-message-xyz", "› Message")
+        send("\x0c", "Selected: ALL")
+        send("\x1b", "1 " + count)
+        send("f", "FILTER EDITOR")
+        send("\x0c", "Selected: ALL")
+        send("\tj\t", "2026-10-23T14:26:00Z")
+        send("\x13", "22 " + count)
+
+        send("f", "FILTER EDITOR")
+        send("\tjj\t\x15ALL\tj\tno-such-message-xyz", "› Message")
         send("\x13", "No events in this window")
         send("f", "FILTER EDITOR")
-        send("\t\t\t\t\x15Payment gateway timeout", "› Message")
+        send("\tjjj\t\x15Payment gateway timeout", "› Message")
         send("\x13", "1 " + count)
         resize(80, 24); os.kill(proc.pid, signal.SIGWINCH)
         wait("● LOGS")
         send("f", "FILTER EDITOR")
-        send("\t", "› Start inclusive")
+        send("\tj\t", "› Start inclusive")
         send("\x1b", "● LOGS")
         resize(160, 48); os.kill(proc.pid, signal.SIGWINCH)
         wait("q quit")
@@ -259,7 +284,7 @@ def main():
         print(f"PASS: {'local Elastic TLS' if lab else 'fixture'} PTY — explicit mode, 22 safe events, multiline inspector, focus, navigation, resize recovery, unavailable actions, clean exit")
         print("PASS: palette PTY — modal q/y/Space, fuzzy field action, disabled history, find handoff, focus restore and narrow resize, safe output")
         if search:
-            print("PASS: search PTY — exact app OR, WARN+/UNKNOWN, offset validation, phrase/empty, safe structured literal find/case/n/N, inspector trace+typed field AND, explicit private save/restore, anchored older history, narrow editor")
+            print("PASS: search PTY — pane/facet focus and wrap, Time Start/End, draft clear/cancel/apply with time retained, exact app OR, WARN+/UNKNOWN, offset validation, phrase/empty, safe structured literal find/case/n/N, inspector trace+typed field AND, explicit private save/restore, anchored older history, narrow editor")
     finally:
         if proc.poll() is None:
             proc.terminate()

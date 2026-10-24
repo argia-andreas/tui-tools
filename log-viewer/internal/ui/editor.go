@@ -17,6 +17,7 @@ type editor struct {
 	field, returnFocus int
 	draft              logs.Query
 	inputs             [7]string
+	sidebar            bool
 	suggestions        logs.Values
 	suggestion         int
 	suggestionError    bool
@@ -226,23 +227,76 @@ func (m Model) edit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.refresh()
 		}
 	case "filter":
+		if msg.Type == tea.KeyRunes && len(msg.Runes) > 1 && (e.sidebar || e.field == 1 || e.field == 2 || e.field == 6) {
+			var commands []tea.Cmd
+			for _, r := range msg.Runes {
+				next, cmd := m.edit(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+				m = next.(Model)
+				commands = append(commands, cmd)
+			}
+			return m, tea.Batch(commands...)
+		}
+		if key == "tab" || key == "shift+tab" {
+			e.sidebar = !e.sidebar
+			return m, nil
+		}
+		if key == "ctrl+l" {
+			e.draft.Scope.Services = nil
+			e.draft.Fields = nil
+			e.inputs[0], e.inputs[3], e.inputs[4], e.inputs[5] = "", "ALL", "", ""
+			e.predicate, e.suggestion, e.error = 0, 0, ""
+			return m.suggest()
+		}
+		if e.sidebar && key != "ctrl+s" {
+			switch key {
+			case "down", "j", "up", "k":
+				field := e.field
+				if field == 2 {
+					field = 1
+				}
+				if key == "down" || key == "j" {
+					field = (field + 1) % 7
+					if field == 2 {
+						field = 3
+					}
+				} else {
+					field = (field + 6) % 7
+					if field == 2 {
+						field = 1
+					}
+				}
+				e.field = field
+				if field == 0 {
+					return m.suggest()
+				}
+			}
+			return m, nil
+		}
+		// j/k navigate non-text fields only; app keywords and other text
+		// inputs must retain these characters literally.
+		if e.field == 1 || e.field == 2 || e.field == 6 {
+			if key == "j" {
+				key = "down"
+			} else if key == "k" {
+				key = "up"
+			}
+		}
 		switch key {
-		case "tab", "shift+tab":
-			delta := 1
-			if key == "shift+tab" {
-				delta = 6
-			}
-			e.field = (e.field + delta) % 7
-			if e.field == 0 {
-				return m.suggest()
-			}
 		case "up":
+			if e.field == 1 || e.field == 2 {
+				e.field = 1
+				break
+			}
 			if e.field == 6 {
 				e.predicate = max(0, e.predicate-1)
 				break
 			}
 			e.suggestion = max(0, e.suggestion-1)
 		case "down":
+			if e.field == 1 || e.field == 2 {
+				e.field = 2
+				break
+			}
 			if e.field == 6 {
 				e.predicate = min(max(0, len(e.draft.Fields)-1), e.predicate+1)
 				break

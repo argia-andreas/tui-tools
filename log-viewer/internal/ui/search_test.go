@@ -47,7 +47,7 @@ func (d *driver) run(cmd tea.Cmd) {
 }
 func (d *driver) key(key string) { d.run(d.apply(keyMsg(key))) }
 func keyMsg(key string) tea.KeyMsg {
-	keys := map[string]tea.KeyType{"enter": tea.KeyEnter, "esc": tea.KeyEsc, "tab": tea.KeyTab, "ctrl+s": tea.KeyCtrlS, "ctrl+u": tea.KeyCtrlU, "ctrl+t": tea.KeyCtrlT, "ctrl+x": tea.KeyCtrlX, "ctrl+r": tea.KeyCtrlR, "ctrl+p": tea.KeyCtrlP, "down": tea.KeyDown}
+	keys := map[string]tea.KeyType{"enter": tea.KeyEnter, "esc": tea.KeyEsc, "tab": tea.KeyTab, "shift+tab": tea.KeyShiftTab, "ctrl+l": tea.KeyCtrlL, "ctrl+s": tea.KeyCtrlS, "ctrl+u": tea.KeyCtrlU, "ctrl+t": tea.KeyCtrlT, "ctrl+x": tea.KeyCtrlX, "ctrl+r": tea.KeyCtrlR, "ctrl+p": tea.KeyCtrlP, "down": tea.KeyDown, "up": tea.KeyUp}
 	if k, ok := keys[key]; ok {
 		return tea.KeyMsg{Type: k}
 	}
@@ -224,6 +224,8 @@ func TestEditorsOwnTextAndCancelWithoutWritesOrFocusChanges(t *testing.T) {
 					}
 				}
 				d.key("tab")
+				d.key("down")
+				d.key("tab")
 			}
 			d.key("esc")
 		}
@@ -316,20 +318,117 @@ func TestExactAppsInspectedTypedPredicatesSaveAndRestore(t *testing.T) {
 		t.Fatal("restore lost exact filters")
 	}
 	d.key("f")
-	for i := 0; i < 6; i++ {
-		d.key("tab")
+	d.key("tab")
+	for i := 0; i < 5; i++ {
+		d.key("j")
 	}
+	d.key("tab")
 	d.key("q")
 	d.key("y")
 	d.key(" ")
 	if !strings.Contains(d.view(), "› Exact field predicates") {
 		t.Fatal("predicate row dispatched printable shortcuts")
 	}
-	d.key("down")
+	d.key("j")
 	d.key("enter")
 	d.key("ctrl+s")
 	if strings.Contains(d.view(), "/fields/job/attempt=1") || !strings.Contains(d.view(), "/trace.id=") || !strings.Contains(d.view(), "App exact: payment-worker") {
 		t.Fatal("removing one predicate changed other facets")
+	}
+}
+
+func TestFacetPaneNavigationApplyAndClear(t *testing.T) {
+	d, path := fixtureDriver(t, 500)
+	d.key("f")
+	d.key("payment")
+	d.key("enter")
+	d.key("tab")
+	if !strings.Contains(d.view(), "● FILTER EDITOR") || strings.Contains(d.view(), "● Edit:") {
+		t.Fatal("Tab did not focus the sidebar exclusively")
+	}
+	d.key("k")
+	if !strings.Contains(d.view(), "Edit: Exact fields") {
+		t.Fatal("sidebar k did not wrap to last facet")
+	}
+	d.key("jj") // Fast repeated keys may arrive in a single terminal message.
+	d.key("shift+tab")
+	if !strings.Contains(d.view(), "● Edit: Time") || !strings.Contains(d.view(), "› Start inclusive") {
+		t.Fatal("sidebar did not navigate to Time and return to editing")
+	}
+	d.key("ctrl+u")
+	d.key("2026-10-23T14:26:00Z")
+	d.key("j")
+	if !strings.Contains(d.view(), "› End exclusive") {
+		t.Fatal("j did not choose the second Time input")
+	}
+	d.key("k")
+	d.key("down")
+	d.key("up")
+	if !strings.Contains(d.view(), "› Start inclusive") {
+		t.Fatal("k/up did not return to the first Time input")
+	}
+	d.key("tab")
+	d.key("down")
+	d.key("tab")
+	d.key("ctrl+u")
+	d.key("WARN+")
+	d.key("tab")
+	d.key("j")
+	d.key("tab")
+	d.key("jky ")
+	if !strings.Contains(d.view(), "jky ") {
+		t.Fatal("message text lost navigation characters")
+	}
+	d.key("ctrl+u")
+	d.key("tab")
+	d.key("ctrl+s") // Apply works from the sidebar, too.
+	if strings.Contains(d.view(), "FILTER EDITOR") || !strings.Contains(d.view(), "App exact: payment-worker") {
+		t.Fatal("apply did not return to filtered logs")
+	}
+	d.key("S")
+	d.key("filtered")
+	d.key("enter")
+	saved, err := config.LoadSearches(path)
+	if err != nil || len(saved) != 1 {
+		t.Fatalf("save applied query: %v", err)
+	}
+	q := saved[0].Query
+	if q.Window.Start.Format("2006-01-02T15:04:05Z07:00") != "2026-10-23T14:26:00Z" || !reflect.DeepEqual(q.Levels, []string{"WARN", "ERROR", "FATAL"}) {
+		t.Fatalf("navigation edited the wrong input: %+v", q)
+	}
+	// Include every resettable criterion, and verify through save/restore.
+	q.Fields = []logs.FieldFilter{{Path: "/fields/job/attempt", Value: []byte("1")}}
+	q.TraceIDs = []string{"trace-payment-001"}
+	q.Message = logs.MessageFilter{Mode: "phrase", Text: "timeout"}
+	if err := config.SaveSearch(path, config.SavedSearch{Name: "filtered", Query: q}); err != nil {
+		t.Fatal(err)
+	}
+	d.key("R")
+	d.key("enter")
+	d.key("f")
+	d.key("ctrl+l")
+	d.key("esc")
+	d.key("S")
+	d.key("cancelled")
+	d.key("enter")
+	saved, err = config.LoadSearches(path)
+	if err != nil || len(saved) != 2 || !reflect.DeepEqual(saved[1].Query, q) {
+		t.Fatalf("cancelled clear changed applied query: %v %+v", err, saved)
+	}
+	d.key("f")
+	d.key("tab")
+	d.key("ctrl+l")
+	d.key("ctrl+s")
+	d.key("S")
+	d.key("cleared")
+	d.key("enter")
+	saved, err = config.LoadSearches(path)
+	if err != nil || len(saved) != 3 {
+		t.Fatalf("save cleared query: %v", err)
+	}
+	cleared := saved[2].Query
+	if len(cleared.Scope.Services)+len(cleared.Fields)+len(cleared.TraceIDs)+len(cleared.Levels) != 0 || cleared.Message.Text != "" || cleared.Window != q.Window || cleared.Scope.Source != q.Scope.Source || cleared.Limits != q.Limits {
+		t.Fatalf("clear did not reset criteria while retaining window/source/limits: %+v", cleared)
 	}
 }
 
