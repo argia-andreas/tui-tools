@@ -82,11 +82,15 @@ func TestConnectionMotionCannotOutliveChooserOrChangeControls(t *testing.T) {
 	m := workspace{model: workspaceProbe{events: "local files"}, picker: &p, request: 7}
 	before := ansi.Strip(m.View())
 	m, next := updateWorkspace(m, connectionTick(7))
+	if next == nil {
+		t.Fatal("visible chooser did not schedule animation")
+	}
+	m, next = updateWorkspace(m, connectionTick(7))
 	after := ansi.Strip(m.View())
 	if before == after || next == nil {
 		t.Fatal("visible chooser did not animate")
 	}
-	// Motion is background-only: controls keep their positions and hit regions.
+	// Only the compact logo changes: controls keep their positions and hit regions.
 	for _, label := range []string{"Open a connection", "New connection", "Browse local files"} {
 		if strings.Index(before, label) != strings.Index(after, label) {
 			t.Fatalf("animation moved %q", label)

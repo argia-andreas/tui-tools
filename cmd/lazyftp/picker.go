@@ -207,7 +207,7 @@ func (m picker) visibleChoices() int {
 	if m.height >= 32 {
 		return min(3, max(1, (m.height-22)/2))
 	}
-	return min(4, max(1, m.height-17))
+	return min(4, max(1, m.height-21))
 }
 
 func (m picker) offset() int { return max(0, m.cursor-m.visibleChoices()+1) }
@@ -258,6 +258,7 @@ func (m picker) activate() (tea.Model, tea.Cmd) {
 type pickerRow struct {
 	text          string
 	focus, choice int
+	logo          bool
 }
 
 type pickerLayout struct {
@@ -268,16 +269,27 @@ type pickerLayout struct {
 func (m picker) layout() pickerLayout {
 	l := pickerLayout{width: min(78, m.width-10)}
 	spacious := m.height >= 32
-	add := func(s string, focus, choice int) { l.rows = append(l.rows, pickerRow{s, focus, choice}) }
+	add := func(s string, focus, choice int) {
+		l.rows = append(l.rows, pickerRow{text: s, focus: focus, choice: choice})
+	}
 	center := func(s string) { add(lipgloss.PlaceHorizontal(l.width-6, lipgloss.Center, s), -1, -1) }
 	divider := func() { add(strings.Repeat("─", l.width-6), -1, -1) }
 	action := func(s string, focus int) {
-		if spacious {
-			add("", focus, -1)
+		// Every icon uses the same five-column gutter and three-row footprint.
+		icon := [3]string{"  ■  ", "■ ■ ■", "  ■  "}
+		if focus == 7 {
+			icon = [3]string{"■ ■  ", "■ ■ ■", "■ ■ ■"}
 		}
-		add(s+strings.Repeat(" ", max(1, l.width-8-ansi.StringWidth(s)))+"›", focus, -1)
 		if spacious {
-			add("", focus, -1)
+			add(" "+icon[0], focus, -1)
+		}
+		label := " ■  " + s
+		if spacious {
+			label = " " + icon[1] + "   " + s
+		}
+		add(label+strings.Repeat(" ", max(1, l.width-8-ansi.StringWidth(label)))+"›", focus, -1)
+		if spacious {
+			add(" "+icon[2], focus, -1)
 		}
 	}
 	add("", -1, -1)
@@ -313,21 +325,29 @@ func (m picker) layout() pickerLayout {
 		add("Bookmark name  "+m.name, 3, -1)
 		add("", -1, -1)
 		divider()
-		action("▷  [ Connect ]", 4)
-		add("◇  [ Save bookmark ]", 5, -1)
+		action("[ Connect ]", 4)
+		add("■  [ Save bookmark ]", 5, -1)
 		add("Saves folders and name only. Does not connect.", -1, -1)
 		add("", -1, -1)
 		add("‹  Back", 8, -1)
 	} else {
 		add("Open a connection", -1, -1)
 		add("", -1, -1)
-		if len(m.choices) == 0 {
-			if spacious {
-				center("┌────┐")
-				center("├─ · ┤")
-				center("└────┘")
-				add("", -1, -1)
+		// A fixed 4×3 square logo; only its accent tile changes, never its size.
+		for row := 0; row < 3; row++ {
+			var tiles []string
+			for col := 0; col < 4; col++ {
+				tile := "□"
+				if row*4+col == (m.frame/2)%12 {
+					tile = "■"
+				}
+				tiles = append(tiles, tile)
 			}
+			center(strings.Join(tiles, " "))
+			l.rows[len(l.rows)-1].logo = true
+		}
+		add("", -1, -1)
+		if len(m.choices) == 0 {
 			center("No connections yet")
 			center("Connect your first remote to get started.")
 		} else {
@@ -349,8 +369,8 @@ func (m picker) layout() pickerLayout {
 			}
 		}
 		add("", -1, -1)
-		action("⊕  New connection", 6)
-		action("▱  Browse local files", 7)
+		action("New connection", 6)
+		action("Browse local files", 7)
 		add("", -1, -1)
 		divider()
 		add("FTP / FTPS · Azure Blob · S3", -1, -1)
@@ -385,6 +405,9 @@ func (m picker) View() string {
 		if row.focus >= 0 && m.focus == row.focus && (row.choice < 0 || row.choice == m.cursor) {
 			style = style.Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection))
 		}
+		if row.logo {
+			style = accent
+		}
 		s := strings.Map(func(r rune) rune {
 			if unicode.IsControl(r) {
 				return ' '
@@ -396,23 +419,7 @@ func (m picker) View() string {
 	box := base.Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color(m.theme.Border)).BorderBackground(lipgloss.Color(m.theme.Background)).Render(strings.Join(card, "\n"))
 	rows := make([]string, m.height)
 	for i := range rows {
-		cells := []rune(strings.Repeat(" ", m.width))
-		if !m.details && !m.help && i > 2 && i < m.height-3 {
-			// Sparse packets drift across fixed lanes, never through the card.
-			for packet := 0; packet < 12; packet++ {
-				if 3+(packet*7)%(m.height-6) != i {
-					continue
-				}
-				x := (packet*31+m.frame)%(m.width+8) - 4
-				for bit, r := range "0101" {
-					col := x + bit
-					if col >= 0 && col < m.width && (i < l.y-1 || i > l.y+len(l.rows)+2 || col < l.x-2 || col >= l.x+l.width+2) {
-						cells[col] = r
-					}
-				}
-			}
-		}
-		rows[i] = base.Foreground(lipgloss.Color(m.theme.Border)).Faint(true).Render(string(cells))
+		rows[i] = base.Width(m.width).Render("")
 	}
 	rows[0] = accent.Width(m.width).Render("  LAZYFTP")
 	rows[1] = muted.Render(strings.Repeat("─", m.width))
