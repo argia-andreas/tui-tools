@@ -1,5 +1,5 @@
-// Package azure implements real, read-only Service Bus browsing. This slice
-// exposes only the fixed local emulator; no cloud fallback or mutations exist.
+// Package azure implements Service Bus browsing and reviewed DLQ delivery actions
+// against only the fixed local emulator. There is no cloud fallback.
 package azure
 
 import (
@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
@@ -20,6 +22,8 @@ import (
 type Store struct {
 	client *sb.Client
 	admin  *admin.Client
+	mu     sync.Mutex
+	held   bool
 }
 
 func NewEmulator() (*Store, error) {
@@ -78,7 +82,12 @@ func resource(queue, topic, subscription string) explorer.Resource {
 
 func validResource(r explorer.Resource) bool {
 	return r.Profile == "emulator" && r.Namespace == MessagingAddress &&
-		((r.Queue != "" && r.Topic == "" && r.Subscription == "") || (r.Queue == "" && r.Topic != "" && r.Subscription != ""))
+		((validEntity(r.Queue) && r.Topic == "" && r.Subscription == "") || (r.Queue == "" && validEntity(r.Topic) && validEntity(r.Subscription)))
+}
+
+// Entity names are path segments, never URLs or management/subqueue paths.
+func validEntity(name string) bool {
+	return name != "" && name != "." && name != ".." && !strings.ContainsAny(name, "/\\?#$%:\x00\r\n")
 }
 
 func (*Store) Counts(ctx context.Context, r explorer.Resource) (explorer.Counts, error) {
@@ -152,8 +161,68 @@ func value[T any](p *T) (zero T) {
 	return zero
 }
 
-func (*Store) ReceiveNextDLQ(context.Context, explorer.Resource) (explorer.Delivery, error) {
-	return nil, errors.New("browsing is read-only; reviewed DLQ actions arrive in a later slice")
+func (s *Store) ReceiveNextDLQ(ctx context.Context, r explorer.Resource) (explorer.Delivery, error) {
+	if !validResource(r) {
+		return nil, errors.New("invalid emulator resource identity")
+	}
+	s.mu.Lock()
+	if s.held {
+		s.mu.Unlock()
+		return nil, errors.New("a DLQ delivery is already held or being acquired")
+	}
+	s.held = true
+	s.mu.Unlock()
+	release := func() { s.mu.Lock(); s.held = false; s.mu.Unlock() }
+	owned := false
+	defer func() {
+		if !owned {
+			release()
+		}
+	}()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	// Check the actual entity before opening a non-session receiver. Failure to
+	// inspect it is not permission to attempt an unsupported session mutation.
+	var sessions bool
+	if r.Queue != "" {
+		q, err := s.admin.GetQueue(ctx, r.Queue, nil)
+		if err != nil || q == nil {
+			return nil, errors.New("cannot validate queue for DLQ mutation")
+		}
+		sessions = value(q.RequiresSession)
+	} else {
+		sub, err := s.admin.GetSubscription(ctx, r.Topic, r.Subscription, nil)
+		if err != nil || sub == nil {
+			return nil, errors.New("cannot validate subscription for DLQ mutation")
+		}
+		sessions = value(sub.RequiresSession)
+	}
+	if sessions {
+		return nil, errors.New("DLQ mutations on session-enabled entities are unsupported")
+	}
+	options := &sb.ReceiverOptions{ReceiveMode: sb.ReceiveModePeekLock, SubQueue: sb.SubQueueDeadLetter}
+	var receiver *sb.Receiver
+	var err error
+	if r.Queue != "" {
+		receiver, err = s.client.NewReceiverForQueue(r.Queue, options)
+	} else {
+		receiver, err = s.client.NewReceiverForSubscription(r.Topic, r.Subscription, options)
+	}
+	if err != nil {
+		return nil, errors.New("cannot open DLQ receiver")
+	}
+	messages, err := receiver.ReceiveMessages(ctx, 1, nil)
+	if err != nil || len(messages) != 1 {
+		closeReceiver(ctx, receiver)
+		return nil, errors.New("no DLQ delivery acquired within receive deadline")
+	}
+	destination := r.Queue
+	if destination == "" {
+		destination = r.Topic
+	}
+	owned = true
+	return &delivery{message: messages[0], receiver: receiver, release: release,
+		newSender: func() (deliverySender, error) { return s.client.NewSender(destination, nil) }}, nil
 }
 
 func (s *Store) Close(ctx context.Context) error { return s.client.Close(ctx) }

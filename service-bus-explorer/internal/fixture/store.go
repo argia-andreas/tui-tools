@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"slices"
+	"sync"
 	"time"
 
 	"servicebusexplorer/internal/explorer"
@@ -22,8 +22,11 @@ type entry struct {
 }
 
 type Store struct {
+	mu        sync.Mutex
 	resources []explorer.Resource
 	entries   map[explorer.Resource]entry
+	held      *delivery
+	now       func() time.Time
 }
 
 func New() (*Store, error) {
@@ -34,7 +37,7 @@ func New() (*Store, error) {
 	if err := json.Unmarshal(scenario, &seeds); err != nil {
 		return nil, fmt.Errorf("read fixture scenario: %w", err)
 	}
-	s := &Store{entries: make(map[explorer.Resource]entry)}
+	s := &Store{entries: make(map[explorer.Resource]entry), now: time.Now}
 	for _, seed := range seeds {
 		r := explorer.Resource{Profile: "fixture", Namespace: "local-lab", Queue: seed.Queue, Topic: seed.Topic, Subscription: seed.Subscription}
 		s.resources = append(s.resources, r)
@@ -70,9 +73,12 @@ func (s *Store) Discover(ctx context.Context) ([]explorer.Resource, error) {
 }
 
 func (s *Store) Counts(ctx context.Context, r explorer.Resource) (explorer.Counts, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return explorer.Counts{}, err
 	}
+	s.expire()
 	e, ok := s.entries[r]
 	if !ok {
 		return explorer.Counts{}, errors.New("fixture resource not found")
@@ -81,9 +87,12 @@ func (s *Store) Counts(ctx context.Context, r explorer.Resource) (explorer.Count
 }
 
 func (s *Store) Peek(ctx context.Context, r explorer.Resource, dlq bool, from int64, limit int) (explorer.Page, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return explorer.Page{}, err
 	}
+	s.expire()
 	e, ok := s.entries[r]
 	if !ok {
 		return explorer.Page{}, errors.New("fixture resource not found")
@@ -105,17 +114,189 @@ func (s *Store) Peek(ctx context.Context, r explorer.Resource, dlq bool, from in
 			page.NextSequence = &next
 			break
 		}
-		msg.Body = slices.Clone(msg.Body)
-		msg.Properties = maps.Clone(msg.Properties)
-		page.Messages = append(page.Messages, msg)
+		page.Messages = append(page.Messages, preview(msg))
 	}
 	return page, nil
 }
 
-func (*Store) ReceiveNextDLQ(context.Context, explorer.Resource) (explorer.Delivery, error) {
-	return nil, errors.New("fixture browsing is read-only; reviewed DLQ actions arrive in a later slice")
+func (s *Store) ReceiveNextDLQ(ctx context.Context, r explorer.Resource) (explorer.Delivery, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.expire()
+	if s.held != nil {
+		return nil, errors.New("a fixture delivery is already held")
+	}
+	e, ok := s.entries[r]
+	if !ok {
+		return nil, errors.New("fixture resource not found")
+	}
+	if len(e.deadLetter) == 0 {
+		return nil, errors.New("no available DLQ message")
+	}
+	d := &delivery{store: s, resource: r, message: cloneMessage(e.deadLetter[0]), until: s.now().Add(time.Minute)}
+	s.held = d
+	return d, nil
 }
 
-func (*Store) Close(context.Context) error { return nil }
+// Expiry is evaluated on reads, acquisition and mutation; no background goroutine or
+// automatic renewal is needed. Peek still includes locked broker messages.
+func (s *Store) expire() {
+	if s.held != nil && !s.now().Before(s.held.until) {
+		s.held.release()
+	}
+}
+
+type delivery struct {
+	store    *Store
+	resource explorer.Resource
+	message  explorer.Message // full body, independent of all displayed snapshots
+	until    time.Time
+	settled  bool
+	sent     bool
+}
+
+func (d *delivery) Snapshot() explorer.Message { return preview(d.message) }
+func (d *delivery) LockedUntil() time.Time     { return d.until }
+
+func (d *delivery) valid(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	d.store.expire()
+	if d.settled || d.store.held != d {
+		return errors.New("fixture delivery is settled or its lock expired; receive again")
+	}
+	return nil
+}
+
+func (d *delivery) Resend(ctx context.Context, newMessageID string) (explorer.SendResult, error) {
+	s := d.store
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rejected := explorer.SendResult{State: "rejected", MessageID: newMessageID}
+	if err := d.valid(ctx); err != nil {
+		return rejected, err
+	}
+	if d.sent {
+		return rejected, errors.New("this delivery has already sent a copy")
+	}
+	if newMessageID == "" || newMessageID == d.message.ID {
+		return rejected, errors.New("replay requires a new nonempty message ID")
+	}
+	for _, r := range s.resources {
+		if r.Profile != d.resource.Profile || r.Namespace != d.resource.Namespace {
+			continue
+		}
+		if d.resource.Queue != "" {
+			if r != d.resource {
+				continue
+			}
+		} else if r.Topic != d.resource.Topic || r.Subscription == "" {
+			continue
+		}
+		e := s.entries[r]
+		copy := cloneMessage(d.message)
+		copy.ID = newMessageID
+		copy.Sequence = 100
+		for _, msg := range e.active {
+			if msg.Sequence >= copy.Sequence {
+				copy.Sequence = msg.Sequence + 7
+			}
+		}
+		copy.EnqueuedAt = s.now()
+		copy.DeliveryCount = 0
+		copy.DeadLetterReason, copy.DeadLetterDescription = "", ""
+		copy.PreviewTruncated = false
+		delete(copy.Properties, "DeadLetterReason")
+		delete(copy.Properties, "DeadLetterErrorDescription")
+		e.active = append(e.active, copy)
+		s.entries[r] = e
+	}
+	d.sent = true
+	return explorer.SendResult{State: "confirmed", MessageID: newMessageID}, nil
+}
+
+func (d *delivery) Complete(ctx context.Context) error {
+	s := d.store
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := d.valid(ctx); err != nil {
+		return err
+	}
+	e := s.entries[d.resource]
+	e.deadLetter = slices.Delete(e.deadLetter, 0, 1)
+	s.entries[d.resource] = e
+	d.settled, s.held = true, nil
+	return nil
+}
+
+func (d *delivery) Abandon(ctx context.Context) error {
+	d.store.mu.Lock()
+	defer d.store.mu.Unlock()
+	if err := d.valid(ctx); err != nil {
+		return err
+	}
+	d.release()
+	return nil
+}
+
+func (d *delivery) release() {
+	e := d.store.entries[d.resource]
+	e.deadLetter[0].DeliveryCount++
+	d.store.entries[d.resource] = e
+	d.settled, d.store.held = true, nil
+}
+
+func (s *Store) Close(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.held != nil {
+		s.held.release()
+	}
+	return nil
+}
+
+func cloneValue(v any) any {
+	switch v := v.(type) {
+	case map[string]any:
+		m := make(map[string]any, len(v))
+		for k, value := range v {
+			m[k] = cloneValue(value)
+		}
+		return m
+	case []any:
+		values := make([]any, len(v))
+		for i, value := range v {
+			values[i] = cloneValue(value)
+		}
+		return values
+	case []byte:
+		return slices.Clone(v)
+	default:
+		return v
+	}
+}
+
+func cloneMessage(m explorer.Message) explorer.Message {
+	m.Body = slices.Clone(m.Body)
+	if m.Properties != nil {
+		m.Properties = cloneValue(m.Properties).(map[string]any)
+	}
+	return m
+}
+
+func preview(m explorer.Message) explorer.Message {
+	if len(m.Body) > 64*1024 {
+		m.Body = m.Body[:64*1024]
+		m.PreviewTruncated = true
+	}
+	return cloneMessage(m)
+}
 
 var _ explorer.Store = (*Store)(nil)

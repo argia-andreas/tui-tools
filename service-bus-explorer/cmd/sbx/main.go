@@ -51,7 +51,10 @@ func main() {
 		os.Exit(1)
 	}
 	options := ui.Options{Mode: mode, Preferences: prefs, ConfigPath: *configPath, ASCII: *ascii}
-	_, runErr := tea.NewProgram(ui.New(store, options), tea.WithAltScreen()).Run()
+	final, runErr := tea.NewProgram(ui.New(store, options), tea.WithAltScreen()).Run()
+	if summary, ok := final.(interface{ ExitSummary() string }); ok && summary.ExitSummary() != "" {
+		fmt.Fprintln(os.Stdout, summary.ExitSummary())
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	closeErr := store.Close(ctx)

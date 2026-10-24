@@ -288,7 +288,7 @@ func (m Model) inspectorLines() []string {
 		if truncated {
 			details = append(details, m.paint("  [body preview truncated]", m.theme.Warning))
 		}
-		details = append(details, "", m.paint("  No receive / resend / delete in this slice.", m.theme.Muted))
+		details = append(details, "", m.paint("  Peek is safe. DLQ actions require receive-next review.", m.theme.Muted))
 	}
 	return details
 }
@@ -302,16 +302,18 @@ func (m Model) View() string {
 	subtitle := "  Safe browsing workspace · sample data, no Azure connection"
 	if m.mode == "emulator" {
 		badge = "EMULATOR · LOCAL  "
-		subtitle = "  Real local broker · peek only · — means runtime counts unavailable"
+		subtitle = "  Real local broker · safe peek by default · explicit DLQ review · — counts unavailable"
 	}
 	lines := []string{m.paint(fit(header, m.width-lipgloss.Width(badge)), m.theme.Focus) + m.paint(badge, m.theme.Warning), m.paint(fit(subtitle, m.width), m.theme.Muted), m.paint(strings.Repeat("─", m.width), m.theme.Border)}
 	height, width := m.height-6, m.width
-	showSidebar := m.prefs.Sidebar && width >= 110
+	showSidebar := m.prefs.Sidebar && width >= 110 && m.review.phase == ""
 	if showSidebar {
 		width -= 24
 	}
 	var content []string
-	if m.screen == "messages" {
+	if m.review.phase != "" {
+		content = m.reviewView(width, height)
+	} else if m.screen == "messages" {
 		content = m.messageView(width, height)
 	} else {
 		content = m.dashboardView(width, height)
@@ -341,6 +343,12 @@ func (m Model) View() string {
 		}
 	}
 	status := m.status
+	if m.review.phase != "" {
+		keys = "  Tab/arrows choose   Enter confirm   Esc cancel/release   PgUp/PgDn body   Ctrl+C quit safely"
+		if m.width < 110 {
+			keys = "  Tab choose  Enter confirm  Esc release  PgUp/PgDn body  Ctrl+C quit"
+		}
+	}
 	if m.revision != m.persisted {
 		status += " · unsaved preferences"
 	}
@@ -422,7 +430,7 @@ func (m Model) overlayPalette(lines []string) {
 	for len(rows) < height-4 {
 		rows = append(rows, "")
 	}
-	rows = append(rows, m.paint(fmt.Sprintf("  %d results · arrows choose · Enter run · Esc close", len(choices)), m.theme.Muted), m.paint("  Read-only workspace / no receive, resend or delete", m.theme.Queued))
+	rows = append(rows, m.paint(fmt.Sprintf("  %d results · arrows choose · Enter run · Esc close", len(choices)), m.theme.Muted), m.paint("  Peek is safe · receive-next requires separate held-message review", m.theme.Queued))
 	panel := m.panel("Ctrl+P / ACTIONS", width, height, rows, true)
 	x, y := (m.width-width)/2, max(3, (m.height-height)/3)
 	for index, row := range panel {

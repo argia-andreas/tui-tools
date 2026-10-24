@@ -2,7 +2,7 @@
 
 - Gate 1 — Product: APPROVED 2026-10-23
 - Gate 2 — Architecture: APPROVED 2026-10-23 for independent app/lab, layered testing and independent-first reuse boundary
-- Gate 3 — Program Design: APPROVED 2026-10-23
+- Gate 3 — Program Design: APPROVED 2026-10-23; SDK-internal recovery accepted 2026-10-24 (no application-level retries)
 - Gate 4 — Slice plan: APPROVED 2026-10-23
 
 ## Project boundary
@@ -19,7 +19,7 @@ This is an independent side project in the same repository as LazyFTP, not a Laz
 - Fast local feedback is a core requirement: deterministic fixture tests plus seeded broker integration, with commands to send, drain, dead-letter and reset disposable data.
 - Topic-subscription replay sends to the original topic with an explicit warning about delivery to other matching subscriptions. Queue replay sends to the original queue.
 - User approved receive-next DLQ acquisition followed by review of the actual locked message. A peek-selected message cannot be acquired by sequence using the supported SDK contract. Never imply that acquiring next acts on the selected preview; cancellation/release can affect delivery count.
-- Gates 1–4 approved. User approved continuing through Slice 3 after reviewing earlier results. Slice 3 is implemented and verified; pause for review before Slice 4. Interactive mutations and bulk operations remain deferred. MCP has its own parallel product proposal, not UI-scope implementation authorization.
+- User approved Slice 4 and explicitly accepted trusting SDK recovery rather than patching it. Fixture delivery, Azure delivery and reviewed-action UI are implemented; final verification is in progress. No app-level send/settlement/replay retries; SDK recovery/fallback may repeat wire attempts. Do not promise exactly-once or mark Slice 4 complete before final evidence. Bulk operations remain deferred. MCP has its own parallel product proposal, not UI-scope implementation authorization.
 - Docker daemon and emulator now run as supervised orb services `servicebus-docker` and `servicebus-lab`. No resize was needed for the tested ~4 GB orb. Live lab configuration is outside the repo at `/home/user/.local/share/servicebus-explorer-lab/`.
 - Messaging/discovery/queue replay/topic fan-out/drain probes passed. JavaScript SDK count reads failed to parse missing details; the .NET SDK returned incorrect zeros. Do not fake aggregate dashboard totals from bounded peeks or seed expectations.
 - Architecture selects a separate Go module and terminal UI under `service-bus-explorer/`, with direct Azure SDK access and its own reproducible lab commands. Read `04-slices.md` for the approved sequence. Go SDK 1.11.0 discovery and message browsing now run against the emulator; cloud access remains unimplemented.
@@ -45,12 +45,72 @@ This is an independent side project in the same repository as LazyFTP, not a Laz
 - Continue discussion in that Service Bus thread. Do not send progress updates to the FTP thread.
 - User authorized implementation, frequent commits/pushes and pulling when needed, including delegated threads; put that instruction in handoffs. Use disjoint ownership and separate branches for independent threads, integrate with checks, never force-push. No Azure writes/deployments are authorized.
 
+## Slice 4 continuation — 2026-10-24
+
+- Andreas requested a good checkpoint committed/pushed to `main`, then a new
+  thread using the newly configured 8 GB orb settings. The old orb still reports
+  3.8 GiB; do not claim it resized. New orbs do not inherit this orb's services,
+  toolchain, temporary files or evidence. Use the configured project default.
+- Code is now present for one held delivery, actual-message review with default
+  Cancel/cleanup off, resend-to-origin, typed delete, bounded release/expiry,
+  terminal confirmed/partial/unknown outcomes and no application retry. Azure
+  verifies session metadata before acquisition and rejects unsupported replay
+  representations. Fixture backend is concurrent-safe and exercises the same UI.
+- `make test terminal-test GO=/home/user/.local/toolchains/go/bin/go` and
+  `go vet ./...` passed at the handoff checkpoint. UI tests include differing peek
+  selection/acquisition, accepted-but-lost-ack send with no cleanup, failed cleanup,
+  single-flight submission, expiry, late-acquisition release and pending-quit
+  outcome preservation. PTY covers retained-original resend and typed delete.
+- After a fresh reset/seed at 500 ms pacing, `make integration-test` also passed:
+  exact 90 KB body/scalar properties, source/replay 37-minute TTL, new ID/correlation,
+  cleared schedule/DLQ fields, retained original, separate Complete, topic fan-out
+  to both subscriptions, and real emulator PTY cancel/release/resend/typed delete.
+  Final outputs are in the source thread artifact directory below as
+  `fixture-checks.log`, `emulator-checks.log` and `seed.log`. The tests leave
+  deliberate topic copies and the PTY deletes one acquired Orders DLQ message;
+  reseed before repeating exact baseline assertions. No cloud validation occurred.
+- Live broker debugging found binary application properties rejected by emulator
+  serialization (broker log names `System.Byte[]`), misleadingly mapped to SDK
+  `ErrMessageTooLarge`. The integration test asserts rejection with a one-byte
+  body, then uses string/bool/int properties for the 90 KB binary-body round trip;
+  binary-property cloning remains unit-tested. No claim of broker binary-property
+  preservation is justified by that unit test.
+- The first round-trip test's requested 90-minute TTL was capped at one hour.
+  The actual queue management response confirms `DefaultMessageTimeToLive=PT1H`.
+  Integration now requests 37 minutes and independently checks the source and
+  replay TTL, rather than deriving expected values from the conversion helper.
+- A reseed hit namespace throttle 50002 at the previous 100 ms pacing. It stopped
+  on the unknown outcome, not resumed/retried. Acknowledged 20-message lab batches
+  now pause 500 ms. Recreate/reset before repeating broker checks; never continue
+  a partial seed or invent totals. Run integration/PTY/captures serially.
+- The fixture PTY's old fixed-sleep `j` sequence proved flaky under load; it now
+  awaits each selected Settings row. Actual space key events no longer insert
+  two spaces in palette queries. The typed-delete field owns `q` only during
+  review, not on the terminal result screen. Release wording now explicitly says
+  **Lock release**, distinct from retention of the original message.
+- Intermediate inspected fixture screenshots and a keyboard/pointer recording
+  live in the source thread at absolute path
+  `/home/user/workspace/.amp/in/artifacts/service-bus-slice4/` with `README.md`.
+  Use `download_thread_file` from the source thread if useful. Recording shows
+  older “Original release” wording and needs recapture before final delivery.
+  Final emulator, theme/compact review and unknown/expiry captures remain pending.
+- Capture recipe: temporary ttyd 1.7.7, explicit port 7682, DOM renderer, 14px
+  monospace; 1380×790 browser viewport at DPR2 yields 160×48. 700×406 gives 80×24.
+  Hover-capable Chrome wrapper and official action-video helper worked with
+  recording at **5 fps / 1100×680 / DPR2**; 10 fps at 1380×790 overloaded encoder.
+  Inspect final screenshots and a 5-fps video contact sheet. Preview service and
+  browser are stopped; do not preserve an obsolete portal as the live app.
+- Finish Slice 4 verification/evidence, update its checkbox only once proven,
+  commit/push scoped changes, show actual screenshots/recording and ask whether
+  to continue to Slice 5. Do not restart approved gates or patch the SDK. Do not
+  contact the FTP thread or modify its files. MCP remains separately gated.
+
 ## Slices
 
 - [x] Slice 1 — runnable fixture workspace
 - [x] Slice 2 — real local broker browsing and reproducible lab
 - [x] Slice 3 — complete read-only workspace and themes
-- [ ] Slice 4 — reviewed single-message DLQ actions
+- [ ] Slice 4 — reviewed single-message DLQ actions (implemented; final verification/handoff in progress)
 - [ ] Slice 5 — portable developer handoff and polish
 
 Approved sequence. See `04-slices.md` for checks and ownership. Show actual terminal captures/recordings when results are ready.
