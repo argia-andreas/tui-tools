@@ -130,6 +130,71 @@ func TestDirectionalPaneShortcuts(t *testing.T) {
 	}
 }
 
+func TestEnterInspectsFilesWithoutTogglingOrMovingFocus(t *testing.T) {
+	for _, remote := range []bool{false, true} {
+		t.Run(fmt.Sprintf("remote=%t", remote), func(t *testing.T) {
+			d := start(t, storage.NewDemo())
+			name, nextName, location := "README.md", "project notes.txt", "/project"
+			if remote {
+				d.key("tab")
+				name, nextName, location = "orders.csv", "résumé.pdf", "/incoming"
+			}
+			d.key("j")
+			d.key("j")
+			d.key("enter")
+			assertInspector := func(want string) {
+				t.Helper()
+				parts := strings.Split(d.screen(), "INSPECTOR")
+				if len(parts) != 2 || !strings.Contains(parts[1], want) || !strings.Contains(parts[1], location) {
+					t.Fatalf("inspector does not show %q at %q:\n%s", want, location, d.screen())
+				}
+			}
+			assertInspector(name)
+			d.key("enter")
+			assertInspector(name)
+			d.key("j") // Enter leaves focus in the file pane.
+			assertInspector(nextName)
+			d.key("enter")
+			assertInspector(nextName)
+			d.key("]") // The explicit toggle still closes the inspector.
+			if strings.Contains(d.screen(), "INSPECTOR") {
+				t.Fatal("inspector toggle did not close")
+			}
+		})
+	}
+}
+
+func TestEnterDoesNotInspectEmptyPaneOrConsumeOtherContexts(t *testing.T) {
+	d := start(t, browserFunc(func(context.Context, storage.Location) ([]storage.Entry, error) {
+		return nil, nil
+	}))
+	d.key("enter")
+	if strings.Contains(d.screen(), "INSPECTOR") {
+		t.Fatal("Enter opened inspector without a file")
+	}
+	d = start(t, storage.NewDemo())
+	d.key("/")
+	d.key("README")
+	d.key("enter")
+	if strings.Contains(d.screen(), "INSPECTOR") {
+		t.Fatal("applying filter opened inspector")
+	}
+	d.key("?")
+	d.key("enter")
+	requireText(t, d, "KEYBOARD SHORTCUTS")
+	d.key("esc")
+	if strings.Contains(d.screen(), "INSPECTOR") {
+		t.Fatal("Enter in help opened inspector")
+	}
+	d.key("enter")
+	requireText(t, d, "INSPECTOR")
+	d.key("tab")
+	d.key("tab") // Inspector focus: Enter must not close it or navigate.
+	d.key("enter")
+	requireText(t, d, "INSPECTOR")
+	requireText(t, d, "README.md")
+}
+
 func TestPaletteOwnsInputAndExecutesEnabledActions(t *testing.T) {
 	d := start(t, storage.NewDemo())
 	d.key("ctrl+p")

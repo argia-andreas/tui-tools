@@ -416,6 +416,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					cmd := m.navigate(i, loc)
 					return m, cmd
 				}
+				if len(entries) > 0 {
+					m.inspector = true
+				}
 			}
 		case "backspace", "h":
 			if m.focus == 1 || (m.focus == 2 && !m.disconnected) {
