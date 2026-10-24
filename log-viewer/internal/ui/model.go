@@ -11,11 +11,12 @@ import (
 )
 
 type Options struct {
-	Service  *logs.Service
-	Query    logs.Query
-	Theme    theme.Theme
-	Context  context.Context
-	LocalLab bool
+	Service      *logs.Service
+	Query        logs.Query
+	Theme        theme.Theme
+	Context      context.Context
+	LocalLab     bool
+	SearchesPath string
 }
 
 type Model struct {
@@ -27,11 +28,23 @@ type Model struct {
 	selected, top, focus, inspectorOffset int
 	detail                                bool
 	status                                string
+	generation                            uint64
+	cancel                                context.CancelFunc
+	requestContext                        context.Context
+	loading                               bool
+	budgetStopped                         bool
+	editor                                *editor
+	suggestionGeneration                  uint64
+	suggestionCancel                      context.CancelFunc
+	find                                  string
+	findCase                              bool
 }
 
 type loadedMsg struct {
-	page logs.Page
-	err  error
+	page       logs.Page
+	err        error
+	generation uint64
+	older      bool
 }
 
 func New(options Options) Model {
@@ -39,14 +52,18 @@ func New(options Options) Model {
 	if options.LocalLab {
 		status = "Local Elasticsearch · TLS · read-only key · seeded fictional data · no follow"
 	}
-	return Model{options: options, focus: 1, status: status}
+	if options.Context == nil {
+		options.Context = context.Background()
+	}
+	if options.Query.Limits.Events == 0 {
+		options.Query.Limits.Events = 500
+	}
+	ctx, cancel := context.WithCancel(options.Context)
+	return Model{options: options, focus: 1, status: status, generation: 1, requestContext: ctx, cancel: cancel, loading: true}
 }
 
 func (m Model) Init() tea.Cmd {
-	return func() tea.Msg {
-		page, err := m.options.Service.Search(m.options.Context, m.options.Query)
-		return loadedMsg{page, err}
-	}
+	return m.searchCommand(false)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -56,27 +73,62 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.detail && ((m.focus == 0 && m.width < 140) || (m.focus == 2 && m.width < 120)) {
 			m.focus = 1
 		}
+		if m.editor != nil && !m.detail && ((m.editor.returnFocus == 0 && m.width < 140) || (m.editor.returnFocus == 2 && m.width < 120)) {
+			m.editor.returnFocus = 1
+		}
 		m.keepVisible()
 		m.clampInspector()
 	case loadedMsg:
-		m.loaded = true
-		m.loadError = msg.err != nil
-		m.page = msg.page
-		if m.loadError {
-			m.status = "Source read failed · no event data retained"
-		} else {
-			for i, e := range m.page.Events {
-				if e.Text("level") == "ERROR" {
-					m.selected = i
-					break
-				}
-			}
-			m.keepVisible()
+		return m.receivePage(msg)
+	case suggestionsMsg:
+		if m.editor != nil && m.editor.kind == "filter" && msg.generation == m.suggestionGeneration {
+			m.editor.suggestions = msg.values
+			m.editor.suggestion = 0
+			m.editor.suggestionError = msg.err != nil
+			m.editor.suggestionLoading = false
 		}
 	case tea.KeyMsg:
+		if m.editor != nil {
+			return m.edit(msg)
+		}
 		switch msg.String() {
 		case "q", "ctrl+c":
-			return m, tea.Quit
+			m.cancel()
+			return m, tea.Sequence(m.closeCursor(m.page.Next), tea.Quit)
+		case "f":
+			if m.focus == 2 {
+				return m.openFieldPicker()
+			}
+			return m.openFilters()
+		case "/":
+			m.editor = &editor{kind: "find", text: m.find, caseSensitive: m.findCase, returnFocus: m.focus}
+		case "n", "N":
+			m.findNext(msg.String() == "N")
+		case "o":
+			if m.loading {
+				m.status = "Read already in progress"
+				break
+			}
+			if m.budgetStopped {
+				m.status = "History stopped: session budget 10000 events / 32 MiB"
+				break
+			}
+			if m.page.Next == "" {
+				m.status = "No older history available"
+				break
+			}
+			m.loading = true
+			return m, m.searchCommand(true)
+		case "r":
+			return m.refresh()
+		case "S":
+			if m.options.SearchesPath == "" {
+				m.status = "Saved searches unavailable: no explicit --searches path"
+				break
+			}
+			m.editor = &editor{kind: "save", returnFocus: m.focus}
+		case "R":
+			return m.openRestore()
 		case "esc":
 			m.detail, m.focus = false, 1
 		case "tab", "shift+tab":
@@ -139,8 +191,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.clampInspector()
 			}
-		case "ctrl+p", "y", "Y", " ", "/", "f", "?":
-			feature := map[string]string{"ctrl+p": "Command palette", "y": "Field yank", "Y": "Field yank", " ": "Live follow", "/": "Local find", "f": "Filters", "?": "Command help"}[msg.String()]
+		case "ctrl+p", "y", "Y", " ", "?":
+			feature := map[string]string{"ctrl+p": "Command palette", "y": "Field yank", "Y": "Field yank", " ": "Live follow", "?": "Command help"}[msg.String()]
 			m.status = fmt.Sprintf("%s is not available in this slice · navigation only", feature)
 		}
 	}

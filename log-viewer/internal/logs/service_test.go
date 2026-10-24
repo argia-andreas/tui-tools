@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"unicode"
 
@@ -139,6 +141,141 @@ func TestReadBoundariesAndFailures(t *testing.T) {
 	policy.RedactPaths = []string{"/fields/bad~2escape"}
 	if _, err := logs.NewService(p, policy); err == nil {
 		t.Fatal("invalid redaction policy accepted")
+	}
+}
+
+func TestExactFiltersAndHistory(t *testing.T) {
+	s := fixtureService(t, fixture.Policy())
+	defer s.Shutdown(context.Background())
+	for _, test := range []struct {
+		name   string
+		change func(*logs.Query)
+		count  int
+	}{
+		{"apps OR severity AND", func(q *logs.Query) {
+			q.Scope.Services = []string{"checkout-api", "payment-worker"}
+			q.Levels = []string{"WARN", "ERROR", "FATAL"}
+		}, 4},
+		{"exact app", func(q *logs.Query) { q.Scope.Services = []string{"checkout"} }, 0},
+		{"checkout only warnings", func(q *logs.Query) {
+			q.Scope.Services = []string{"checkout-api"}
+			q.Levels = []string{"WARN", "ERROR", "FATAL"}
+		}, 1},
+		{"unknown is explicit", func(q *logs.Query) { q.Levels = []string{"UNKNOWN"} }, 1},
+		{"trace plus app", func(q *logs.Query) {
+			q.Scope.Services = []string{"checkout-api"}
+			q.TraceIDs = []string{"8c3e7a21b9f04450"}
+		}, 3},
+		{"typed numeric field", func(q *logs.Query) {
+			q.Fields = []logs.FieldFilter{{Path: "/fields/order/id", Value: json.RawMessage(`8043`)}}
+		}, 2},
+		{"typed boolean", func(q *logs.Query) {
+			q.Fields = []logs.FieldFilter{{Path: "/fields/job/retryable", Value: json.RawMessage(`true`)}}
+		}, 1},
+		{"phrase not substring", func(q *logs.Query) { q.Message = logs.MessageFilter{Mode: "phrase", Text: "gateway time"} }, 0},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			q := fixture.Query()
+			test.change(&q)
+			page, err := s.Search(context.Background(), q)
+			if err != nil || len(page.Events) != test.count {
+				t.Fatalf("count=%d want=%d err=%v", len(page.Events), test.count, err)
+			}
+		})
+	}
+	q := fixture.Query()
+	q.Limits.Events = 3
+	page, err := s.Search(context.Background(), q)
+	if err != nil || page.Next == "" {
+		t.Fatal("history absent", err)
+	}
+	old := page.Next
+	// Mutating the caller's query cannot rewrite a frozen continuation.
+	q.Scope.Source = "foreign"
+	seen := map[string]bool{}
+	count := 0
+	for {
+		for _, event := range page.Events {
+			message := event.Text("message")
+			if seen[message] {
+				t.Fatal("duplicated history event")
+			}
+			seen[message] = true
+			count++
+		}
+		if page.Next == "" {
+			break
+		}
+		page, err = s.Next(context.Background(), page.Next)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if count != 22 {
+		t.Fatalf("lost history: %d", count)
+	}
+	if _, err = s.Next(context.Background(), old); err == nil {
+		t.Fatal("consumed cursor replayed")
+	}
+	page, _ = s.Search(context.Background(), fixture.Query())
+	q = fixture.Query()
+	q.Limits.Events = 2
+	page, _ = s.Search(context.Background(), q)
+	closed := page.Next
+	_ = s.Close(context.Background(), closed)
+	if _, err = s.Next(context.Background(), closed); err == nil {
+		t.Fatal("closed cursor reopened")
+	}
+	values, err := s.Values(context.Background(), fixture.Query(), "service", "pay")
+	if err != nil || !slices.Equal(values.Items, []string{"payment-worker"}) {
+		t.Fatal("scoped app suggestions", err)
+	}
+	policy := fixture.Policy()
+	policy.RedactPaths = append(policy.RedactPaths, "/fields/job/*")
+	denied := fixtureService(t, policy)
+	q = fixture.Query()
+	q.Fields = []logs.FieldFilter{{Path: "/fields/job/id", Value: json.RawMessage(`"pay-8042"`)}}
+	if slices.Contains(denied.FilterFields(), "/fields/job/id") {
+		t.Fatal("redacted field advertised for filtering")
+	}
+	if _, err = denied.Search(context.Background(), q); err == nil {
+		t.Fatal("redacted field predicate inferred data")
+	}
+	if _, err = denied.Values(context.Background(), q, "service", ""); err == nil {
+		t.Fatal("redacted field inference via suggestions")
+	}
+	q = fixture.Query()
+	q.Fields = []logs.FieldFilter{{Path: "/fields/order/id", Value: json.RawMessage(`"8043"`)}}
+	if _, err = s.Search(context.Background(), q); err == nil {
+		t.Fatal("numeric field accepted a string")
+	}
+}
+
+func TestConcurrentCursorConsumedOnce(t *testing.T) {
+	s := fixtureService(t, fixture.Policy())
+	defer s.Shutdown(context.Background())
+	q := fixture.Query()
+	q.Limits.Events = 2
+	page, err := s.Search(context.Background(), q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	errors := make(chan error, 2)
+	for range 2 {
+		wg.Add(1)
+		go func() { defer wg.Done(); _, err := s.Next(context.Background(), page.Next); errors <- err }()
+	}
+	wg.Wait()
+	close(errors)
+	success := 0
+	for err := range errors {
+		if err == nil {
+			success++
+		}
+	}
+	if success != 1 {
+		t.Fatalf("cursor returned %d successful pages", success)
 	}
 }
 

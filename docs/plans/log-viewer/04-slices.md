@@ -53,6 +53,12 @@ only when that slice needs them. Fixture and live modes must always be unmistaka
 
 ### Slice 3 — search and history
 
+- Andreas refined Slice 3 on 2026-10-24: save named exact app filters and make
+  inspect → choose field → exact filtering easy, including trace ID. Include a
+  scalar-field picker and direct trace filter now; full field-tree expansion/yank
+  and trace investigation remain Slices 4–5. Preserve all other active predicates,
+  retain scalar types, and explain unsupported/unindexed/redacted fields. Persist
+  these predicates with named searches; do not infer the company's `app.keyword`.
 - Exercise app OR/facet AND, Unknown severity, source message phrase versus local
   substring find, explicit UTC/time-zone offsets and half-open time boundaries.
 - A 501+ equal-timestamp dataset must page every unique event exactly once;

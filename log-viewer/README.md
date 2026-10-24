@@ -54,6 +54,35 @@ does **not** apply fictional-data policy to production sources. The window is
 explicit historical UTC, not “now”. The UI labels the real HTTP source as
 `ELASTICSEARCH · LOCAL LAB · TLS` and its records as seeded fictional logs.
 
+For a lab installed before Slice 3, upgrade the disposable test mapping explicitly:
+`python3 log-viewer/scripts/lab.py reseed-indexed-fields`. This replaces only the
+fixed owned events index and reseeds its 22 baseline events; ordinary startup and
+seeding never reset it.
+
+## Search and saved filters
+
+Press `f` from logs to edit exact app selections, time, levels, message phrase and
+trace IDs. Apps OR together; different facets AND together. App suggestions use a
+separate case-insensitive substring keyword: Enter toggles an exact app selection,
+Ctrl+X clears app selections, Tab moves fields, and Ctrl+S applies the query.
+Times require RFC3339 with `Z` or an explicit offset, and use a half-open window.
+`WARN+` means WARN/ERROR/FATAL, not UNKNOWN. Fixture phrase matching is an explicitly
+labeled approximation; Elasticsearch uses its analyzed phrase semantics.
+
+From the inspector, press `f`, choose a scalar field and Enter to add an exact AND
+filter without losing existing facets. Trace ID, app, instance, level and selected
+indexed structured fields are supported; object/null/redacted/unindexed fields
+explain why they cannot be used. Lab apps map to ECS `service.name`; production
+`app.keyword` mapping is not configured or inferred. In the filter editor's exact
+predicate row, Enter removes the selected predicate and Ctrl+R clears all of them.
+
+`S` explicitly saves the whole current query under a name; `R` restores one for the
+same source. No automatic writes occur. The default is the platform config
+directory's `logview/searches.json`; override with `--searches /private/dir/searches.json`.
+Its directory/file must be owned and private (0700/0600). Saves contain absolute
+times and filter values, which may be sensitive, but no events, credentials or
+cursors. Saving an existing name replaces that search.
+
 ## Keyboard
 
 | Key | Available now |
@@ -63,6 +92,11 @@ explicit historical UTC, not “now”. The UI labels the real HTTP source as
 | Tab / Shift+Tab | Cycle visible panels; only one owns bright focus |
 | Enter | Inspect the selected event; full-width details on narrow terminals |
 | Esc | Return to logs, retaining selection |
+| `f` | Edit filters; from inspector, add an exact field predicate |
+| `/`, `n/N` | Literal find in loaded policy-safe values; next/previous match |
+| Ctrl+T | Toggle case sensitivity inside find |
+| `o`, `r` | Load older snapshot history / reload a fresh snapshot |
+| `S`, `R` | Name/save current query / restore a saved query |
 | `q`, Ctrl+C | Quit and restore the terminal |
 
 The workspace auto-hides below 140 columns, and the inspector below 120. Enter
@@ -70,7 +104,7 @@ still opens details at narrow widths. Minimum size is 60×16. Resizing cannot le
 focus in a hidden panel. The log row shows a one-line summary; the inspector wraps
 the full retained message and displays multiline strings and typed structure.
 
-`y/Y`, Ctrl+P, filters, find, and follow currently explain that they are unavailable.
+`y/Y`, Ctrl+P, and follow currently explain that they are unavailable.
 No fake “copied,” “connected,” or “following” success is displayed. The provider
 names under “PROVIDERS · PLANNED” are not working connections. Local Elasticsearch
 is a working source in lab mode, not follow/streaming.
@@ -99,8 +133,12 @@ closed. Backend error details are not rendered. The Elastic adapter caps respons
 bytes at 8 MiB, disables automatic decompression, refuses redirects/credential
 forwarding, verifies TLS with the explicit CA, and has a 15-second request timeout.
 Timeout/shard-failure responses fail closed rather than claiming complete results.
-It fetches one newest bounded window, displayed chronologically; stable PIT history,
-equal-time pagination and configurable filters belong to Slice 3. These are
+Newest bounded pages display chronologically. Older history uses a frozen PIT
+snapshot and timestamp plus native tie-break ordering; appended events appear
+only after reload. Opaque one-use cursors expire after two minutes idle, with at
+most 16 live sessions. History stops explicitly at 10,000 events / 32 MiB rather
+than evicting the selected event. Expired/error cursors require reload, never a
+broader fallback query. These are
 resource limits, not measured throughput or exact whole-process memory budgets.
 
 ## Verify
@@ -116,7 +154,8 @@ go -C log-viewer test ./internal/logs -run '^$' -fuzz FuzzSafeOutput -fuzztime 1
 `check` runs formatting validation, vet, and race tests. The PTY test runs the
 actual executable and checks explicit startup mode, event/inspector contents,
 wide/narrow focus recovery, unavailable actions, secret/terminal-control exclusion,
-and clean exit. Fuzz seeds include escapes that could reconstruct a secret during
+app OR and other facet composition, exact inspected fields, save/restore, literal
+find, older paging, editor cancellation, and clean exit. Fuzz seeds include escapes that could reconstruct a secret during
 cleanup; redaction applies to both incoming and sanitized text.
 
 Midnight semantic color roles are app-owned values from the existing

@@ -3,9 +3,11 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"logviewer/internal/logs"
 )
 
 func (m Model) style(color string) lipgloss.Style {
@@ -53,8 +55,42 @@ func (m Model) View() string {
 		mode = " LOGVIEW  /  ELASTICSEARCH · LOCAL LAB · TLS"
 	}
 	header := m.style(t.Focus).Bold(true).Render(fit(mode, m.width))
-	window := fmt.Sprintf(" %s  %s–%s UTC  /  ALL levels  /  2 apps", m.options.Query.Window.Start.Format("2006-01-02"), m.options.Query.Window.Start.Format("15:04"), m.options.Query.Window.End.Format("15:04"))
-	header += "\n" + m.style(t.Muted).Render(fit(window, m.width)) + "\n" + base.Render(strings.Repeat(" ", m.width))
+	if m.editor != nil {
+		title, lines := m.editorLines()
+		for i := range lines {
+			lines[i] = strings.ReplaceAll(logs.Clean(lines[i]), "\n", " ↵ ")
+		}
+		return header + "\n" + m.panel(title, lines, m.width, m.height-2, m.focus) + "\n" + m.style(t.Focus).Render(fit(" Text owns keys · Esc cancels without changing results/focus", m.width))
+	}
+	q := m.options.Query
+	apps := strings.Join(q.Scope.Services, " OR ")
+	if apps == "" {
+		apps = "ALL apps"
+	}
+	levels := strings.Join(q.Levels, ",")
+	if levels == "" {
+		levels = "ALL"
+	}
+	window := fmt.Sprintf(" App exact: %s / levels: %s / [%s, %s) UTC", apps, levels, q.Window.Start.UTC().Format("2006-01-02T15:04:05"), q.Window.End.UTC().Format("2006-01-02T15:04:05"))
+	predicates := []string{}
+	if q.Message.Text != "" {
+		label := "phrase"
+		if !m.options.LocalLab {
+			label = "phrase (fixture approximation)"
+		}
+		predicates = append(predicates, label+": "+strings.ReplaceAll(logs.Clean(q.Message.Text), "\n", " ↵ "))
+	}
+	if len(q.TraceIDs) > 0 {
+		predicates = append(predicates, "trace="+strings.Join(q.TraceIDs, " OR "))
+	}
+	for _, f := range q.Fields {
+		predicates = append(predicates, f.Path+"="+string(f.Value))
+	}
+	summary := " Filters: " + strings.Join(predicates, " AND ")
+	if len(predicates) == 0 {
+		summary = " Message/trace/fields: ALL"
+	}
+	header += "\n" + m.style(t.Muted).Render(fit(window, m.width)) + "\n" + m.style(t.Muted).Render(fit(summary, m.width))
 	height := m.height - 7
 	var body string
 	if m.detail {
@@ -88,16 +124,29 @@ func (m Model) View() string {
 		}
 		body = lipgloss.JoinHorizontal(lipgloss.Top, panels...)
 	}
-	footer := " Tab focus  j/k move  Enter inspect  Esc logs  q quit"
+	footer := " Tab focus  j/k move  Enter inspect  f filters  / find  n/N match  o older  r reload  S save  R restore  q quit"
 	if m.focus == 2 {
-		footer = " j/k scroll  g/G start/end  Esc logs  q quit"
+		footer = " j/k scroll  g/G start/end  f exact field filter  / find  S save  R restore  Esc logs  q quit"
 	}
 	if m.focus == 0 {
 		footer = " Tab next panel  Enter logs  q quit"
 	}
 	status := m.status
+	if m.loading {
+		status = "Reading… · " + status
+	}
 	if m.page.More {
-		status = "Partial results: read budget reached · no further paging in this slice"
+		if m.page.Next != "" {
+			status = "More: o older · " + status
+		} else {
+			status = "More: reload · " + status
+		}
+	}
+	if m.page.Partial {
+		status = "PARTIAL · " + status
+	}
+	if m.budgetStopped {
+		status = "STOPPED: 10000 events / 32 MiB session budget · r reload"
 	}
 	return header + "\n" + body + "\n" + base.Render(fit(" ", m.width)) + "\n" + m.style(t.Focus).Render(fit(footer, m.width)) + "\n" + m.style(t.Muted).Render(fit(" "+status, m.width))
 }
@@ -112,8 +161,8 @@ func (m Model) logList(width, height int) string {
 	for i := m.top; i < len(m.page.Events) && i < m.top+visible; i++ {
 		e := m.page.Events[i]
 		stamp := e.Text("time")
-		if len(stamp) >= 23 {
-			stamp = stamp[11:23]
+		if instant, err := time.Parse(time.RFC3339Nano, stamp); err == nil {
+			stamp = instant.UTC().Format("15:04:05.000")
 		}
 		message := strings.SplitN(e.Text("message"), "\n", 2)[0]
 		if strings.Contains(e.Text("message"), "\n") {

@@ -17,7 +17,7 @@ check:
 	$(GO) test -race ./...
 
 test-terminal: build
-	$(PYTHON) scripts/terminal-smoke.py
+	$(PYTHON) scripts/terminal-smoke.py --search
 
 lab-install lab-up lab-seed lab-check lab-down:
 	python3 scripts/lab.py $(patsubst lab-%,%,$@)
@@ -29,4 +29,4 @@ run-lab: build
 	./bin/logview --config .lab/source.json
 
 test-terminal-lab: build
-	$(PYTHON) scripts/terminal-smoke.py --lab
+	$(PYTHON) scripts/terminal-smoke.py --lab --search
