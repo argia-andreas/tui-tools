@@ -167,6 +167,8 @@ func (m Model) edit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Editors own every printable key, including q, y and Space. No global
 	// action is dispatched while input is owned here.
 	switch e.kind {
+	case "palette":
+		return m.editPalette(msg)
 	case "field":
 		return m.editField(msg)
 	case "find":
@@ -312,6 +314,8 @@ func (m Model) edit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) editorLines() (string, []string) {
 	e := m.editor
 	switch e.kind {
+	case "palette":
+		return m.paletteLines()
 	case "field":
 		return m.fieldPickerLines()
 	case "filter":

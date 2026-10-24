@@ -124,12 +124,12 @@ func (m Model) View() string {
 		}
 		body = lipgloss.JoinHorizontal(lipgloss.Top, panels...)
 	}
-	footer := " Tab focus  j/k move  Enter inspect  f filters  / find  n/N match  o older  r reload  S save  R restore  q quit"
+	footer := " Ctrl+P actions  Tab focus  j/k move  Enter inspect  f filters  / find  n/N match  o older  r reload  S save  R restore  q quit"
 	if m.focus == 2 {
-		footer = " j/k scroll  g/G start/end  f exact field filter  / find  S save  R restore  Esc logs  q quit"
+		footer = " Ctrl+P actions  j/k scroll  g/G start/end  f exact field filter  / find  S save  R restore  Esc logs  q quit"
 	}
 	if m.focus == 0 {
-		footer = " Tab next panel  Enter logs  q quit"
+		footer = " Ctrl+P actions  Tab next panel  Enter logs  q quit"
 	}
 	status := m.status
 	if m.loading {

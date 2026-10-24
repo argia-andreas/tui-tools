@@ -95,6 +95,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c":
 			m.cancel()
 			return m, tea.Sequence(m.closeCursor(m.page.Next), tea.Quit)
+		case "ctrl+p":
+			m.editor = &editor{kind: "palette", returnFocus: m.focus}
 		case "f":
 			if m.focus == 2 {
 				return m.openFieldPicker()
@@ -191,8 +193,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.clampInspector()
 			}
-		case "ctrl+p", "y", "Y", " ", "?":
-			feature := map[string]string{"ctrl+p": "Command palette", "y": "Field yank", "Y": "Field yank", " ": "Live follow", "?": "Command help"}[msg.String()]
+		case "y", "Y", " ", "?":
+			feature := map[string]string{"y": "Field yank", "Y": "Field yank", " ": "Live follow", "?": "Command help"}[msg.String()]
 			m.status = fmt.Sprintf("%s is not available in this slice · navigation only", feature)
 		}
 	}
