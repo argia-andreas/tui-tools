@@ -22,21 +22,39 @@
   to implement all of it in one go and ship once confirmed working. Proceed
   through all extension checkpoints without additional approval stops. Frequent
   scoped main commits/pushes remain authorized; no deployment/cloud writes.
-- Extension fixture flow and real backend implemented and verified; final visual
-  evidence/interaction presentation in progress. Base Slice 5/MCP remain separate.
+- Extension complete: fixture flow, real backend and final rendered interaction
+  verified. Implementation pushed to main; Base Slice 5/MCP remain separate.
 - [x] Selected-message fixture workflow: exact highlighted row, queue picker,
   optional cleanup, frozen final review and correct retained/deleted outcomes.
 - [x] Real backend: exact peek preparation, full-content replay, bounded selected
   acquisition and separate cleanup. Two fresh-seed serial emulator runs pass,
   including 90 KB bytes/scalar properties/TTL, queue and subscription sources to
   a different queue, original retention and independently received neighbors.
-- [ ] Final evidence index, inspected theme/compact/keyboard tour and presentation.
+- [x] Final evidence index, inspected theme/compact/keyboard tour and presentation.
 - Latest race suite, vet, ten Python guards and fixture PTY pass. Real-emulator
   PTY exercises both selected copy and exact-selected cleanup as well as legacy
   receive-next/release/resend/typed delete. No cloud writes or SDK patch.
 - Rendered 80×24 configuration initially hid cleanup warnings. The final
   horizontal three-button configuration bar restores destination and the full
   scan-budget/delivery-count warning; all-theme/ASCII frame tests guard it.
+- Final render inspection also caught misleading lock-release help in copy-only
+  review and confirm help on the read-only body page. Both corrected, with
+  public rendered-state regressions; race/vet/guards/fixture PTY passed again.
+- Inspected Midnight copy review/outcome, Gruvbox review, Light 80×24 unchecked
+  and checked configuration plus locked review, Midnight 80×24 and 160×24
+  review/body pages. Critical controls remain visible; compact status lines
+  intentionally ellipsize. Inspected final keyboard/pointer video and every
+  frame at 5 fps, including checkbox change and confirmed separate cleanup.
+  Pointer movement is not a claim of terminal mouse activation.
+- Evidence and successful logs are indexed in this orb at
+  `.amp/in/artifacts/service-bus-selected/README.md`. Video/captures use the
+  offline fixture; real SDK byte/neighbor/cleanup claims come from integration
+  assertions, not screenshots. Temporary preview/browser stopped after capture;
+  isolated disposable broker services remain running. Seed before baseline reruns.
+- Deletion is not an atomic move. Unknown send retains the original; no
+  application retries or exactly-once guarantee. Selected cleanup has a bounded
+  100-message/five-second search, with independently bounded release/close;
+  missing/locked/out-of-budget selection never falls back to another message.
 
 ## Project boundary
 

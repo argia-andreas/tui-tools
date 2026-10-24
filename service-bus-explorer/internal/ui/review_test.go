@@ -114,7 +114,7 @@ func TestReviewControlsRemainVisibleAcrossThemesAndSizes(t *testing.T) {
 				}
 				if size[1] < 35 {
 					m = press(m, "pgdown")
-					if !strings.Contains(m.View(), "HELD BODY / read-only") || strings.Contains(m.View(), "Resend copy") {
+					if !strings.Contains(m.View(), "HELD BODY / read-only") || strings.Contains(m.View(), "Resend copy") || strings.Contains(m.View(), "Enter confirm") {
 						t.Fatal("body page exposed hidden confirmations")
 					}
 					if _, cmd := key(m, "enter"); cmd != nil {
@@ -384,6 +384,9 @@ func TestSelectedDLQCopyAndOptionalExactOriginalCleanup(t *testing.T) {
 		}
 		if strings.Contains(view, "Lock until:") != cleanup {
 			t.Fatal("copy-only falsely claimed a lock, or cleanup hid it")
+		}
+		if strings.Contains(view, "releases lock") != cleanup {
+			t.Fatal("back-to-edit help misrepresented lock ownership")
 		}
 		resources, _ := s.Discover(context.Background())
 		var destination explorer.Resource

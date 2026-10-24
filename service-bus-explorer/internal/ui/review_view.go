@@ -18,7 +18,7 @@ func (m Model) splitReview() bool {
 func (m Model) reviewView(width, height int) []string {
 	r := m.review
 	if width < 80 || height < 18 {
-		return m.panel("DLQ / REVIEW", width, height, []string{"", m.paint("  Resize to at least 80×24 to review or confirm.", m.theme.Warning), m.paint("  Esc releases · Ctrl+C quits safely · lock still expires", m.theme.Muted)}, true)
+		return m.panel("DLQ / REVIEW", width, height, []string{"", m.paint("  Resize to at least 80×24 to review or confirm.", m.theme.Warning), m.paint("  Esc cancels · Ctrl+C quits safely", m.theme.Muted)}, true)
 	}
 	if r.selected && (r.phase == "selected" || r.phase == "destination" || r.phase == "configure" || r.phase == "preparing") {
 		return m.selectedView(width, height)
@@ -76,9 +76,13 @@ func (m Model) reviewView(width, height int) []string {
 			actions = append(actions, m.paint("  Release/expiry may increase delivery count. PgUp/PgDn body.", m.theme.Muted))
 		}
 		if r.selected {
-			actions[len(actions)-1] = m.paint("  b Back to edit (releases lock) · PgUp/PgDn body · Esc cancel", m.theme.Muted)
+			back := "  b Back to edit"
+			if r.delivery != nil {
+				back += " (releases lock)"
+			}
+			actions[len(actions)-1] = m.paint(back+" · PgUp/PgDn body · Esc cancel", m.theme.Muted)
 		}
-		actions = m.panel("ACTIONS / Tab choose · Enter confirm · Esc release", width, 7, actions, true)
+		actions = m.panel("ACTIONS / Tab choose · Enter confirm · Esc cancel", width, 7, actions, true)
 		height -= len(actions)
 	}
 	leftWidth := width
@@ -188,7 +192,7 @@ func (m Model) reviewView(width, height int) []string {
 	// Narrow terminals retain confirmations and reveal body/properties on demand.
 	if r.scroll > 0 {
 		offset := min(max(0, r.scroll-1), max(0, len(body)-(height-3)))
-		body = append([]string{m.paint("  PgUp to return to review / Esc releases", m.theme.Warning)}, body[offset:]...)
+		body = append([]string{m.paint("  PgUp to return to review / Esc cancels", m.theme.Warning)}, body[offset:]...)
 		// The body page is read-only: don't show confirm buttons behind it.
 		return m.panel(bodyTitle+" / read-only", width, height+len(actions), body, true)
 	}

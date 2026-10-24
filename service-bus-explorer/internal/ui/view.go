@@ -369,9 +369,12 @@ func (m Model) View() string {
 	}
 	status := m.status
 	if m.review.phase != "" {
-		keys = "  Tab/arrows choose   Enter confirm   Esc cancel/release   PgUp/PgDn body   Ctrl+C quit safely"
+		keys = "  Tab/arrows choose   Enter confirm   Esc cancel   PgUp/PgDn body   Ctrl+C quit safely"
 		if m.width < 110 {
-			keys = "  Tab choose  Enter confirm  Esc release  PgUp/PgDn body  Ctrl+C quit"
+			keys = "  Tab choose  Enter confirm  Esc cancel  PgUp/PgDn body  Ctrl+C quit"
+		}
+		if m.review.phase == "review" && !m.splitReview() && m.review.scroll > 0 {
+			keys = "  PgUp/PgDn scroll   PgUp return to review   Esc cancel   Ctrl+C quit safely"
 		}
 		if m.review.phase == "destination" {
 			keys = "  Type to filter queues   arrows choose   Enter select   Esc back   Ctrl+C quit"
