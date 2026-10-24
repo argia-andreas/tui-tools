@@ -2,11 +2,13 @@
 
 Gate 3 approved 2026-10-23. This document contains approved future contracts, not implemented application code. Application implementation follows a separately approved Gate 4 slice plan in `04-slices.md`.
 
-## Slice 4 blocker — retry control (2026-10-24)
+## Gate 3 retry adjustment approved — 2026-10-24
 
 The pinned SDK contradicts the approved assumption that `MaxRetries: -1`
-disables every automatic send/settlement retry. Gate 3 is reopened **only for
-this decision**; no alternative below is approved yet.
+disables every automatic send/settlement retry. Andreas explicitly approved
+trusting SDK-internal retry/recovery on 2026-10-24, narrowing the contract to
+**no application-level automatic retries**. No SDK patch is authorized or needed
+for this decision; unrelated approved contracts remain unchanged.
 
 Verified directly in azservicebus 1.11.0 source (not inferred from a failing
 broker run):
@@ -23,23 +25,24 @@ but that does not establish a single wire attempt. Keeping the original/new ID
 reduces some risks; it does not eliminate duplicate processing or make send and
 cleanup atomic.
 
-Decision needed before continuing Slice 4:
+The application submits each send/settlement once and never automatically
+re-invokes it or the full replay. SDK recovery/fallback may repeat wire attempts;
+neither a single wire attempt nor exactly-once processing is promised. Unknown
+send means **check destination before retrying**, retain the original and never
+automatically clean up. Unknown settlement is not confirmed deletion; confirmed
+send with failed/unknown cleanup remains a distinct partial result.
 
-1. Preserve strict no-automatic-retry: approve a scoped dependency patch, with
-   failure-injection checks for send/link recovery and settlement/fallback. No
-   unsafe access to SDK private fields or silent module-cache edits.
-2. Explicitly accept SDK-internal recovery and narrow the contract to no
-   **application-level** retries. Update user-visible wording, risk documentation
-   and tests accordingly; never promise one wire attempt or exactly-once.
-
-Local draft: fixture held deliveries, reviewed-action UI, typed delete, default
-retention/optional cleanup, late-acquisition release and terminal outcomes;
-Azure conversion/acquisition/settlement and serial integration checks. Final
-`go test -race ./...`, `go vet ./...` and whitespace checks passed. Earlier PTY
-checks passed, while the new mutation PTY exposed doubled space input in the
-palette; the draft fixes this and awaits rerun. Real Slice 4 broker mutations,
-rendered review captures and final integration proof have **not** run. Slice 4
-remains unchecked; do not describe the draft as delivered or retry-safe.
+Current Slice 4 implementation: receive-next reviews the actual acquired message,
+not the selected peek row; Cancel is the default, with no automatic lock renewal.
+Resend creates a new copy at its original queue/topic with a new message ID;
+cleanup defaults off and typed `delete` authorizes deletion. Session-enabled
+mutation and advanced AMQP replay representations remain unsupported. Fixture
+held deliveries, reviewed-action UI, late-acquisition release and terminal
+outcomes, Azure conversion/acquisition/settlement and serial integration checks
+are present, but implementation verification and final evidence remain pending.
+Slice 4 remains unchecked: this retry decision is not delivery approval, a cloud
+or MCP implementation, or end-to-end proof. The main implementation owner will
+update verification evidence separately.
 
 ## Boundaries and dependency baseline
 
@@ -168,7 +171,7 @@ Acquisition/review holds navigation until cancellation/release finishes. A recei
 - Default review focus is Cancel. “Remove original after confirmed send” defaults **off** (proposal for approval). Topic replay warns that other matching subscriptions can receive copies.
 - Generate/show a new replay message ID before confirmation, avoiding accidental suppression by original-ID duplicate detection. Preserve original correlation ID, supported application properties and standard single-Data-section body. Preserve TTL duration as a fresh enqueue lifetime, clear scheduled-enqueue time for immediate replay, and strip the broker DLQ reason/description properties from the outgoing copy. Show these changes in review. Do not edit business content or append surprise application properties.
 - SDK `ReceivedMessage.Message()` is shallow and not lossless for arbitrary AMQP bodies/IDs. Clone mutable fields before the above changes; reject unsupported AMQP representations from resend rather than corrupting them. Browsing can still explain their unsupported format. No raw-envelope passthrough in this scope.
-- Set messaging `RetryOptions.MaxRetries=-1`: zero means the SDK default of three retries, not disabled. Use bounded contexts. No automatic retry of a send/settlement or entire replay, including after a timeout. This reduces repeats but cannot guarantee exactly-once delivery.
+- Set messaging `RetryOptions.MaxRetries=-1`: zero means the SDK default of three retries, not disabled. This limits configurable retries but does not disable all SDK recovery/settlement paths. Per the Gate 3 adjustment approved 2026-10-24, accept SDK-internal retry/recovery without a patch and use bounded contexts. The application never automatically re-invokes a send/settlement or entire replay, including after a timeout. SDK recovery can repeat wire attempts; no single-wire-attempt or exactly-once guarantee.
 - Only a confirmed send allows optional cleanup. An acknowledgement can be lost after broker acceptance: show **unknown—check destination before retrying**, retain the original, and never claim “not sent.” Confirmed send + failed/unknown cleanup is a distinct partial result; a later replay could duplicate processing. No atomic move or exactly-once promise.
 - If retaining the original, explicitly release its lock when leaving the result screen. If release is unconfirmed, report that it may remain locked until expiry. Do not leave a successful-send review able to resend again.
 

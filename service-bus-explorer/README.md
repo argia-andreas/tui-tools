@@ -1,9 +1,11 @@
-# Service Bus Explorer — fixture and local emulator browsing
+# Service Bus Explorer — fixture and local emulator workspace
 
 An independent keyboard-first terminal workspace, alongside—but not part of—LazyFTP.
-**Two explicit modes:** deterministic offline fixtures, or read-only browsing
-against the independent local Service Bus emulator. No cloud connection or
-interactive receive/settlement operations exist yet. Layout, theme and dashboard
+**Two explicit modes:** deterministic offline fixtures, or the independent local
+Service Bus emulator. Browsing is read-only; the current Slice 4 implementation
+also includes explicitly reviewed DLQ actions, with implementation verification
+still pending (not a completed slice). No cloud connection or MCP access exists.
+Layout, theme and dashboard
 watchlists can be saved explicitly; credentials and MCP grants cannot.
 Fixture counts are sample data. Emulator counts are **unavailable**, never zero
 or totals inferred from peek pages.
@@ -46,8 +48,32 @@ sidebar hides automatically. The full inspector appears when enough width exists
 
 Settings and Ctrl+P provide Midnight, Gruvbox and Light themes, layout controls,
 watchlist editing and Save preferences. Printable keys—including `q`, `j`, and
-`k`—belong to the palette query while it is open. There are no receive/resend/
-delete actions in this slice.
+`k`—belong to the palette query while it is open.
+
+## Slice 4 DLQ actions — verification pending
+
+“Receive next DLQ message…” acquires one message for review; it does **not** act
+on the highlighted peek row. Review shows the actual received message, source,
+destination and lock deadline. Cancel is the default. Cancel releases the lock;
+release can be unconfirmed and receiving/releasing can increase delivery count.
+There is no automatic lock renewal or silent replacement after expiry.
+
+Resend creates a new copy at the original queue/topic with a new message ID;
+topic replay can reach other matching subscriptions. Removing the original after
+a confirmed send defaults **off** and is a separate authorized settlement.
+Delete requires typing `delete` for the actual held message. Session-enabled
+mutation and advanced AMQP replay representations are unsupported, not silently
+converted. These controls do not establish completed end-to-end verification.
+
+**Gate 3 retry adjustment approved by Andreas on 2026-10-24:** trust the pinned
+SDK's internal retry/recovery, without an SDK patch. The application submits each
+send/settlement once and never automatically re-invokes it or an entire replay.
+SDK recovery can nevertheless repeat wire attempts, including settlement
+fallback; this is not a single-wire-attempt or exactly-once guarantee. An unknown
+send outcome means **check destination before retrying**, retain the original,
+and perform no automatic cleanup. Unknown settlement is not confirmed deletion.
+Confirmed send plus failed/unknown cleanup is a distinct partial result; neither
+send and cleanup atomicity nor duplicate-free processing is promised.
 
 Preferences use `os.UserConfigDir()/service-bus-explorer/preferences.json`
 (`$XDG_CONFIG_HOME` or `~/.config` on Linux; `~/Library/Application Support` on
@@ -145,7 +171,9 @@ make -C service-bus-explorer integration-test
 This exercises the real Go SDK and real TUI against the emulator: discovery,
 Active/DLQ/subscription browsing, explicit page cursors, refresh, message bodies,
 empty queues and unavailable counters. It does not prove cloud authentication,
-accurate Azure runtime counts, or the future interactive resend/delete flows.
+accurate Azure runtime counts, or the current Slice 4 interactive resend/delete
+flows. Slice 4 verification and evidence remain pending; the earlier browsing
+checks are not proof of these mutation paths.
 
 Design, future lab commands and the known emulator count limitation are recorded
 in [the independent project plan](../docs/plans/service-bus-explorer/00-status.md).
