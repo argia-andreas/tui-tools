@@ -46,6 +46,12 @@ func key(m tea.Model, text string) (tea.Model, tea.Cmd) {
 		typeOf = tea.KeyEsc
 	case "tab":
 		typeOf = tea.KeyTab
+	case "shift+tab":
+		typeOf = tea.KeyShiftTab
+	case "ctrl+h":
+		typeOf = tea.KeyCtrlH
+	case "ctrl+l":
+		typeOf = tea.KeyCtrlL
 	case "ctrl+p":
 		typeOf = tea.KeyCtrlP
 	case "ctrl+u":
@@ -194,6 +200,10 @@ func TestPaletteOwnsPrintableKeysAndRestoresFocus(t *testing.T) {
 	if !strings.Contains(view, "> qjk_") || !strings.Contains(view, "No matching actions") {
 		t.Fatalf("query was not owned by palette\n%s", view)
 	}
+	m = press(press(m, "ctrl+h"), "ctrl+l")
+	if !strings.Contains(m.View(), "> qj_") {
+		t.Fatal("directional keys escaped palette text input")
+	}
 	m = press(m, "enter")
 	m = press(m, "esc")
 	m = press(m, "enter")
@@ -211,6 +221,68 @@ func TestPaletteOwnsPrintableKeysAndRestoresFocus(t *testing.T) {
 	m = choose(m, "settings")
 	if !strings.Contains(ansi.Strip(m.View()), "Color theme: gruvbox") {
 		t.Fatal("fuzzy theme action failed")
+	}
+}
+
+func TestDirectionalFocusAcrossVisibleRegions(t *testing.T) {
+	for _, tc := range []struct {
+		name                         string
+		width                        int
+		sidebar, inspector, messages bool
+	}{
+		{"all panes", 160, true, true, true},
+		{"sidebar disabled", 160, false, true, true},
+		{"sidebar auto hidden", 100, true, true, true},
+		{"inspector disabled", 160, true, false, true},
+		{"inspector auto hidden", 110, true, true, true},
+		{"only content", 80, true, true, true},
+		{"dashboard", 160, true, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, _ := fixture.New()
+			prefs := config.Default()
+			prefs.Sidebar, prefs.Inspector = tc.sidebar, tc.inspector
+			base := start(t, s, prefs, "fixture", false)
+			base, _ = base.Update(tea.WindowSizeMsg{Width: tc.width, Height: 48})
+			if tc.messages {
+				base = press(base, "enter")
+			}
+			// Tab establishes the existing rendered focus states without inspecting internals.
+			left, right := base, base
+			if tc.sidebar && tc.width >= 110 {
+				left = press(base, "shift+tab")
+			}
+			contentWidth := tc.width
+			if tc.sidebar && tc.width >= 110 {
+				contentWidth -= 24
+			}
+			if tc.messages && tc.inspector && contentWidth >= 95 {
+				right = press(base, "tab")
+			}
+			m := press(press(base, "ctrl+h"), "ctrl+h")
+			if press(m, "j").View() != press(left, "j").View() {
+				t.Fatal("left navigation did not clamp at the first visible region")
+			}
+			if tc.sidebar && tc.width >= 110 {
+				m = press(m, "ctrl+l")
+				if press(m, "j").View() != press(base, "j").View() {
+					t.Fatal("right skipped content")
+				}
+			}
+			m = press(press(m, "ctrl+l"), "ctrl+l")
+			if press(m, "j").View() != press(right, "j").View() {
+				t.Fatal("right navigation did not clamp at the last visible region")
+			}
+			if tc.messages && tc.inspector && contentWidth >= 95 {
+				m = press(m, "ctrl+h")
+				if press(m, "j").View() != press(base, "j").View() {
+					t.Fatal("left skipped content")
+				}
+			}
+			if press(press(press(base, "tab"), "shift+tab"), "j").View() != press(base, "j").View() {
+				t.Fatal("Tab reverse cycle changed")
+			}
+		})
 	}
 }
 

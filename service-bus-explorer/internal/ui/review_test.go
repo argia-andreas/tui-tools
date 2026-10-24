@@ -55,6 +55,9 @@ func TestReviewActsOnAcquiredNotSelectedAndRetainsOriginal(t *testing.T) {
 			t.Fatalf("missing %q\n%s", want, view)
 		}
 	}
+	if press(press(m, "ctrl+h"), "ctrl+l").View() != m.View() {
+		t.Fatal("directional keys escaped review dialog")
+	}
 	if strings.Contains(view, "orders-dlq-0002") {
 		t.Fatal("review used peek-selected message")
 	}
@@ -266,7 +269,12 @@ func TestDeleteRequiresExactTypedAuthorization(t *testing.T) {
 		m = press(m, "tab")
 		m = press(m, "up")
 	}
-	m = press(m, "delete")
+	m = press(m, "deletx")
+	m = press(press(m, "ctrl+h"), "ctrl+l")
+	if !strings.Contains(m.View(), "type delete: delet_") {
+		t.Fatal("directional keys escaped delete confirmation input")
+	}
+	m = press(m, "e")
 	m, cmd := key(m, "enter")
 	m = finishOperation(m, cmd)
 	if !strings.Contains(m.View(), "Deletion confirmed") {
@@ -576,6 +584,10 @@ func TestSelectedQueueShortcutAndSubscriptionDestinationFilter(t *testing.T) {
 		m = press(m, query)
 		if !strings.Contains(m.View(), "Filter queues: "+query+"_") {
 			t.Fatal("filter lost printable key ownership: " + ansi.Strip(m.View()))
+		}
+		m = press(press(m, "ctrl+h"), "ctrl+l")
+		if !strings.Contains(m.View(), "Filter queues: _") {
+			t.Fatal("directional keys escaped destination filter")
 		}
 		m = press(m, "ctrl+u")
 	}

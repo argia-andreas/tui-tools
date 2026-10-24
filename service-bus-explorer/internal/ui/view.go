@@ -286,7 +286,7 @@ func (m Model) messageView(width, height int) []string {
 	}
 	details := m.inspectorLines()
 	offset := min(m.offset, max(0, len(details)-(height-2)))
-	right := m.panel("INSPECTOR / Tab focus · j/k scroll", width-listWidth, height, details[offset:], m.focus == "inspector")
+	right := m.panel("INSPECTOR / Tab/Ctrl+H/L · j/k scroll", width-listWidth, height, details[offset:], m.focus == "inspector")
 	for i := range left {
 		left[i] += right[i]
 	}
@@ -350,14 +350,14 @@ func (m Model) View() string {
 		}
 	}
 	lines = append(lines, content...)
-	keys := "  j/k move   Enter open   ] DLQ   g/t layout   Tab focus   b sidebar   Ctrl+P actions   q quit"
+	keys := "  j/k move   Enter open   ] DLQ   g/t layout   Tab/Ctrl+H/L focus   b sidebar   Ctrl+P actions   q quit"
 	if m.screen == "messages" {
-		keys = "  j/k move/scroll   Enter open DLQ   [/] view   i inspector   n/p pages   Tab focus   Ctrl+P actions   Esc back   q quit"
+		keys = "  j/k move/scroll   Enter open DLQ   [/] view   i inspector   n/p pages   Tab/Ctrl+H/L focus   Ctrl+P actions   Esc back   q quit"
 	} else if m.screen == "settings" {
-		keys = "  j/k move   Enter change   s save preferences   Ctrl+P actions   Esc back   q quit"
+		keys = "  j/k move   Enter change   s save   Tab/Ctrl+H/L focus   Ctrl+P actions   Esc back   q quit"
 	}
 	if m.focus == "navigation" {
-		keys = "  j/k move   h/l collapse/expand   Enter open   ] DLQ   Tab focus   Ctrl+P actions   q quit"
+		keys = "  j/k move   h/l collapse/expand   Enter open   ] DLQ   Tab/Ctrl+H/L focus   Ctrl+P actions   q quit"
 	}
 	if m.width < 110 {
 		keys = "  j/k move  Enter open  ] DLQ  Ctrl+P actions  q quit"

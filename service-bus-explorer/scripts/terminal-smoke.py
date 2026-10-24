@@ -55,13 +55,28 @@ def main():
                     break
                 stream.feed(decoder.decode(data))
             text = "\n".join(screen.display)
-            if (want.search(text) if isinstance(want, re.Pattern) else want in text) and (absent is None or absent not in text):
-                return text
+            matched = want(text) if callable(want) else (want.search(text) if isinstance(want, re.Pattern) else want in text)
+            if matched and (absent is None or absent not in text):
+                # Bubble Tea may stream one redraw across several PTY reads.
+                if not select.select([master], [], [], 0.05)[0]:
+                    return text
         raise AssertionError(f"Expected {want!r}, absent {absent!r}\n" + "\n".join(screen.display))
 
     def send(keys, want, absent=None):
         os.write(master, keys.encode())
         return wait(want, absent)
+
+    def focused(title):
+        def matches(text):
+            borders = {}
+            for y, row in enumerate(screen.display):
+                for pane in ("WORKSPACE", "orders / DEAD-LETTER", "INSPECTOR"):
+                    x = row.find("┌─ " + pane)
+                    if x >= 0:
+                        borders[pane] = screen.buffer[y][x].fg == "65c7f7"
+            footer_ready = ("h/l collapse/expand" in text) == (title == "WORKSPACE")
+            return footer_ready and len(borders) == 3 and all(active == (pane == title) for pane, active in borders.items())
+        return matches
 
     def action(query, want):
         send("\x10", "Ctrl+P / ACTIONS")
@@ -71,9 +86,9 @@ def main():
     def dlq_review():
         # A non-first highlighted row, not receive-next, is the resend source.
         for cleanup in (False, True):
-            wait(re.compile(r"› \d+\s+orders-dlq-"))
-            selected_row = next(row for row in screen.display if re.search(r"› \d+\s+orders-dlq-", row))
-            text = send("j", "orders / DEAD-LETTER", selected_row)
+            text = wait(re.compile(r"› \d+\s+orders-dlq-\d{4}"))
+            previous_id = re.search(r"› \d+\s+(orders-dlq-\d{4})", text).group(1)
+            text = send("j", re.compile(r"› \d+\s+(?!" + re.escape(previous_id) + r")orders-dlq-\d{4}"))
             selected_id = re.search(r"› \d+\s+(orders-dlq-\d{4})", text).group(1)
             send("\r", "SELECTED MESSAGE / OPEN")
             wait("ID: " + selected_id)
@@ -115,6 +130,8 @@ def main():
         deleted_id = re.search(r"ID: (orders-dlq-\d{4})", wait("New MessageID:")).group(1)
         send("\t\t\t", "› Delete original")
         send("\r", "type delete: _")
+        send("delx\x08\x0c", "type delete: del_")
+        send("\x08\x08\x08", "type delete: _")
         send("delete", "type delete: delete_")
         send("\r", "Deletion confirmed")
         send("\r", "orders / DEAD-LETTER")
@@ -175,6 +192,16 @@ def main():
         send("]", "MaxDeliveryCountExceeded")
         wait('"currency": "EUR"')
         assert "PEEK ONLY" in "\n".join(screen.display)
+        # Literal terminal control bytes: both edges clamp, never wrap.
+        send("\x08\x08", focused("WORKSPACE"))
+        send("\x0c", focused("orders / DEAD-LETTER"))
+        send("\x0c", focused("INSPECTOR"))
+        send("\x0cj\x08j", "› 107")
+        send("k", "› 100")
+        send("b", "INSPECTOR", "WORKSPACE")
+        send("\x08\x08j", "› 107")
+        send("k", "› 100")
+        send("b", "WORKSPACE")
         send("j", "› 107")
         send("[", "orders-active-0001", "MaxDeliveryCountExceeded")
         send("n", "orders-active-0021", "orders-active-0001")
@@ -195,6 +222,7 @@ def main():
         send("\x10", "Ctrl+P / ACTIONS")
         send("qjk", "No matching actions")
         assert proc.poll() is None, "palette query q quit the process"
+        send("\x08\x0c", "> qj_")
         send("\x1b", "128 queued", "Ctrl+P / ACTIONS")
         # Distinct palette colors are observable terminal output, not just names.
         action("gruvbox", "128 queued")
@@ -211,6 +239,8 @@ def main():
         resize(80, 24)
         os.kill(proc.pid, signal.SIGWINCH)
         wait("128 queued", "WORKSPACE")
+        # With both side regions unavailable, either direction stays on content.
+        send("\x08\x0c\x08\x0c", "q quit")
         send("\r", "orders / ACTIVE")
         resize(50, 10)
         os.kill(proc.pid, signal.SIGWINCH)

@@ -37,6 +37,7 @@ sidebar hides automatically. The full inspector appears when enough width exists
 | `g` / `t` | Grid / table dashboard |
 | `Ctrl+P` | Open fuzzy actions; type to filter, arrows/Ctrl+N/P choose, Enter runs, Esc closes |
 | `Tab` / `Shift+Tab` | Cycle visible content, inspector and sidebar panes |
+| `Ctrl-H` / `Ctrl-L` | Focus left / right across visible sidebar, content and inspector; clamp at either edge (Ctrl-H still deletes in text inputs) |
 | `h` / `l` | Collapse / expand the selected sidebar group |
 | `b` | Collapse/expand sidebar |
 | `i` | Toggle inspector in message view |

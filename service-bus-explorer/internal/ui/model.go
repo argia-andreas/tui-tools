@@ -289,21 +289,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key == "b" {
 			return m.execute("sidebar")
 		}
-		if key == "tab" || key == "shift+tab" {
-			panes := []string{"content"}
-			if m.hasInspector() {
-				panes = append(panes, "inspector")
-			}
+		if key == "tab" || key == "shift+tab" || key == "ctrl+h" || key == "ctrl+l" {
+			panes := []string{}
 			if m.prefs.Sidebar && m.width >= 110 {
 				panes = append(panes, "navigation")
+			}
+			panes = append(panes, "content")
+			if m.hasInspector() {
+				panes = append(panes, "inspector")
 			}
 			for index, pane := range panes {
 				if m.focus == pane {
 					step := 1
-					if key == "shift+tab" {
-						step = len(panes) - 1
+					if key == "shift+tab" || key == "ctrl+h" {
+						step = -1
 					}
-					m.focus = panes[(index+step)%len(panes)]
+					if key == "ctrl+h" || key == "ctrl+l" {
+						m.focus = panes[min(len(panes)-1, max(0, index+step))]
+					} else {
+						m.focus = panes[(index+step+len(panes))%len(panes)]
+					}
 					break
 				}
 			}
