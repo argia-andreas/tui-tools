@@ -24,7 +24,7 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		x, y := (m.width-w)/2, (m.height-h)/2
 		outside := msg.X < x || msg.X >= x+w || msg.Y < y || msg.Y >= y+h
 		if click && (outside || (msg.Y == y && msg.X >= x+w-6)) {
-			if m.modal == "copy" || m.modal == "rename" || m.modal == "batch" || m.modal == "preview" {
+			if m.modal == "copy" || m.modal == "rename" || m.modal == "batch" || m.modal == "preview" || m.modal == "folder" {
 				return key(tea.KeyEsc)
 			}
 			m.modal = ""
@@ -32,6 +32,12 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if outside {
+			return m, nil
+		}
+		if m.modal == "folder" {
+			if click && msg.Y == y+h-2 && msg.X >= x+2 && msg.X < x+12 {
+				return key(tea.KeyEnter)
+			}
 			return m, nil
 		}
 		if m.modal == "batch" {
@@ -116,11 +122,17 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
-	if msg.Y < 1 || msg.Y > m.height-3 {
+	if click && msg.Y == m.height-1 && m.transferer != nil && m.status == "" && !m.filtering {
+		start := strings.Index(workspaceFooter, "? help")
+		if msg.X >= start && msg.X < start+len("? help") {
+			return m.execute("help")
+		}
+	}
+	l := m.layout()
+	if msg.Y < 1 || msg.Y > l.height {
 		return m, nil
 	}
 	m.filtering = false
-	l := m.layout()
 	if msg.X < l.nav {
 		m.focus = 0
 		if wheel {
@@ -161,6 +173,22 @@ func (m Model) mouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		i, origin = 1, l.nav+l.left
 	}
 	m.focus, m.endpoint = i+1, i
+	if i == 1 && m.disconnected {
+		if click {
+			connect, folder := destinationRows(l.height - l.drawer)
+			w := l.center - l.left
+			for _, button := range []struct {
+				row           int
+				label, action string
+			}{{connect, connectButton, "connect"}, {folder, folderButton, "folder"}} {
+				x := origin + 1 + max(0, (w-2-len(button.label))/2)
+				if msg.Y == 2+button.row && msg.X >= x && msg.X < x+len(button.label) {
+					return m.execute(button.action)
+				}
+			}
+		}
+		return m, nil
+	}
 	if wheel {
 		p := &m.panes[i]
 		delta := 3

@@ -66,6 +66,33 @@ func (e rcloneEntry) entry() Entry {
 }
 
 func (r *Rclone) List(ctx context.Context, loc Location) ([]Entry, error) {
+	if loc.Remote == "" {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		items, err := os.ReadDir(loc.Path)
+		if err != nil {
+			return nil, err
+		}
+		entries := make([]Entry, 0, len(items))
+		for _, item := range items {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			info, err := item.Info()
+			if err != nil {
+				return nil, err
+			}
+			entries = append(entries, Entry{Name: item.Name(), IsDir: info.IsDir(), Size: info.Size(), Modified: info.ModTime()})
+		}
+		sort.Slice(entries, func(i, j int) bool {
+			if entries[i].IsDir != entries[j].IsDir {
+				return entries[i].IsDir
+			}
+			return entries[i].Name < entries[j].Name
+		})
+		return entries, nil
+	}
 	data, err := r.run(ctx, time.Minute, "lsjson", nil, loc)
 	if err != nil {
 		return nil, err

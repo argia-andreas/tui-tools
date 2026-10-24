@@ -14,13 +14,14 @@ import (
 )
 
 type Options struct {
-	Browser     storage.Browser
-	Context     context.Context
-	Transferer  storage.Transferer
-	Locations   []storage.Location
-	Left, Right storage.Location
-	Theme       theme.Theme
-	Icons       bool
+	Browser      storage.Browser
+	Context      context.Context
+	Transferer   storage.Transferer
+	Locations    []storage.Location
+	Left, Right  storage.Location
+	Theme        theme.Theme
+	Icons        bool
+	Disconnected bool
 }
 
 type pane struct {
@@ -32,6 +33,7 @@ type pane struct {
 	generation int
 	loading    bool
 	err        error
+	parent     bool
 }
 
 type listed struct {
@@ -70,6 +72,8 @@ type Model struct {
 	filtering                   bool
 	status                      string
 	navCursor                   int
+	disconnected                bool
+	folderPath                  string
 }
 
 func New(o Options) Model {
@@ -84,10 +88,23 @@ func New(o Options) Model {
 		m.locations = navLocations
 	}
 	if m.transferer != nil {
-		m.status = "Live workspace — confirm each copy; FTP is unencrypted"
+		m.navigation = false
+		m.status = ""
 	}
-	m.panes[0] = pane{location: o.Left, selected: map[string]bool{}, loading: true}
-	m.panes[1] = pane{location: o.Right, selected: map[string]bool{}, loading: true}
+	m.disconnected = o.Disconnected
+	if m.disconnected {
+		m.navigation = false
+		if len(o.Locations) == 0 {
+			m.locations = []storage.Location{o.Left}
+		}
+	}
+	m.panes[0] = pane{location: o.Left, selected: map[string]bool{}, loading: true, parent: o.Transferer != nil}
+	m.panes[1] = pane{location: o.Right, selected: map[string]bool{}, loading: !m.disconnected, parent: o.Transferer != nil}
+	for i := range m.panes {
+		if m.panes[i].hasParent() {
+			m.panes[i].cursor = 1
+		}
+	}
 	return m
 }
 
@@ -96,6 +113,9 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) list(i int) tea.Cmd {
+	if i == 1 && m.disconnected {
+		return nil
+	}
 	p := m.panes[i]
 	return func() tea.Msg {
 		entries, err := m.browser.List(m.ctx, p.location)
@@ -104,8 +124,14 @@ func (m Model) list(i int) tea.Cmd {
 }
 
 func (m *Model) navigate(i int, loc storage.Location) tea.Cmd {
+	if i == 1 {
+		m.disconnected = false
+	}
 	p := &m.panes[i]
 	p.location, p.cursor, p.filter = loc, 0, ""
+	if p.hasParent() {
+		p.cursor = 1
+	}
 	p.entries = nil
 	p.selected = map[string]bool{}
 	p.generation++
@@ -123,8 +149,15 @@ func (m Model) active() int {
 	return m.endpoint
 }
 
+func (p pane) hasParent() bool {
+	return p.parent && p.location.Path != "" && path.Clean(p.location.Path) != "/"
+}
+
 func (p pane) visible() []storage.Entry {
 	var entries []storage.Entry
+	if p.hasParent() && p.filter == "" {
+		entries = append(entries, storage.Entry{Name: "..", IsDir: true})
+	}
 	for _, e := range p.entries {
 		if strings.Contains(strings.ToLower(e.Name), strings.ToLower(p.filter)) {
 			entries = append(entries, e)
@@ -159,6 +192,36 @@ func (m *Model) fixFocus() {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case ConnectionOpened:
+		if msg.Browser != nil {
+			m.browser = msg.Browser
+		}
+		if msg.Transferer != nil {
+			m.transferer = msg.Transferer
+		}
+		m.disconnected = false
+		m.status = ""
+		m.focus, m.endpoint = 1, 0
+		locations := append([]storage.Location{msg.Right}, msg.Locations...)
+		locations = append(locations, m.locations...)
+		m.locations = nil
+		seen := map[storage.Location]bool{}
+		// Navigation groups remotes before local places; repeated connections
+		// must not duplicate roots or put a remote under the Places heading.
+		for _, remote := range []bool{true, false} {
+			for _, loc := range locations {
+				if (loc.Remote != "") == remote && !seen[loc] {
+					m.locations = append(m.locations, loc)
+					seen[loc] = true
+				}
+			}
+		}
+		m.navCursor = 0
+		var local tea.Cmd
+		if msg.Left.Path != "" && msg.Left != m.panes[0].location {
+			local = m.navigate(0, msg.Left)
+		}
+		return m, tea.Batch(local, m.navigate(1, msg.Right))
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.fixFocus()
@@ -305,6 +368,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "enter":
+			if m.focus == 2 && m.disconnected {
+				return m.execute("connect")
+			}
 			if m.focus == 0 {
 				loc := m.locations[m.navCursor]
 				i := 1
@@ -328,7 +394,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		case "backspace", "h":
-			if m.focus == 1 || m.focus == 2 {
+			if m.focus == 1 || (m.focus == 2 && !m.disconnected) {
 				i := m.active()
 				loc := m.panes[i].location
 				loc.Path = path.Dir(loc.Path)
@@ -339,13 +405,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focus == 1 || m.focus == 2 {
 				p := &m.panes[m.active()]
 				entries := p.visible()
-				if len(entries) > 0 {
+				if len(entries) > 0 && entries[p.cursor].Name != ".." {
 					name := entries[p.cursor].Name
 					p.selected[name] = !p.selected[name]
 				}
 			}
 		case "/":
-			if m.focus == 1 || m.focus == 2 {
+			if m.focus == 1 || (m.focus == 2 && !m.disconnected) {
 				m.filtering = true
 			}
 		}
@@ -385,6 +451,10 @@ func (m Model) actions() []action {
 		{"cancel", "Cancel unfinished transfers", "ctrl+x", "stop queue", m.cancelDisabled()},
 		{"retry", "Retry unfinished transfers", "r", "recover failed canceled queue", m.retryDisabled()},
 	}
+	if m.transferer != nil {
+		a = append(a, action{"connect", "Connect a remote", "", "destination connection ftp blob s3", m.connectionDisabled()},
+			action{"folder", "Open local destination folder", "", "destination directory path", m.connectionDisabled()})
+	}
 	for _, name := range theme.Names() {
 		a = append(a, action{"theme:" + name, "Theme: " + name, "", "colors style appearance", ""})
 	}
@@ -417,6 +487,9 @@ func (m Model) matches() []action {
 }
 
 func (m Model) modalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.modal == "folder" {
+		return m.folderKey(msg)
+	}
 	if m.modal == "preview" {
 		return m.previewKey(msg)
 	}
@@ -485,6 +558,21 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	switch id {
+	case "connect":
+		if reason := m.connectionDisabled(); reason != "" {
+			m.status = reason
+			return m, nil
+		}
+		local := m.panes[0].location.Path
+		return m, func() tea.Msg { return ConnectRequested{Local: local} }
+	case "folder":
+		if reason := m.connectionDisabled(); reason != "" {
+			m.status = reason
+			return m, nil
+		}
+		m.folderPath = m.panes[0].location.Path
+		m.modal = "folder"
+		m.status = ""
 	case "navigation":
 		m.navigation = !m.navigation
 		m.fixFocus()

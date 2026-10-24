@@ -136,7 +136,7 @@ def exercise(remote):
         rclone("lsf", remote, "--files-only")  # Fail fast if lab/config is unavailable.
         filename.write_bytes(original)
         terminal = Terminal(local, remote)
-        terminal.wait(name, "Live workspace", absent=("Loading",))
+        terminal.wait(name, "0 transfers", remote, absent=("Loading",))
         terminal.send("c", "Destination is new", "[Cancel]", "[Copy]", "[Rename]")
         upload_started = True
         terminal.transfer("\t\r", destination)

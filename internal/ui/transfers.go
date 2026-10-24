@@ -48,7 +48,7 @@ func (m Model) copyEntries() []storage.Entry {
 	}
 	if len(chosen) == 0 {
 		entries := p.visible()
-		if len(entries) == 0 {
+		if len(entries) == 0 || entries[p.cursor].Name == ".." {
 			return nil
 		}
 		chosen = append(chosen, entries[p.cursor])
@@ -71,6 +71,12 @@ func (m Model) copyEntry() (storage.Entry, string) {
 func (m Model) copyDisabled() string {
 	if m.transferer == nil {
 		return "Transfers arrive in live mode; demo is read-only"
+	}
+	if m.disconnected {
+		return "Choose a destination before copying"
+	}
+	if m.panes[1-m.active()].loading || m.panes[1-m.active()].err != nil {
+		return "Wait for a successful destination listing"
 	}
 	if m.queuePlanning || m.queueIndex < len(m.queue) || (m.job != nil && m.job.state == "Running") {
 		return "Finish or cancel the current transfer queue first"

@@ -74,22 +74,13 @@ func join(a, b []string) []string {
 
 const toolbar = " [Nav] [Info] [Jobs] [?] [Actions] "
 const paneControls = " ↑ Up  / Filter  ↻ Refresh"
+const workspaceFooter = " Space Select   c Copy   ? help"
 const paletteFooter = "  ↑↓ choose · Enter run · F1 shortcuts · Esc close"
 const helpFooter = "  ↑↓ / wheel scroll · Esc close"
 
 func (m Model) toolbar() string {
 	if m.transferer != nil {
-		controls := "[Copy] [Actions]"
-		if m.width >= 110 {
-			controls = "[Preview] " + controls
-			if m.cancelDisabled() == "" {
-				controls = "[Stop] " + controls
-			}
-			if m.retryDisabled() == "" {
-				controls = "[Retry] " + controls
-			}
-		}
-		return strings.Replace(toolbar, "[Actions]", controls, 1)
+		return " Ctrl+P [Actions] "
 	}
 	return toolbar
 }
@@ -109,6 +100,9 @@ type workspaceLayout struct{ nav, inspector, center, left, height, drawer int }
 
 func (m Model) layout() workspaceLayout {
 	l := workspaceLayout{height: m.height - 3}
+	if m.transferer != nil {
+		l.height++ // Real workspaces need only one contextual footer row.
+	}
 	if m.navigation && m.width >= 90 {
 		l.nav = 22
 	}
@@ -133,6 +127,8 @@ func (m Model) layout() workspaceLayout {
 func (m Model) modalSize() (int, int) {
 	w, h := min(82, m.width-6), min(20, m.height-4)
 	switch m.modal {
+	case "folder":
+		h = min(h, 8)
 	case "copy", "batch":
 		h = min(h, 12)
 	case "rename":
@@ -213,7 +209,7 @@ func (m Model) View() string {
 	}
 	headerLeft := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.Focus)).Background(lipgloss.Color(m.theme.Background)).Render(" LAZYFTP")
 	headerRight := m.toolbar()
-	if m.width >= 110 {
+	if m.width >= 110 && m.transferer == nil {
 		headerRight = m.theme.Name + " ·" + headerRight
 	}
 	headerRight = m.paint(headerRight, m.theme.Foreground)
@@ -227,7 +223,22 @@ func (m Model) View() string {
 	}
 	status := m.status
 	lines := append([]string{fit(header, m.width)}, body...)
-	lines = append(lines, m.paint(fit(" "+text(status), m.width), m.theme.Muted), m.paint(fit(footer, m.width), m.theme.Foreground))
+	if m.transferer != nil {
+		footer = workspaceFooter
+		if m.filtering {
+			footer = " Filter: " + text(m.panes[m.active()].filter) + "▏   Enter apply · Esc clear"
+		} else if status != "" {
+			footer = " " + text(status)
+		}
+		count := fmt.Sprintf(" %d transfers ", len(m.queue))
+		if len(m.queue) == 0 && m.job != nil {
+			count = " 1 transfer "
+		}
+		footer = fit(footer, m.width-lipgloss.Width(count)) + count
+		lines = append(lines, m.paint(fit(footer, m.width), m.theme.Muted))
+	} else {
+		lines = append(lines, m.paint(fit(" "+text(status), m.width), m.theme.Muted), m.paint(fit(footer, m.width), m.theme.Foreground))
+	}
 	if m.modal != "" {
 		lines = m.overlay(lines)
 	}
@@ -248,6 +259,12 @@ func (m Model) filePane(i, w, h int) []string {
 	if i == 1 {
 		accent = m.theme.Remote
 		label = "REMOTE"
+		if m.disconnected {
+			return m.destinationPane(w, h)
+		}
+		if p.location.Remote == "" {
+			label, accent = "LOCAL", m.theme.Local
+		}
 	}
 	columns := fit("    Name", max(1, w-13)) + fit("Size", 10)
 	lines := []string{m.paint(paneControls, m.theme.Muted), m.paint(fit(columns, w-2), m.theme.Muted)}
@@ -301,7 +318,13 @@ func (m Model) filePane(i, w, h int) []string {
 				color = m.theme.Local
 			}
 		}
+		if e.Name == ".." {
+			name, icon, color = "..", "↑", m.theme.Muted
+		}
 		marker := "○"
+		if e.Name == ".." {
+			marker = " "
+		}
 		if p.selected[e.Name] {
 			marker = "●"
 		}
@@ -315,7 +338,11 @@ func (m Model) filePane(i, w, h int) []string {
 		row := m.paint(marker+" ", m.theme.Focus) + m.paint(icon+" ", color) + m.paint(fit(name, max(1, w-17)), nameColor) + m.paint(fit(size, 10), m.theme.Muted)
 		row += m.paint(strings.Repeat(" ", max(0, w-2-lipgloss.Width(row))), m.theme.Foreground)
 		if j == p.cursor && m.focus == i+1 && m.modal == "" {
-			row = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(m.theme.SelectionText)).Background(lipgloss.Color(m.theme.Selection)).Render(ansi.Strip(row))
+			foreground, background := m.theme.SelectionText, m.theme.Selection
+			if m.disconnected {
+				foreground, background = m.theme.Foreground, m.theme.Surface
+			}
+			row = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(foreground)).Background(lipgloss.Color(background)).Render(ansi.Strip(row))
 		}
 		lines = append(lines, row)
 	}
@@ -337,7 +364,11 @@ func (m Model) filePane(i, w, h int) []string {
 			count++
 		}
 	}
-	info := fmt.Sprintf(" %d entries · %d selected", len(entries), count)
+	entryCount := len(entries)
+	if p.hasParent() && p.filter == "" {
+		entryCount--
+	}
+	info := fmt.Sprintf(" %d entries · %d selected", entryCount, count)
 	if p.filter != "" {
 		info += " · /" + text(p.filter)
 	}
@@ -414,7 +445,10 @@ func (m Model) overlay(background []string) []string {
 	m.theme.Focus = accent
 	lines := []string{}
 	title := "ACTIONS · Ctrl+P"
-	if m.modal == "preview" {
+	if m.modal == "folder" {
+		title = "OPEN LOCAL DESTINATION"
+		lines = []string{"", "  Folder", "  > " + text(m.folderPath) + "▏", m.paint("  "+m.status, m.theme.Error), "  Enter Open · Ctrl+U Clear · Esc Cancel"}
+	} else if m.modal == "preview" {
 		title, lines = m.previewLines(w, h)
 	} else if m.modal == "batch" {
 		title, lines = m.batchLines(h)

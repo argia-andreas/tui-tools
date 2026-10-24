@@ -47,6 +47,79 @@ func (s *memoryStorage) Copy(_ context.Context, source, destination storage.Loca
 	return nil
 }
 
+func TestFilesFirstDestinationAndParentNavigation(t *testing.T) {
+	th, _ := theme.Get("")
+	s := &treeStorage{files: map[storage.Location]string{
+		{Path: "/local/child/local.txt"}:                    "local",
+		{Remote: "ftp", Path: "/incoming/child/remote.txt"}: "remote",
+	}}
+	m := ui.New(ui.Options{Browser: s, Transferer: s, Left: storage.Location{Path: "/local"}, Theme: th, Disconnected: true})
+	d := &driver{model: m}
+	d.deliver(tea.WindowSizeMsg{Width: 100, Height: 30})
+	d.run(m.Init())
+	requireText(t, d, "child/")
+	requireText(t, d, "REMOTE Not connected")
+	requireText(t, d, "[ Connect a remote ]")
+	for _, size := range [][2]int{{160, 40}, {80, 24}, {60, 12}, {100, 30}} {
+		d.deliver(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		requireText(t, d, "[ Connect a remote ]")
+		lines := strings.Split(d.model.View(), "\n")
+		if len(lines) != size[1] {
+			t.Fatalf("first-screen height %d, want %d", len(lines), size[1])
+		}
+		for _, line := range lines {
+			if ansi.StringWidth(line) > size[0] {
+				t.Fatal("first-screen content overflowed terminal width")
+			}
+		}
+	}
+	for _, clutter := range []string{"WORKSPACE", "INSPECTOR", "TRANSFERS", "Loading", "LIVE MODE"} {
+		if strings.Contains(d.screen(), clutter) {
+			t.Fatalf("unexpected first-screen clutter %q", clutter)
+		}
+	}
+	d.key("c")
+	requireText(t, d, "Choose a destination before copying")
+	d.key("tab")
+	_, cmd := d.model.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	request, ok := cmd().(ui.ConnectRequested)
+	if !ok || request.Local != "/local" {
+		t.Fatalf("connection request: %+v", request)
+	}
+	d.deliver(ui.ConnectionOpened{Right: storage.Location{Remote: "ftp", Path: "/incoming"}})
+	for _, endpoint := range []struct{ child, file, parent string }{
+		{"LOCAL /local/child", "local.txt", "LOCAL /local"},
+		{"REMOTE ftp:/incoming/child", "remote.txt", "REMOTE ftp:/incoming"},
+	} {
+		d.key("enter") // The first real directory remains the initial cursor.
+		requireText(t, d, endpoint.child)
+		requireText(t, d, endpoint.file)
+		d.key("k") // Parent is immediately above the first actual entry.
+		d.key(" ")
+		requireText(t, d, "0 selected")
+		d.key("c")
+		requireText(t, d, "No file to copy")
+		d.key("enter")
+		requireText(t, d, endpoint.parent)
+		if strings.Contains(d.screen(), endpoint.child) {
+			t.Fatal("Enter on .. did not leave the child directory")
+		}
+		d.key("tab")
+	}
+	// Mouse navigation must use the same synthetic row in either file pane.
+	d.key("enter")
+	requireText(t, d, "LOCAL /local/child")
+	d.deliver(tea.MouseMsg{X: 5, Y: 4, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	requireText(t, d, "LOCAL /local")
+	if strings.Contains(d.screen(), "LOCAL /local/child") {
+		t.Fatal("clicking .. did not navigate to parent")
+	}
+	d.deliver(ui.ConnectionOpened{Left: storage.Location{Path: "/"}, Right: storage.Location{Remote: "ftp", Path: "/"}})
+	if strings.Contains(d.screen(), "↑ ..") {
+		t.Fatal("root directories should not show a parent entry")
+	}
+}
+
 func TestConfirmedSingleFileCopies(t *testing.T) {
 	for _, scenario := range []string{"cancel", "skip", "overwrite", "mouse", "rename", "failure", "new", "download", "frozen"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -119,6 +192,7 @@ func TestConfirmedSingleFileCopies(t *testing.T) {
 				if scenario == "frozen" {
 					next, copyCmd := d.model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 					d.model = next
+					d.key("[") // Live workspaces start with navigation collapsed.
 					d.key("shift+tab")
 					d.key("j")
 					d.key("enter")
