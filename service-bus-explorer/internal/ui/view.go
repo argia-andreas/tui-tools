@@ -62,7 +62,6 @@ func (m Model) panel(title string, width, height int, lines []string, focused bo
 
 func (m Model) sidebarView(height int) []string {
 	var lines []string
-	lines = append(lines, "")
 	for i, label := range []string{"Dashboard", "Queues", "Topics", "Settings"} {
 		prefix := "  "
 		active := m.screen == strings.ToLower(label) || (m.screen == "messages" && m.returnScreen == strings.ToLower(label))
@@ -70,22 +69,47 @@ func (m Model) sidebarView(height int) []string {
 			prefix = "› "
 		}
 		line := prefix + label
-		if m.navFocus && i == m.nav {
+		if m.focus == "navigation" && i == m.nav {
 			lines = append(lines, m.selectedLine("› "+label, 22))
 		} else if active {
 			lines = append(lines, m.paint(line, m.theme.Focus))
 		} else {
 			lines = append(lines, m.paint(line, m.theme.Foreground))
 		}
-		lines = append(lines, "")
 	}
-	lines = append(lines, m.paint("  NAMESPACE", m.theme.Muted), m.paint("  local-lab", m.theme.Foreground), "", m.paint("  12 queues", m.theme.Muted), m.paint("  2 subscriptions", m.theme.Muted), "", m.paint("  FIXTURE / OFFLINE", m.theme.Warning), m.paint("  Read-only sample", m.theme.Muted))
-	return m.panel("WORKSPACE", 24, height, lines, m.navFocus)
+	lines = append(lines, "", m.paint("  RESOURCES / peek", m.theme.Muted))
+	rows := m.tree()
+	capacity := max(1, height-8)
+	start := max(0, m.nav-4-capacity+1)
+	for index := start; index < min(len(rows), start+capacity); index++ {
+		row := rows[index]
+		prefix := "  "
+		if !row.leaf {
+			prefix = "▾ "
+			if m.collapsed[row.branch] {
+				prefix = "▸ "
+			}
+		}
+		line := strings.Repeat(" ", row.depth*2) + prefix + clean(row.label, false)
+		if m.focus == "navigation" && m.nav == index+4 {
+			lines = append(lines, m.selectedLine(line, 22))
+		} else {
+			color := m.theme.Foreground
+			if !row.leaf {
+				color = m.theme.Focus
+			}
+			lines = append(lines, m.paint(line, color))
+		}
+	}
+	return m.panel("WORKSPACE", 24, height, lines, m.focus == "navigation")
 }
 
 func (m Model) counter(value int64, state, color string, width int) string {
 	text := fmt.Sprint(value)
-	if state != "available" {
+	if state == "stale" {
+		text += "~"
+		color = m.theme.Warning
+	} else if state != "available" {
 		text, color = "—", m.theme.Warning
 	}
 	if width > 0 {
@@ -104,21 +128,28 @@ func (m Model) dashboardView(width, height int) []string {
 		title = "Topic subscriptions"
 	}
 	if m.screen == "settings" {
-		return m.panel("Settings", width, height, []string{"", m.paint("  Preferences arrive in the read-only workspace slice.", m.theme.Foreground), "", m.paint("  This tracer bullet does not save configuration or credentials.", m.theme.Muted), "", m.paint("  Esc returns to the dashboard.", m.theme.Focus)}, true)
+		return m.settingsView(width, height)
 	}
 	if m.loading {
-		return m.panel(title, width, height, []string{"", m.paint("  Loading offline fixtures…", m.theme.Muted)}, true)
+		return m.panel(title, width, height, []string{"", m.paint("  Discovering resources…", m.theme.Muted)}, true)
 	}
 	var lines []string
 	mode := "GRID"
-	if m.table || m.screen != "dashboard" {
+	if m.prefs.Table || m.screen != "dashboard" {
 		mode = "TABLE"
 	}
-	lines = append(lines, m.paint(fmt.Sprintf("  %s  /  %d watched entities", mode, len(items)), m.theme.Foreground), m.paint("  Enter peek active   ] peek DLQ   g grid   t table", m.theme.Muted), "")
+	scope := "watched entities"
+	if m.screen != "dashboard" {
+		scope = "discovered entities"
+	}
+	lines = append(lines, m.paint(fmt.Sprintf("  %s  /  %d %s", mode, len(items), scope), m.theme.Foreground), m.paint("  Enter peek active   ] peek DLQ   g/t layout   Ctrl+P actions", m.theme.Muted), "")
+	if len(items) == 0 {
+		lines = append(lines, m.paint("  Nothing watched. Open Settings with Ctrl+P to choose entities.", m.theme.Warning))
+	}
 	if mode == "TABLE" {
 		nameWidth := max(16, width-52)
 		lines = append(lines, m.paint("  "+fit("ENTITY", nameWidth)+fit("QUEUED", 10)+fit("DEAD-LETTER", 14)+"NAMESPACE", m.theme.Muted), "")
-		capacity := max(1, height-8)
+		capacity := max(1, height-9)
 		start := m.selected / capacity * capacity
 		for index := start; index < min(len(items), start+capacity); index++ {
 			i := items[index]
@@ -127,7 +158,7 @@ func (m Model) dashboardView(width, height int) []string {
 				prefix = "› "
 			}
 			line := m.paint(prefix+fit(clean(i.resource.Name(), false), nameWidth), m.theme.Foreground) + m.counter(i.counts.Active, i.counts.State, m.theme.Queued, 10) + m.counter(i.counts.DeadLetter, i.counts.State, m.theme.DeadLetter, 14) + m.paint(clean(i.resource.Namespace, false), m.theme.Muted)
-			if index == m.selected && !m.navFocus {
+			if index == m.selected && m.focus == "content" {
 				line = m.selectedLine(ansi.Strip(line), width-2)
 			}
 			lines = append(lines, line)
@@ -147,7 +178,7 @@ func (m Model) dashboardView(width, height int) []string {
 				}
 				i := items[index]
 				label := clean(i.resource.Name(), false)
-				selected := index == m.selected && !m.navFocus
+				selected := index == m.selected && m.focus == "content"
 				if selected {
 					label = "› " + label
 				}
@@ -168,7 +199,21 @@ func (m Model) dashboardView(width, height int) []string {
 		}
 	}
 	lines = append(lines, m.paint(fmt.Sprintf("  Selected %d/%d · j/k move · more entities scroll into view", min(m.selected+1, len(items)), len(items)), m.theme.Muted))
-	return m.panel(title, width, height, lines, !m.navFocus)
+	if len(items) > 0 {
+		c := items[m.selected].counts
+		state := "  Counts: " + c.State
+		if !c.ObservedAt.IsZero() {
+			state += " · observed " + c.ObservedAt.UTC().Format("15:04:05 UTC")
+		}
+		if c.Detail != "" {
+			state += " · " + clean(c.Detail, false)
+		}
+		if m.refreshing {
+			state += " · refreshing…"
+		}
+		lines = append(lines, m.paint(state, m.theme.Muted))
+	}
+	return m.panel(title, width, height, lines, m.focus == "content")
 }
 
 func (m Model) messageView(width, height int) []string {
@@ -177,11 +222,11 @@ func (m Model) messageView(width, height int) []string {
 		view = "DEAD-LETTER"
 	}
 	listWidth := width
-	showInspector := m.inspector && width >= 95
+	showInspector := m.hasInspector()
 	if showInspector {
 		listWidth = width * 48 / 100
 	}
-	lines := []string{m.paint("  [ Active     ] Dead-letter", m.theme.Focus), m.paint("  PEEK ONLY · no locks or settlement", m.theme.Queued), ""}
+	lines := []string{m.paint("  [ Active     ] Dead-letter", m.theme.Focus), m.paint("  PEEK ONLY · no locks or settlement", m.theme.Queued), m.paint("  "+clean(m.resource.Profile+" / "+m.resource.Namespace, false), m.theme.Muted)}
 	if m.loading {
 		lines = append(lines, m.paint("  Loading messages…", m.theme.Muted))
 	} else if len(m.page.Messages) == 0 {
@@ -210,10 +255,20 @@ func (m Model) messageView(width, height int) []string {
 			lines = append(lines, m.paint("  "+clean(msg.DeadLetterReason, false), m.theme.DeadLetter))
 		}
 	}
-	left := m.panel(clean(m.resource.Name(), false)+" / "+view, listWidth, height, lines, !m.navFocus)
+	left := m.panel(clean(m.resource.Name(), false)+" / "+view, listWidth, height, lines, m.focus == "content")
 	if !showInspector {
 		return left
 	}
+	details := m.inspectorLines()
+	offset := min(m.offset, max(0, len(details)-(height-2)))
+	right := m.panel("INSPECTOR / Tab focus · j/k scroll", width-listWidth, height, details[offset:], m.focus == "inspector")
+	for i := range left {
+		left[i] += right[i]
+	}
+	return left
+}
+
+func (m Model) inspectorLines() []string {
 	var details []string
 	if len(m.page.Messages) > 0 {
 		msg := m.page.Messages[m.message]
@@ -235,11 +290,7 @@ func (m Model) messageView(width, height int) []string {
 		}
 		details = append(details, "", m.paint("  No receive / resend / delete in this slice.", m.theme.Muted))
 	}
-	right := m.panel("INSPECTOR", width-listWidth, height, details, false)
-	for i := range left {
-		left[i] += right[i]
-	}
-	return left
+	return details
 }
 
 func (m Model) View() string {
@@ -248,9 +299,14 @@ func (m Model) View() string {
 	}
 	header := "  SBX / Service Bus Explorer"
 	badge := "FIXTURE · OFFLINE  "
-	lines := []string{m.paint(fit(header, m.width-lipgloss.Width(badge)), m.theme.Focus) + m.paint(badge, m.theme.Warning), m.paint(fit("  Safe browsing workspace · sample data, no Azure connection", m.width), m.theme.Muted), m.paint(strings.Repeat("─", m.width), m.theme.Border)}
+	subtitle := "  Safe browsing workspace · sample data, no Azure connection"
+	if m.mode == "emulator" {
+		badge = "EMULATOR · LOCAL  "
+		subtitle = "  Real local broker · peek only · — means runtime counts unavailable"
+	}
+	lines := []string{m.paint(fit(header, m.width-lipgloss.Width(badge)), m.theme.Focus) + m.paint(badge, m.theme.Warning), m.paint(fit(subtitle, m.width), m.theme.Muted), m.paint(strings.Repeat("─", m.width), m.theme.Border)}
 	height, width := m.height-6, m.width
-	showSidebar := m.sidebar && width >= 110
+	showSidebar := m.prefs.Sidebar && width >= 110
 	if showSidebar {
 		width -= 24
 	}
@@ -267,16 +323,110 @@ func (m Model) View() string {
 		}
 	}
 	lines = append(lines, content...)
-	keys := "  j/k move   Enter open   ] DLQ   g/t grid/table   Tab focus   b sidebar   q quit"
+	keys := "  j/k move   Enter open   ] DLQ   g/t layout   Tab focus   b sidebar   Ctrl+P actions   q quit"
 	if m.screen == "messages" {
-		keys = "  j/k message   [ Active   ] DLQ   i inspector   n/p pages   Tab focus   Esc back   q quit"
+		keys = "  j/k move/scroll   [ Active   ] DLQ   i inspector   n/p pages   Tab focus   Ctrl+P actions   Esc back   q quit"
+	} else if m.screen == "settings" {
+		keys = "  j/k move   Enter change   s save preferences   Ctrl+P actions   Esc back   q quit"
+	}
+	if m.focus == "navigation" {
+		keys = "  j/k move   h/l collapse/expand   Enter open   ] DLQ   Tab focus   Ctrl+P actions   q quit"
 	}
 	if m.width < 110 {
-		keys = "  j/k move  Enter open  ] DLQ  g/t view  b sidebar  q quit"
+		keys = "  j/k move  Enter open  ] DLQ  Ctrl+P actions  q quit"
 		if m.screen == "messages" {
-			keys = "  j/k move  [/] view  n/p pages  i inspector  Esc back  q quit"
+			keys = "  j/k move  [/] view  n/p pages  Ctrl+P  Esc back  q quit"
+		} else if m.screen == "settings" {
+			keys = "  j/k move  Enter change  s save  Ctrl+P  Esc back  q quit"
 		}
 	}
-	lines = append(lines, m.paint(strings.Repeat("─", m.width), m.theme.Border), m.paint(fit(keys, m.width), m.theme.Focus), m.paint(fit("  "+clean(m.status, false), m.width), m.theme.Muted))
+	status := m.status
+	if m.revision != m.persisted {
+		status += " · unsaved preferences"
+	}
+	lines = append(lines, m.paint(strings.Repeat("─", m.width), m.theme.Border), m.paint(fit(keys, m.width), m.theme.Focus), m.paint(fit("  "+clean(status, false), m.width), m.theme.Muted))
+	if m.palette {
+		m.overlayPalette(lines)
+	}
+	if m.ascii {
+		replacer := strings.NewReplacer("┌", "+", "┐", "+", "└", "+", "┘", "+", "─", "-", "│", "|", "›", ">", "▾", "v", "▸", ">", "·", ".", "—", "-", "…", "~", "×", "x")
+		for i := range lines {
+			lines[i] = replacer.Replace(lines[i])
+		}
+	}
 	return strings.Join(lines, "\n")
+}
+
+func (m Model) settingsView(width, height int) []string {
+	state := "saved"
+	if m.revision != m.persisted {
+		state = "unsaved changes"
+	}
+	if m.saving {
+		state = "saving…"
+	}
+	sidebar, inspector, layout := "Collapsed", "Hidden", "Grid"
+	if m.prefs.Sidebar {
+		sidebar = "Expanded"
+	}
+	if m.prefs.Inspector {
+		inspector = "Visible"
+	}
+	if m.prefs.Table {
+		layout = "Table"
+	}
+	labels := []string{"Color theme: " + m.prefs.Theme,
+		"Navigation sidebar: " + sidebar,
+		"Message inspector: " + inspector,
+		"Dashboard layout: " + layout, "Save preferences (s)"}
+	for _, i := range m.items {
+		mark := "[ ]"
+		if m.watched(i.resource) {
+			mark = "[x]"
+		}
+		labels = append(labels, mark+" "+clean(i.resource.Profile+" / "+i.resource.Namespace+" / "+i.resource.Name(), false))
+	}
+	lines := []string{m.paint("  Preferences / "+state, m.theme.Focus), m.paint("  Watchlists affect Dashboard only; never credentials or MCP access.", m.theme.Muted), ""}
+	capacity := max(1, height-7)
+	start := m.setting / capacity * capacity
+	for index := start; index < min(len(labels), start+capacity); index++ {
+		line := "  " + labels[index]
+		if index == m.setting && m.focus == "content" {
+			lines = append(lines, m.selectedLine("› "+labels[index], width-2))
+		} else {
+			lines = append(lines, m.paint(line, m.theme.Foreground))
+		}
+	}
+	lines = append(lines, "", m.paint("  Enter changes the selected option · s saves · Esc returns", m.theme.Muted))
+	return m.panel("Settings", width, height, lines, m.focus == "content")
+}
+
+func (m Model) overlayPalette(lines []string) {
+	width := min(76, m.width-6)
+	height := min(18, m.height-6)
+	choices := m.actions()
+	rows := []string{m.paint("  > "+clean(m.query, false)+"_", m.theme.Foreground), ""}
+	capacity := max(1, height-6)
+	start := m.action / capacity * capacity
+	for index := start; index < min(len(choices), start+capacity); index++ {
+		line := "  " + choices[index].title
+		if index == m.action {
+			rows = append(rows, m.selectedLine("› "+choices[index].title, width-2))
+		} else {
+			rows = append(rows, m.paint(line, m.theme.Foreground))
+		}
+	}
+	if len(choices) == 0 {
+		rows = append(rows, m.paint("  No matching actions", m.theme.Muted))
+	}
+	for len(rows) < height-4 {
+		rows = append(rows, "")
+	}
+	rows = append(rows, m.paint(fmt.Sprintf("  %d results · arrows choose · Enter run · Esc close", len(choices)), m.theme.Muted), m.paint("  Read-only workspace / no receive, resend or delete", m.theme.Queued))
+	panel := m.panel("Ctrl+P / ACTIONS", width, height, rows, true)
+	x, y := (m.width-width)/2, max(3, (m.height-height)/3)
+	for index, row := range panel {
+		under := lines[y+index]
+		lines[y+index] = ansi.Cut(under, 0, x) + row + ansi.Cut(under, x+width, m.width)
+	}
 }
