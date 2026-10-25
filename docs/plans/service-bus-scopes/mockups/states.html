@@ -1,0 +1,69 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Saved environments — Compact and exceptional states</title>
+<style>body{margin:0;padding:28px;background:#10131d;color:#d6dded;font:15px/1.5 system-ui}main{max-width:1060px;margin:auto}a{color:#9bbaff}h1{font-size:25px}h2{font-size:18px}p{color:#aab5ca}figure{margin:22px 0}pre{font:14px/1.7 ui-monospace,monospace;overflow:auto;padding:22px;background:#171c2a;border:1px solid #667394;border-radius:3px}b{color:#a4c1ff}.focus{background:#303f60;color:#fff}.warn{color:#efce83}figcaption{color:#aab5ca;font-size:13px}nav{display:flex;flex-wrap:wrap;gap:22px}@media(max-width:800px){pre{font-size:10px;padding:10px}body{padding:16px}}</style>
+<main><nav><a href="index.html">Proposal</a><a href="dashboard.html">Dashboard</a><a href="switcher.html">Switcher</a><a href="editor.html">Settings</a></nav><h1 id="title">Empty, partial and compact never mean “discover everything”</h1><p id="caveat">Static mockups · fictional inventory/times · compact frame is an 80-column design reference, not an executed terminal test</p>
+<figure id="first-run"><h2>First cloud run · no environment</h2><pre>┌ Dashboard ───────────────────────────────────────────────────────────────────┐
+│ Environment: None                                           Ctrl+P Actions  │
+│                                                                            │
+│ <b>Choose what to discover</b>                                                    │
+│ Create a named environment and choose its Service Bus namespaces.           │
+│ No queues or topics have been scanned.                                     │
+│                                                                            │
+│ <span class="focus">&gt; [ Create environment… ]</span>  [ Add known namespace… ]  [ Stay offline ]        │
+└────────────────────────────────────────────────────────────────────────────┘</pre><figcaption>No initial account-wide entity inventory. Existing local setup retains its explicit LOCAL/FIXTURE identity and previous watchlist.</figcaption></figure>
+<figure id="empty"><h2>Empty watchlist · successful discovery</h2><pre>┌ Dashboard ───────────────────────────────────────────────────────────────────┐
+│ Environment: Staging                                                       │
+│ <b>Nothing on this dashboard</b>                                                  │
+│ 26 entities available in this environment. None selected for the dashboard. │
+│ [ Open Settings → Dashboard inclusion ]                                    │
+└────────────────────────────────────────────────────────────────────────────┘</pre><figcaption>Different from “No queues or topic subscriptions found”, which appears only after successful empty discovery.</figcaption></figure>
+<figure id="partial"><h2>Partial discovery · keep uncertainty visible</h2><pre>┌ Dashboard ───────────────────────────────────────────────────────────────────┐
+│ Environment: Production                   <span class="warn">Partial: 2 of 3 namespaces checked</span> │
+│ <span class="warn">prod-payments: access denied listing entities. Last success 14:21 local.</span>     │
+│ [ Retry failed ]   [ Details ]   [ Edit environment ]                        │
+│                                                                            │
+│ orders / prod-core              Active 128        DLQ 3                    │
+│ payments / prod-payments        Active ~82        DLQ ~1   stale 14:21      │
+│ unknown / prod-payments         Active —          DLQ —    not observed     │
+│                                                                            │
+│ Unresolved saved selections (1)                                            │
+│ legacy / prod-core: Not found in successful listing · [Retry] [Forget…]      │
+│ payments is not marked deleted: its current existence could not be checked.│
+└────────────────────────────────────────────────────────────────────────────┘</pre><figcaption>Counts shown here are samples. An inaccessible namespace does not become empty or zero. “Not found” requires a complete successful relevant inventory check.</figcaption></figure>
+<figure id="compact"><h2>Compact scope editor · 80×24 reference</h2><pre>┌ Settings / Edit Production ──────────────────────────────────────────────────┐
+│ Name: Production                                   Draft · not applied     │
+│ Connection: Acme / Engineering account                                      │
+├────────────────────────────────────────────────────────────────────────────┤
+│ <b>Choose namespaces</b>                         Step 2 of 3 · 3 selected         │
+│ Azure subscription: Engineering production (…01a8)                          │
+│ Resource group: rg-core                          [ Change location… ]       │
+│ Search: [ prod_                          ]                                 │
+│                                                                            │
+│ <span class="focus">&gt; [x] prod-core                                                          </span> │
+│   [ ] prod-archive                                                         │
+│                                                                            │
+│ [ Select these 2 listed namespaces… ]                                      │
+│ [ Add known namespace… ]   [ Details for highlighted namespace ]            │
+│                                                                            │
+│ [ Review 3 selected across 2 Azure subscriptions… ]                         │
+│                                                                            │
+│ <span class="warn">New namespaces are not added automatically.</span>                                │
+│ Apply affects session only. Save preferences makes it durable.             │
+├────────────────────────────────────────────────────────────────────────────┤
+│ [ Review &amp; apply… ]   [ Back ]                                              │
+│ ↑/↓ Move · Space Toggle · Tab Pane · Enter Action · Esc Back                 │
+└────────────────────────────────────────────────────────────────────────────┘</pre><figcaption>Full-screen step, no hidden side basket. Review lists all selected namespaces and exposes Apply &amp; use / Back / Cancel. At smaller than 60×18 show a resize notice, not hidden confirmations.</figcaption></figure>
+</main>
+<script>
+// Presentation-only padding for these static terminal reference frames.
+for (const pre of document.querySelectorAll('pre')) {
+  const lines = pre.innerHTML.split('\n');
+  const widthOf = line => { const el = document.createElement('span'); el.innerHTML = line; return [...el.textContent].length; };
+  const width = Math.max(...lines.map(widthOf));
+  pre.innerHTML = lines.map(line => {
+    const rule = line.match(/─+([┐┤┘])$/);
+    if (rule) { const prefix = line.slice(0, -rule[0].length); return prefix + '─'.repeat(width - widthOf(prefix) - 1) + rule[1]; }
+    if (line.endsWith('│')) { const prefix = line.replace(/ *│$/, ''); return prefix + ' '.repeat(width - widthOf(prefix) - 1) + '│'; }
+    return line;
+  }).join('\n');
+}
+</script></html>

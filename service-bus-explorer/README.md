@@ -1,13 +1,13 @@
-# Service Bus Explorer — fixture and local emulator workspace
+# Service Bus Explorer — saved environments
 
 An independent keyboard-first terminal workspace, alongside—but not part of—LazyFTP.
-**Two explicit modes:** deterministic offline fixtures, or the independent local
-Service Bus emulator. Browsing is read-only; Slice 4 also includes explicitly
-reviewed single-message DLQ actions. Automated, PTY, real-emulator and final
-rendered-state/interaction checks passed on Linux (2026-10-24).
-No cloud connection or MCP access exists.
-Layout, theme and dashboard
-watchlists can be saved explicitly; credentials and MCP grants cannot.
+**Three explicit modes:** deterministic offline fixtures, the independent local
+Service Bus emulator, or read-only Azure using an existing Azure CLI login.
+Named environments constrain discovery to saved, explicit namespaces; dashboard
+inclusion remains a separate per-environment preference. Local modes retain
+explicitly reviewed single-message DLQ actions; cloud message mutations are disabled.
+Layout, theme, environments and dashboard inclusion can be saved explicitly;
+credentials, message bodies and MCP grants cannot. No MCP access exists.
 Fixture counts are sample data. Emulator counts are **unavailable**, never zero
 or totals inferred from peek pages.
 
@@ -20,7 +20,44 @@ make -C service-bus-explorer run-fixture
 ```
 
 Or inside this directory: `go run ./cmd/sbx --fixture`. Select exactly one of
-`--fixture` or `--emulator`; the app never silently falls back to sample data.
+`--fixture`, `--emulator`, or `--azure --tenant <tenant-id>`; the app never silently
+falls back to sample data or logs in for you.
+
+## Saved environments and scoped discovery
+
+Use **Ctrl+P → New environment** or **Settings → Environments**. Name the
+environment, browse namespace metadata under an Azure subscription, choose
+individual namespaces or preview a resource-group batch, then review and Apply.
+Repeat across groups/subscriptions in the same tenant. A group selection saves
+only the listed namespace snapshot: **future namespaces never join automatically**.
+Add known namespace accepts a full public-Azure namespace address or ARM ID
+without requiring broad subscription listing. Unknown management metadata stays
+unknown; discovery still needs operation-specific permissions and connectivity.
+
+**Apply changes this session; Save preferences makes all applied changes durable.**
+Ctrl+P → Switch environment restores that environment's inclusion choices. Edit,
+rename, duplicate and name-confirmed deletion are available in Settings; deletion
+only removes local preferences. Switching is blocked during message review and
+until outcomes are acknowledged. Unsaved quit offers Save / Discard / Cancel.
+
+**Settings → Dashboard inclusion** controls the same grid/table entity list:
+new environments start Selected/empty; `/` searches, `a` selects matching results,
+Space toggles, `v` shows full identity, `m` changes Selected/All with an All warning,
+and `s` saves all pending preferences. All includes future entities only inside
+saved namespaces. Unwatched entities remain browsable in scoped Queues/Topics/tree.
+Appearance remains global. Existing local watchlists migrate once to a local
+environment; deleted defaults are not recreated. Missing selections are retained
+and distinguished from failed/unverified discovery. Stale counts use `~`, never
+authoritative zeroes.
+
+The offline fixture includes a sample multi-subscription namespace catalog to try
+Production/Staging without Azure. Live mode requires modern Azure CLI token JSON
+(`expires_on`), one tenant and the **public Azure cloud**. It pins the principal's
+immutable object ID and tenant, refuses changed identities and does not acquire
+credentials or permissions on your behalf. Sovereign clouds and cross-tenant
+environments are not supported. Live Azure and the emulator were not exercised
+for this change; SDK/CLI/HTTP fault cases, race tests and the real fixture PTYs were.
+The orb has no running Docker daemon for the emulator integration suite.
 
 The workspace includes a 12-card dashboard at 160×48, denser table over the
 same watched queues/subscriptions (14 by default), a collapsible namespace/entity tree, bounded
@@ -53,8 +90,9 @@ sidebar hides automatically. The full inspector appears when enough width exists
 | `q`, `Ctrl+C` | Quit |
 
 Settings and Ctrl+P provide Midnight, Gruvbox and Light themes, layout controls,
-watchlist editing and Save preferences. Printable keys—including `q`, `j`, and
-`k`—belong to the palette query while it is open.
+environments, dashboard inclusion and Save preferences. Printable keys—including
+`q`, `j`, and `k`—belong to a focused search/name input. Compact environment panels
+support 80×24 and 60×18; smaller sizes ask for resize without hiding quit choices.
 
 The compact bordered toolbar exposes Active, DLQ, Refresh and Actions shortcuts.
 These are keyboard-first controls, not mouse targets. Review uses horizontal

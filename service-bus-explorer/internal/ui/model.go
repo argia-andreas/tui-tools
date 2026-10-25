@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"slices"
 	"sync"
 	"time"
 
@@ -34,49 +35,60 @@ type saved struct {
 }
 
 type Options struct {
-	Mode, ConfigPath string
-	Preferences      config.Preferences
-	ASCII            bool
-	Clipboard        func(string) (bool, error)
+	Mode, ConfigPath            string
+	Preferences                 config.Preferences
+	ASCII                       bool
+	Clipboard                   func(string) (bool, error)
+	ScopeProvider               explorer.ScopeProvider
+	Connection, ConnectionLabel string
 }
 
 // Model is an offline-first workspace. Broker reads and disk writes are commands.
 type Model struct {
-	store                explorer.Store
-	mode, configPath     string
-	life                 context.Context
-	stop                 context.CancelFunc
-	theme                theme.Theme
-	prefs                config.Preferences
-	ascii                bool
-	width, height        int
-	items                []item
-	screen, returnScreen string
-	focus                string
-	selected, nav        int
-	message              int
-	setting              int
-	dlq                  bool
-	page                 explorer.Page
-	resource             explorer.Resource
-	from                 int64
-	history              []int64
-	generation           uint64
-	cancel               context.CancelFunc
-	loading              bool
-	refreshing, again    bool
-	tick                 uint64
-	revision, persisted  uint64
-	saving               bool
-	palette              bool
-	query                string
-	action               int
-	collapsed            map[branch]bool
-	status               string
-	review               reviewState
-	reviewID             uint64
-	reader               inspectorState
-	clipboard            func(string) (bool, error)
+	store                       explorer.Store
+	mode, configPath            string
+	provider                    explorer.ScopeProvider
+	connection, connectionLabel string
+	env                         environmentState
+	scopeID                     uint64
+	scopeLife                   context.Context
+	scopeCancel                 context.CancelFunc
+	scopeResults                []explorer.NamespaceDiscovery
+	environmentItems            map[string][]item
+	environmentSelection        map[string]explorer.Resource
+	life                        context.Context
+	stop                        context.CancelFunc
+	theme                       theme.Theme
+	prefs                       config.Preferences
+	ascii                       bool
+	width, height               int
+	items                       []item
+	screen, returnScreen        string
+	focus                       string
+	selected, nav               int
+	message                     int
+	setting                     int
+	dlq                         bool
+	page                        explorer.Page
+	resource                    explorer.Resource
+	from                        int64
+	history                     []int64
+	generation                  uint64
+	cancel                      context.CancelFunc
+	loading                     bool
+	refreshing, again           bool
+	tick                        uint64
+	revision, persisted         uint64
+	saving                      bool
+	palette                     bool
+	query                       string
+	action                      int
+	collapsed                   map[branch]bool
+	status                      string
+	review                      reviewState
+	reviewID                    uint64
+	reader                      inspectorState
+	clipboard                   func(string) (bool, error)
 }
 
 func New(store explorer.Store, options Options) Model {
@@ -86,13 +98,19 @@ func New(store explorer.Store, options Options) Model {
 		options.Clipboard = clipboard.Write
 	}
 	return Model{store: store, mode: options.Mode, configPath: options.ConfigPath,
-		prefs: options.Preferences, ascii: options.ASCII, life: ctx, stop: cancel,
 		clipboard: options.Clipboard,
-		theme:     t, width: 160, height: 48, screen: "dashboard", focus: "content",
+		provider:  options.ScopeProvider, connection: options.Connection, connectionLabel: options.ConnectionLabel,
+		environmentItems: make(map[string][]item), environmentSelection: make(map[string]explorer.Resource),
+		scopeLife: ctx,
+		prefs:     options.Preferences, ascii: options.ASCII, life: ctx, stop: cancel,
+		theme: t, width: 160, height: 48, screen: "dashboard", focus: "content",
 		collapsed: make(map[branch]bool), loading: true, status: "Discovering resources…"}
 }
 
 func (m Model) Init() tea.Cmd {
+	if m.provider != nil {
+		return m.discoverEnvironment()
+	}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(m.life, 10*time.Second)
 		defer cancel()
@@ -102,6 +120,10 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) watched(r explorer.Resource) bool {
+	if m.provider != nil {
+		e, ok := m.environment()
+		return ok && (e.All || slices.Contains(e.Watchlist, r)) && inNamespaces(e.Namespaces, r)
+	}
 	resources, explicit := m.prefs.Watchlists[r.Profile]
 	if !explicit {
 		return true
@@ -136,12 +158,17 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 	m.refreshing = true
 	var targets []explorer.Resource
 	for _, i := range m.items {
+		if m.provider != nil && slices.ContainsFunc(m.scopeResults, func(result explorer.NamespaceDiscovery) bool {
+			return result.Err != nil && inNamespaces([]explorer.Namespace{result.Namespace}, i.resource)
+		}) {
+			continue
+		}
 		if m.watched(i.resource) {
 			targets = append(targets, i.resource)
 		}
 	}
 	return m, func() tea.Msg {
-		ctx, cancel := context.WithTimeout(m.life, 10*time.Second)
+		ctx, cancel := context.WithTimeout(m.scopeLife, 10*time.Second)
 		defer cancel()
 		jobs := make(chan explorer.Resource, len(targets))
 		results := make(chan item, len(targets))
@@ -168,6 +195,9 @@ func (m Model) refresh() (tea.Model, tea.Cmd) {
 		counts := counted{}
 		for i := range results {
 			counts[i.resource] = i.counts
+		}
+		if m.provider != nil {
+			return environmentCounts{m.scopeID, counts}
 		}
 		return counts
 	}
@@ -212,10 +242,13 @@ func (m Model) hasInspector() bool {
 }
 
 func (m Model) showSidebar() bool {
-	return m.prefs.Sidebar && m.width >= 110 && (m.screen != "messages" || m.width >= 122) && (m.review.phase == "" || m.review.selected)
+	return m.env.page == "" && m.prefs.Sidebar && m.width >= 110 && (m.screen != "messages" || m.width >= 122) && (m.review.phase == "" || m.review.selected)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if next, cmd, handled := m.environmentUpdate(msg); handled {
+		return next, cmd
+	}
 	if next, cmd, handled := m.inspectorMessage(msg); handled {
 		return next, cmd
 	}
@@ -276,7 +309,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.persisted = msg.revision
 			m.status = "Preferences saved · no credentials, message bodies or MCP grants stored"
+			if m.env.quitAfterSave && m.revision == msg.revision {
+				m.stop()
+				return m, tea.Quit
+			}
 		}
+		m.env.quitAfterSave = false
 	case peeked:
 		if msg.generation != m.generation {
 			break

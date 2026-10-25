@@ -22,6 +22,12 @@ func (m Model) actions() []action {
 		{"grid", "Dashboard layout: Grid"}, {"table", "Dashboard layout: Table"},
 		{"counts", "Refresh watched counts (read-only)"},
 	}
+	if m.provider != nil {
+		choices = append(choices, action{"env:switch", "Switch environment"}, action{"env:manage", "Manage environments (Settings)"},
+			action{"env:new", "New environment…"}, action{"env:edit-current", "Edit current environment…"},
+			action{"env:inclusion", "Dashboard inclusion (Settings)"}, action{"env:refresh", "Rediscover selected namespaces / Retry failed"},
+			action{"env:details", "Discovery details / namespace errors"})
+	}
 	for _, name := range theme.Names() {
 		choices = append(choices, action{"theme:" + name, "Color theme: " + name})
 	}
@@ -95,6 +101,9 @@ func (m Model) paletteKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) execute(id string) (tea.Model, tea.Cmd) {
+	if strings.HasPrefix(id, "env:") && m.provider != nil {
+		return m.environmentAction(id)
+	}
 	switch id {
 	case "copy-body", "copy-report", "copy-line", "copy-selection":
 		m.focus, m.reader.revealed = "inspector", true
@@ -105,6 +114,10 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 	case "selected-copy":
 		return m.openSelected()
 	case "receive":
+		if m.mode == "azure" {
+			m.status = "Azure connection is read-only; message mutations are disabled"
+			return m, nil
+		}
 		return m.acquire()
 	case "dashboard", "queues", "topics", "settings":
 		if m.cancel != nil {
@@ -143,12 +156,8 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.saving, m.status = true, "Saving preferences…"
-		p, path, revision := m.prefs, m.configPath, m.revision
+		p, path, revision := m.prefs.Clone(), m.configPath, m.revision
 		// The save command owns a snapshot, even if the user keeps editing.
-		p.Watchlists = maps.Clone(p.Watchlists)
-		for profile, list := range p.Watchlists {
-			p.Watchlists[profile] = slices.Clone(list)
-		}
 		return m, func() tea.Msg { return saved{revision, config.Save(path, p)} }
 	default:
 		if name, ok := strings.CutPrefix(id, "theme:"); ok {
@@ -161,9 +170,19 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) settingsKey(key string) (tea.Model, tea.Cmd) {
+	if m.provider != nil && (key == "enter" || key == " ") && m.setting >= 5 {
+		if m.setting == 5 {
+			return m.environmentAction("env:manage")
+		}
+		return m.environmentAction("env:inclusion")
+	}
 	switch key {
 	case "j", "down":
-		m.setting = min(4+len(m.items), m.setting+1)
+		last := 4 + len(m.items)
+		if m.provider != nil {
+			last = 6
+		}
+		m.setting = min(last, m.setting+1)
 	case "k", "up":
 		m.setting = max(0, m.setting-1)
 	case "s":

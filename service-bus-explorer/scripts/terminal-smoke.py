@@ -181,7 +181,8 @@ def main():
             resize(80, 24)
             os.kill(proc.pid, signal.SIGWINCH)
             wait("q quit", "WORKSPACE")
-            os.write(master, b"q")
+            send("q", "Unsaved changes / Quit?")
+            os.write(master, b"d")
             proc.wait(timeout=5)
             assert proc.returncode == 0
             print("PASS: real emulator PTY — discovery, unavailable counts, paging/refresh, selected copy to queue, exact-selected cleanup, receive-next/review, cancel/release, retained original, typed delete, resize, clean exit")
@@ -270,12 +271,17 @@ def main():
         dlq_review()
         action("settings", "Color theme: midnight")
         send("\r", "Color theme: gruvbox")
-        # First watch row follows the five layout/save controls.
+        # Inclusion is separate from discovery scope and the appearance rows.
         for label in ("Navigation sidebar:", "Message inspector:", "Dashboard layout:",
-                      "Save preferences", "[x] fixture / local-lab / orders"):
+                      "Save preferences", "Environments / discovery scope", "Dashboard inclusion"):
             send("j", "› " + label)
-        send("\r", "[ ] fixture / local-lab / orders")
+        send("\r", "Mode: All entities")
+        send("m", "Mode: Selected entities")
+        wait("[ ] local-lab / orders")
+        send("a", "[x] local-lab / orders")
+        send(" ", "[ ] local-lab / orders")
         send("s", "Preferences saved")
+        send("\x1b", "Color theme: gruvbox")
         send("\x1b", "13 watched entities")
         os.write(master, b"q")
         deadline = time.monotonic() + 5
@@ -295,8 +301,8 @@ def main():
                                 env=env, start_new_session=True)
         os.close(slave)
         wait("13 watched entities", "128 queued")
-        action("settings", "Color theme: gruvbox")
-        wait("[ ] fixture / local-lab / orders")
+        action("Dashboard inclusion", "Mode: Selected entities")
+        wait("[ ] local-lab / orders")
         os.write(master, b"q")
         proc.wait(timeout=5)
         assert proc.returncode == 0

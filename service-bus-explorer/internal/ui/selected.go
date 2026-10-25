@@ -21,6 +21,10 @@ type prepared struct {
 }
 
 func (m Model) openSelected() (tea.Model, tea.Cmd) {
+	if m.mode == "azure" {
+		m.status = "Azure connection is read-only · use the inspector to view the selected message"
+		return m, nil
+	}
 	if m.review.phase != "" || m.screen != "messages" || !m.dlq || m.loading || len(m.page.Messages) == 0 {
 		return m, nil
 	}

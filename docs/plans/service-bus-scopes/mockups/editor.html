@@ -1,0 +1,62 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Saved environments — Settings</title>
+<style>body{margin:0;padding:28px;background:#10131d;color:#d6dded;font:15px/1.5 system-ui}main{max-width:1060px;margin:auto}a{color:#9bbaff}h1{font-size:25px}p{color:#aab5ca}figure{margin:22px 0}pre{font:14px/1.7 ui-monospace,monospace;overflow:auto;padding:22px;background:#171c2a;border:1px solid #667394;border-radius:3px}b{color:#a4c1ff}.focus{background:#303f60;color:#fff}.warn{color:#efce83}figcaption{color:#aab5ca;font-size:13px}nav{display:flex;flex-wrap:wrap;gap:22px}@media(max-width:800px){pre{font-size:10px;padding:10px}body{padding:16px}}</style>
+<main><nav><a href="index.html">Proposal</a><a href="dashboard.html">Dashboard</a><a href="switcher.html">Switcher</a><a href="states.html">Edge &amp; compact states</a></nav><h1 id="title">One Settings home; two different decisions</h1><p id="caveat">Static terminal product mockups · fictional names/identifiers · staged namespace form above, existing inclusion editor below</p>
+<figure id="namespace-editor"><pre>┌ Settings / Environments / Edit Production ──────────────────────────────────────────────────────┐
+│ Appearance   <b>Environments</b>   Dashboard inclusion                              Form not applied  │
+├────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Name: [ Production                       ]   Connection: Acme tenant / Engineering account     │
+│ <b>Discovery scope</b> · Choose namespaces, not every resource you can access.                         │
+│ Search namespaces: [ prod_               ]     [ Choose Azure subscriptions… ]                  │
+│                                                                                                │
+│ Available namespaces                             │ Selected: 3 namespaces / 2 Azure subscriptions│
+│ v Engineering production (…01a8)                  │                                             │
+│   v rg-core                                      │ prod-core · rg-core · …01a8                 │
+│     [x] prod-core                                │ prod-payments · rg-payments · …01a8         │
+│     [ ] prod-archive                             │ prod-notifications · rg-shared · …83d2      │
+│     [ Select these 2 listed namespaces… ]        │                                             │
+│   v rg-payments                                  │ [ Details ]   [ Remove selected member ]     │
+│ <span class="focus">&gt;    [x] prod-payments                           </span> │                                             │
+│ v Shared services (…83d2)                         │ [ Add known namespace… ]                    │
+│   v rg-shared                                    │ No broad listing permission required.       │
+│     [x] prod-notifications                       │ Operation access must still be verified.    │
+│                                                                                                │
+│ <span class="warn">Group selection adds listed namespaces only. New namespaces are not added automatically.</span>        │
+│ [ Apply &amp; use ]   [ Cancel ]       Apply changes this session; Save preferences makes it durable. │
+├────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Tab Pane · ↑/↓ Move · h/l Collapse/expand · Space Namespace · Enter Action · Esc Back             │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘</pre><figcaption>Select multiple resource groups by reviewing their listed namespaces. Membership is explicit even when the environment spans subscriptions. Search never silently deselects hidden choices.</figcaption></figure>
+<figure id="inclusion-editor"><pre>┌ Settings / Dashboard inclusion ─────────────────────────────────────────────────────────────────┐
+│ Appearance   Environments   <b>Dashboard inclusion</b>                  Environment: Production        │
+├────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Existing dashboard watchlist · only entities in Production's discovery scope                     │
+│                                                                                                │
+│ Mode: (*) Selected entities    ( ) All entities in saved namespaces, including new entities      │
+│ Search: [ order_                    ]       [ Select matching results (2) ]                     │
+│                                                                                                │
+│ v prod-core · Engineering production / rg-core                                                   │
+│ <span class="focus">&gt; [x] orders                 Queue                                                           </span> │
+│   [ ] orders-archive         Queue                                                             │
+│                                                                                                │
+│ 1 selected in these results · 4 watched in environment · 26 discovered                           │
+│ Grid and table share these choices. Unwatched entities remain browsable in Production.           │
+│                                                                                                │
+│ Outside current discovery scope: 2 saved selections   [ Review… ]                               │
+│                                                                                                │
+│ <span class="warn">Unsaved preferences</span> · Applied to this session, not saved on disk.                                │
+│ [ Save preferences (s) ]   [ Back ]    Saves all pending preferences, not credentials or grants.   │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘</pre><figcaption>No new competing per-queue scope filter. The existing inclusion editor gains environment context, search and explicit All/Selected semantics. Appearance remains global.</figcaption></figure>
+</main>
+<script>
+// Presentation-only padding for these static terminal reference frames.
+for (const pre of document.querySelectorAll('pre')) {
+  const lines = pre.innerHTML.split('\n');
+  const widthOf = line => { const el = document.createElement('span'); el.innerHTML = line; return [...el.textContent].length; };
+  const width = Math.max(...lines.map(widthOf));
+  pre.innerHTML = lines.map(line => {
+    const rule = line.match(/─+([┐┤┘])$/);
+    if (rule) { const prefix = line.slice(0, -rule[0].length); return prefix + '─'.repeat(width - widthOf(prefix) - 1) + rule[1]; }
+    if (line.endsWith('│')) { const prefix = line.replace(/ *│$/, ''); return prefix + ' '.repeat(width - widthOf(prefix) - 1) + '│'; }
+    return line;
+  }).join('\n');
+}
+</script></html>

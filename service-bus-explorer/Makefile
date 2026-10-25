@@ -19,6 +19,7 @@ test:
 
 terminal-test: build
 	$(PYTHON) scripts/terminal-smoke.py
+	$(PYTHON) scripts/environment-smoke.py
 
 # Seed first; these checks never reset or silently switch to fixture data.
 integration-test: build

@@ -89,6 +89,13 @@ func (m Model) release() (tea.Model, tea.Cmd) {
 
 func (m Model) quit() (tea.Model, tea.Cmd) {
 	if m.review.phase == "" {
+		if m.provider != nil && (m.revision != m.persisted || m.env.dirty) {
+			if m.env.page != "quit" {
+				m.env.back = m.env.page
+			}
+			m.env.page = "quit"
+			return m, nil
+		}
 		m.stop()
 		return m, tea.Quit
 	}
@@ -206,6 +213,10 @@ func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 	case tea.KeyMsg:
 		if m.review.phase == "" {
 			return m, nil, false
+		}
+		if msg.String() == "ctrl+p" {
+			m.status = "Finish or cancel the current review and acknowledge its outcome before switching"
+			return m, nil, true
 		}
 		if msg.String() == "ctrl+c" || (msg.String() == "q" && m.review.phase != "destination" && (m.review.phase != "review" || m.review.choice != 3)) {
 			return finish(m.quit())

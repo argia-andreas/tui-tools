@@ -2,11 +2,13 @@ package ui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"servicebusexplorer/internal/explorer"
 )
 
 // Broker text is data, not terminal instructions. Preserve only printable text
@@ -144,6 +146,14 @@ func (m Model) dashboardView(width, height int) []string {
 	if m.loading {
 		return m.panel(title, width, height, []string{"", m.paint("  Discovering resources…", m.theme.Muted)}, true)
 	}
+	if m.provider != nil {
+		if _, ok := m.environment(); !ok {
+			return m.panel(title, width, height, []string{"", m.paint("  Choose what to discover", m.theme.Focus), "",
+				m.paint("  Create a named environment and choose its namespaces.", m.theme.Foreground),
+				m.paint("  No queues or topics have been scanned for this connection.", m.theme.Muted), "",
+				m.paint("  Ctrl+P → New environment / Switch environment", m.theme.Focus)}, true)
+		}
+	}
 	var lines []string
 	mode := "GRID"
 	if m.prefs.Table || m.screen != "dashboard" {
@@ -155,7 +165,17 @@ func (m Model) dashboardView(width, height int) []string {
 	}
 	lines = append(lines, m.paint(fmt.Sprintf("  %s  /  %d %s", mode, len(items), scope), m.theme.Foreground), m.paint("  Enter peek active   ] peek DLQ   g/t layout   Ctrl+P actions", m.theme.Muted), "")
 	if len(items) == 0 {
-		lines = append(lines, m.paint("  Nothing watched. Open Settings with Ctrl+P to choose entities.", m.theme.Warning))
+		message := "  Nothing watched. Open Settings with Ctrl+P to choose entities."
+		if m.provider != nil {
+			if m.screen == "dashboard" && len(m.items) > 0 {
+				message = fmt.Sprintf("  Nothing on this dashboard. %d scoped entities available.", len(m.items))
+			} else if slices.ContainsFunc(m.scopeResults, func(r explorer.NamespaceDiscovery) bool { return r.Err != nil }) {
+				message = "  No matching entities verified. Some namespaces could not be checked."
+			} else {
+				message = "  No matching entities found in successfully checked namespaces."
+			}
+		}
+		lines = append(lines, m.paint(message, m.theme.Warning))
 	}
 	if mode == "TABLE" {
 		nameWidth := max(16, width-52)
@@ -306,12 +326,23 @@ func (m Model) messageView(width, height int) []string {
 }
 
 func (m Model) compactReading() bool {
-	return m.review.phase == "" && m.inspectorFocused() && (!m.splitInspector() || m.height < 25)
+	return m.env.page == "" && m.review.phase == "" && m.inspectorFocused() && (!m.splitInspector() || m.height < 25)
 }
 
 func (m Model) View() string {
-	if m.width < 60 || m.height < 16 {
-		return m.paint("Resize terminal to at least 60×16. Ctrl+C quits.", m.theme.Warning)
+	minimumHeight := 16
+	if m.provider != nil {
+		minimumHeight = 18
+	}
+	if m.width < 60 || m.height < minimumHeight {
+		text := fmt.Sprintf("Resize terminal to at least 60×%d. Ctrl+C quits safely.", minimumHeight)
+		if m.env.page == "quit" {
+			text += "\nUnsaved changes: Esc cancel / s save & quit / d discard & quit"
+			if m.env.err != "" {
+				text += "\n" + m.env.err
+			}
+		}
+		return m.paint(text, m.theme.Warning)
 	}
 	header := "  SBX / Service Bus Explorer"
 	badge := "FIXTURE · OFFLINE  "
@@ -320,10 +351,26 @@ func (m Model) View() string {
 		badge = "EMULATOR · LOCAL  "
 		subtitle = "  Real local broker · safe peek by default · explicit DLQ review · — counts unavailable"
 	}
+	if m.mode == "azure" {
+		badge = "AZURE · READ ONLY  "
+		subtitle = "  Explicit Azure CLI connection · no cloud message mutations"
+	}
+	if m.provider != nil {
+		name := "None"
+		if e, ok := m.environment(); ok {
+			name = e.Name
+		}
+		header = "  SBX / Environment: " + clean(name, false)
+		subtitle = "  " + m.scopeSummary()
+	}
 	lines := []string{m.paint(fit(header, m.width-lipgloss.Width(badge)), m.theme.Focus) + m.paint(badge, m.theme.Warning), m.paint(fit(subtitle, m.width), m.theme.Muted), m.paint(strings.Repeat("─", m.width), m.theme.Border)}
 	height, width := m.height-6, m.width
 	if m.compactReading() {
-		lines = []string{m.paint(fit("  SBX / "+clean(m.resource.Name(), false)+" / "+map[bool]string{true: "DEAD-LETTER", false: "ACTIVE"}[m.dlq]+" · PEEK ONLY", m.width), m.theme.Focus)}
+		context := "  SBX / "
+		if e, ok := m.environment(); m.provider != nil && ok {
+			context += clean(e.Name, false) + " / "
+		}
+		lines = []string{m.paint(fit(context+clean(m.resource.Name(), false)+" / "+map[bool]string{true: "DEAD-LETTER", false: "ACTIVE"}[m.dlq]+" · PEEK ONLY", m.width), m.theme.Focus)}
 		height = m.height - 2
 	}
 	showSidebar := m.showSidebar()
@@ -331,7 +378,9 @@ func (m Model) View() string {
 		width -= 24
 	}
 	var content []string
-	if m.review.phase != "" && !m.review.selected {
+	if m.env.page != "" && m.review.phase == "" {
+		content = m.environmentView(width, height)
+	} else if m.review.phase != "" && !m.review.selected {
 		content = m.reviewView(width, height)
 	} else if m.screen == "messages" {
 		content = m.messageView(width, height)
@@ -366,6 +415,12 @@ func (m Model) View() string {
 		keys = "  h/j/k/l cursor · yy line · v/V select · Y full body · Tab actions · Esc Back · Ctrl+P · ? help · q quit"
 	}
 	status := m.status
+	if m.env.page != "" {
+		keys = "  Follow the focused panel's keys · input fields own printable keys · Ctrl+C quit safely"
+		if m.width < 110 {
+			keys = "  Panel keys above · input owns text · Ctrl+C quit safely"
+		}
+	}
 	if m.review.phase != "" {
 		keys = "  Tab/arrows choose   Enter confirm   Esc cancel   PgUp/PgDn body   Ctrl+C quit safely"
 		if m.width < 110 {
@@ -425,6 +480,9 @@ func (m Model) settingsView(width, height int) []string {
 			mark = "[x]"
 		}
 		labels = append(labels, mark+" "+clean(i.resource.Profile+" / "+i.resource.Namespace+" / "+i.resource.Name(), false))
+	}
+	if m.provider != nil {
+		labels = append(labels[:5], "Environments / discovery scope…", "Dashboard inclusion / active environment…")
 	}
 	lines := []string{m.paint("  Preferences / "+state, m.theme.Focus), m.paint("  Watchlists affect Dashboard only; never credentials or MCP access.", m.theme.Muted), ""}
 	capacity := max(1, height-7)

@@ -1,0 +1,39 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Saved environments — Dashboard</title>
+<style>body{margin:0;padding:28px;background:#10131d;color:#d6dded;font:15px/1.5 system-ui}main{max-width:1060px;margin:auto}a{color:#9bbaff}h1{font-size:25px}p{color:#aab5ca}figure{margin:22px 0}pre{font:14px/1.7 ui-monospace,monospace;overflow:auto;padding:22px;background:#171c2a;border:1px solid #667394;border-radius:3px}b{color:#a4c1ff}.focus{background:#303f60;color:#fff}.ok{color:#8cddb0}.bad{color:#ff9d9d}figcaption{color:#aab5ca;font-size:13px}nav{display:flex;flex-wrap:wrap;gap:22px} @media(max-width:800px){pre{font-size:10px;padding:10px}body{padding:16px}}</style>
+<main><nav><a href="index.html">Proposal</a><a href="switcher.html">Switch environment</a><a href="editor.html">Edit scope &amp; dashboard</a><a href="states.html">Edge &amp; compact states</a></nav><h1 id="title">A. Keep the environment visible, not the editor</h1><p id="caveat">Static terminal product mockup · fictional cloud inventory · not implemented · preferred direction</p>
+<figure id="dashboard"><pre>┌ Service Bus Explorer ───────────────────────────────────────────────────────────────────────────┐
+│ <b>Environment: Production</b>   3 namespaces · 2 Azure subscriptions             Ctrl+P Actions         │
+├──────────────────────────┬─────────────────────────────────────────────────────────────────────┤
+│ <span class="focus">&gt; Dashboard             </span> │ Dashboard                                   Grid [g]  Table [t]     │
+│   Queues                 │ 4 watched · 26 discovered in this environment                        │
+│   Topics                 │                                                                     │
+│   Settings               │ ┌ <b>orders</b> ──────────────────┐ ┌ <b>payments</b> ─────────────────┐          │
+│                          │ │ prod-core                │ │ prod-payments               │          │
+│ v prod-core              │ │ Active <span class="ok">128</span>   DLQ <span class="bad">3</span>       │ │ Active <span class="ok">82</span>    DLQ <span class="bad">1</span>         │          │
+│   &gt; Queues               │ │ Enter active   ] DLQ      │ │ Enter active   ] DLQ        │          │
+│   &gt; Topics               │ └──────────────────────────┘ └─────────────────────────────┘          │
+│ v prod-payments          │ ┌ <b>events / billing</b> ─────────┐ ┌ <b>notifications</b> ────────────┐          │
+│   &gt; Queues               │ │ prod-core                │ │ prod-notifications          │          │
+│ &gt; prod-notifications     │ │ Active <span class="ok">7</span>     DLQ <span class="bad">1</span>       │ │ Active <span class="ok">56</span>    DLQ <span class="bad">12</span>        │          │
+│                          │ │ Enter active   ] DLQ      │ │ Enter active   ] DLQ        │          │
+│                          │ └──────────────────────────┘ └─────────────────────────────┘          │
+│                          │                                                                     │
+│                          │ Change displayed entities in Settings → Dashboard inclusion.        │
+├──────────────────────────┴─────────────────────────────────────────────────────────────────────┤
+│ Saved · Last checked 14:32 local      j/k Move · Enter Active · ] DLQ · Ctrl+P Actions            │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘</pre><figcaption>One persistent context line. No namespace overview cards or scope editor on the dashboard. The usual grid and table share one inclusion list.</figcaption></figure>
+<p id="boundaries">Queues, Topics, tree navigation and background discovery use these same three namespaces. An unwatched queue remains browsable here; a namespace outside Production does not. “Production” is a user label, not a permissions guarantee.</p></main>
+<script>
+// Presentation-only padding for these static terminal reference frames.
+for (const pre of document.querySelectorAll('pre')) {
+  const lines = pre.innerHTML.split('\n');
+  const widthOf = line => { const el = document.createElement('span'); el.innerHTML = line; return [...el.textContent].length; };
+  const width = Math.max(...lines.map(widthOf));
+  pre.innerHTML = lines.map(line => {
+    const rule = line.match(/─+([┐┤┘])$/);
+    if (rule) { const prefix = line.slice(0, -rule[0].length); return prefix + '─'.repeat(width - widthOf(prefix) - 1) + rule[1]; }
+    if (line.endsWith('│')) { const prefix = line.replace(/ *│$/, ''); return prefix + ' '.repeat(width - widthOf(prefix) - 1) + '│'; }
+    return line;
+  }).join('\n');
+}
+</script></html>

@@ -9,6 +9,37 @@ import (
 // Resource identifies a queue, topic node or topic subscription within a profile.
 type Resource struct {
 	Profile, Namespace, Queue, Topic, Subscription string
+	// Management identity prevents a moved/recreated namespace from inheriting
+	// a saved cloud entity selection solely because its address is unchanged.
+	AzureSubscriptionID, ResourceGroup string
+}
+
+// Namespace is an explicit discovery target. AzureSubscriptionID is never a
+// topic subscription. Address is the fully qualified messaging namespace;
+// local providers use their fixed local address instead.
+type Namespace struct {
+	Profile, Address, Name                     string
+	AzureSubscriptionID, AzureSubscriptionName string
+	ResourceGroup                              string
+}
+
+type AzureSubscription struct{ ID, Name string }
+
+// NamespaceDiscovery reports completeness separately for each selected target.
+// Failed or incomplete listings must not be mistaken for an empty namespace.
+type NamespaceDiscovery struct {
+	Namespace Namespace
+	Resources []Resource
+	Err       error
+}
+
+// ScopeProvider lists namespace metadata only on explicit request. A resource
+// group is a selection aid; DiscoverScope accepts only namespace snapshots.
+type ScopeProvider interface {
+	Subscriptions(context.Context) ([]AzureSubscription, error)
+	Namespaces(context.Context, string) ([]Namespace, error)
+	ResolveNamespace(context.Context, string) (Namespace, error)
+	DiscoverScope(context.Context, []Namespace) []NamespaceDiscovery
 }
 
 func (r Resource) Name() string {

@@ -1,0 +1,42 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Saved environments — Switcher</title>
+<style>body{margin:0;padding:28px;background:#10131d;color:#d6dded;font:15px/1.5 system-ui}main{max-width:1060px;margin:auto}a{color:#9bbaff}h1{font-size:25px}p{color:#aab5ca}figure{margin:22px 0}pre{font:14px/1.7 ui-monospace,monospace;overflow:auto;padding:22px;background:#171c2a;border:1px solid #667394;border-radius:3px}b{color:#a4c1ff}.focus{background:#303f60;color:#fff}.warn{color:#efce83}figcaption{color:#aab5ca;font-size:13px}nav{display:flex;flex-wrap:wrap;gap:22px}@media(max-width:800px){pre{font-size:10px;padding:10px}body{padding:16px}}</style>
+<main><nav><a href="index.html">Proposal</a><a href="dashboard.html">Dashboard</a><a href="editor.html">Edit scope &amp; dashboard</a><a href="states.html">Edge &amp; compact states</a></nav><h1 id="title">Switch environments from the existing action palette</h1><p id="caveat">Static terminal product mockup · Ctrl+P → Switch environment · fictional data</p>
+<figure id="picker"><pre>┌ Service Bus Explorer ───────────────────────────────────────────────────────────────────────────┐
+│ Environment: Production                                              Ctrl+P Actions             │
+├────────────────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                                │
+│        ┌ <b>Switch environment</b> ──────────────────────────────────────────────────────────┐        │
+│        │ Search: _                                                                    │        │
+│        │                                                                              │        │
+│        │   Production        CURRENT       3 namespaces · 2 Azure subscriptions       │        │
+│        │ <span class="focus">&gt; Staging                         2 namespaces · 1 Azure subscription        </span> │        │
+│        │   Disaster recovery <span class="warn">Needs attention</span> 1 namespace  · Could not verify access     │        │
+│        │   Local lab         LOCAL         1 namespace  · Emulator                    │        │
+│        │                                                                              │        │
+│        │   Staging: Acme tenant · Engineering account                                  │        │
+│        │   Azure subscription: Engineering nonprod (…27b4)                             │        │
+│        │                                                                              │        │
+│        │   [ Enter: Use environment ]     [ Esc: Cancel ]                              │        │
+│        │   Manage names, membership and duplication in Settings → Environments.        │        │
+│        └──────────────────────────────────────────────────────────────────────────────┘        │
+│                                                                                                │
+│        Selection opens Staging's Dashboard. It does not save pending preferences.               │
+│                                                                                                │
+├────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ Type to filter · ↑/↓ or Ctrl+N/P Move · Enter Use · Esc Cancel                                   │
+└────────────────────────────────────────────────────────────────────────────────────────────────┘</pre><figcaption>The current environment is distinct from the highlighted candidate. Local lab never claims an Azure subscription. Narrow terminals use this list full-screen.</figcaption></figure>
+<p id="safety">If a message action is acquiring, holding a lock, sending or releasing, switching is blocked with “Finish or cancel the current review before switching.” An unknown outcome must be acknowledged, not hidden by a context switch.</p></main>
+<script>
+// Presentation-only padding for these static terminal reference frames.
+for (const pre of document.querySelectorAll('pre')) {
+  const lines = pre.innerHTML.split('\n');
+  const widthOf = line => { const el = document.createElement('span'); el.innerHTML = line; return [...el.textContent].length; };
+  const width = Math.max(...lines.map(widthOf));
+  pre.innerHTML = lines.map(line => {
+    const rule = line.match(/─+([┐┤┘])$/);
+    if (rule) { const prefix = line.slice(0, -rule[0].length); return prefix + '─'.repeat(width - widthOf(prefix) - 1) + rule[1]; }
+    if (line.endsWith('│')) { const prefix = line.replace(/ *│$/, ''); return prefix + ' '.repeat(width - widthOf(prefix) - 1) + '│'; }
+    return line;
+  }).join('\n');
+}
+</script></html>
