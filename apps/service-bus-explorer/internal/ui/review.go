@@ -1,0 +1,366 @@
+package ui
+
+import (
+	"context"
+	"crypto/rand"
+	"fmt"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"servicebusexplorer/internal/explorer"
+)
+
+// Review owns one delivery until an explicit settlement or bounded release.
+// Unlike stale peek replies, even a cancelled acquisition must be accounted for.
+type reviewState struct {
+	phase, outcome, typed, newID string
+	surfaceFocus, queueID        string
+	delivery                     explorer.Delivery
+	replay                       explorer.Replay
+	destination                  explorer.Resource
+	selected, back               bool
+	query                        string
+	queueIndex                   int
+	message                      explorer.Message
+	deadline                     time.Time
+	cancel                       context.CancelFunc
+	cancelled, quitting, cleanup bool
+	choice, scroll               int
+}
+
+type acquired struct {
+	delivery explorer.Delivery
+	err      error
+}
+type operated struct {
+	outcome string
+	settled bool
+}
+type released struct{ err error }
+type lockTick uint64
+
+func (m Model) acquire() (tea.Model, tea.Cmd) {
+	if m.review.phase != "" || m.screen != "messages" || !m.dlq {
+		return m, nil
+	}
+	if m.cancel != nil {
+		m.cancel()
+	}
+	m.generation++
+	m.loading = false
+	m.reviewID++
+	ctx, cancel := context.WithTimeout(m.life, 5*time.Second)
+	m.review = reviewState{phase: "acquiring", cancel: cancel}
+	m.status = "Receiving NEXT available DLQ message · not the selected peek row · release can increase delivery count"
+	return m, func() tea.Msg {
+		defer cancel()
+		d, err := m.store.ReceiveNextDLQ(ctx, m.resource)
+		return acquired{d, err}
+	}
+}
+
+func (m Model) lockTimer() tea.Cmd {
+	id := m.reviewID
+	return tea.Tick(time.Second, func(time.Time) tea.Msg { return lockTick(id) })
+}
+
+func (m Model) release() (tea.Model, tea.Cmd) {
+	if m.review.delivery == nil {
+		if m.review.quitting {
+			m.stop()
+			return m, tea.Quit
+		}
+		if m.review.back {
+			m.review.phase, m.review.choice, m.review.back = "configure", 0, false
+			m.review.replay = nil
+			return m, nil
+		}
+		m.review.phase = "result"
+		m.status = m.review.outcome
+		return m, nil
+	}
+	m.review.phase = "releasing"
+	d := m.review.delivery
+	return m, func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		return released{d.Abandon(ctx)}
+	}
+}
+
+func (m Model) quit() (tea.Model, tea.Cmd) {
+	if m.review.phase == "" {
+		if m.provider != nil && (m.revision != m.persisted || m.env.dirty) {
+			if m.env.page != "quit" {
+				m.env.back = m.env.page
+			}
+			m.help, m.palette = false, false
+			m.env.page = "quit"
+			return m, nil
+		}
+		m.stop()
+		return m, tea.Quit
+	}
+	m.review.quitting = true
+	switch m.review.phase {
+	case "acquiring", "preparing":
+		m.review.cancelled = true
+		m.review.cancel()
+		m.status = "Quitting · awaiting acquisition and releasing any late delivery…"
+		return m, nil
+	case "sending", "deleting", "releasing":
+		m.status = "Quitting after final outcome/release · cancellation is not rollback"
+		return m, nil
+	default:
+		if m.review.phase == "review" {
+			m.review.outcome = "Quit requested; no resend or delete requested."
+		}
+		return m.release()
+	}
+}
+
+// ExitSummary survives leaving the alternate terminal screen, including quit
+// while a mutation was pending. It contains no message bodies or credentials.
+func (m Model) ExitSummary() string { return clean(m.review.outcome, false) }
+
+func (m Model) reviewUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
+	finish := func(next tea.Model, cmd tea.Cmd) (tea.Model, tea.Cmd, bool) { return next, cmd, true }
+	switch msg := msg.(type) {
+	case prepared:
+		m.review.delivery, m.review.replay = msg.delivery, msg.replay
+		if msg.err != nil || m.review.cancelled || msg.replay == nil {
+			m.review.outcome = "Selected-message preparation stopped; nothing sent or deleted."
+			if msg.err != nil {
+				m.review.outcome += " " + msg.err.Error()
+			}
+			return finish(m.release())
+		}
+		snapshot := msg.replay.Snapshot()
+		if snapshot.Sequence != m.review.message.Sequence || snapshot.ID != m.review.message.ID ||
+			msg.message.Sequence != snapshot.Sequence || msg.message.ID != snapshot.ID || msg.message.PreviewTruncated {
+			m.review.outcome = "Selected identity changed; nothing sent or deleted."
+			return finish(m.release())
+		}
+		m.review.message, m.review.phase, m.review.choice = msg.message, "review", 0
+		m.review.newID = "sbx-" + rand.Text()
+		m.status = "PEEK COPY · original retained · Cancel selected by default"
+		if msg.delivery != nil {
+			m.review.deadline = msg.delivery.LockedUntil()
+			m.status = "SELECTED ORIGINAL LOCKED · cleanup authorized only after confirmed send"
+			return m, m.lockTimer(), true
+		}
+		return m, nil, true
+	case acquired:
+		m.review.delivery = msg.delivery
+		m.review.replay, m.review.destination = msg.delivery, m.resource
+		if msg.delivery != nil {
+			m.review.message, m.review.deadline = msg.delivery.Snapshot(), msg.delivery.LockedUntil()
+			if m.review.cancelled || msg.err != nil {
+				m.review.outcome = "Acquisition cancelled; no resend or delete requested."
+				return finish(m.release())
+			}
+			m.review.phase = "review"
+			m.review.newID = "sbx-" + rand.Text()
+			m.status = "LOCK HELD · review actual received message · Cancel selected by default"
+			return m, m.lockTimer(), true
+		}
+		m.review.phase = "result"
+		m.review.outcome = "No DLQ message acquired."
+		if msg.err != nil {
+			m.review.outcome += " " + msg.err.Error()
+		}
+		if m.review.quitting {
+			m.stop()
+			return m, tea.Quit, true
+		}
+		return m, nil, true
+	case operated:
+		m.review.outcome = msg.outcome
+		if msg.settled {
+			m.review.delivery = nil
+		}
+		// A terminal send result cannot send again. Release any retained original
+		// immediately, including ambiguous sends, instead of holding a useless lock.
+		return finish(m.release())
+	case released:
+		m.review.delivery = nil
+		if m.review.back && msg.err == nil && !m.review.quitting {
+			m.review.phase, m.review.choice, m.review.back = "configure", 0, false
+			m.review.replay = nil
+			m.review.deadline = time.Time{}
+			m.status = "Lock release confirmed · edit destination/cleanup, then review again"
+			return m, nil, true
+		}
+		m.review.phase = "result"
+		if msg.err == nil {
+			m.review.outcome += " Lock release confirmed (delivery count may increase)."
+		} else {
+			m.review.outcome += " Lock release unknown; original may remain locked until expiry."
+		}
+		m.status = m.review.outcome
+		if m.review.quitting {
+			m.stop()
+			return m, tea.Quit, true
+		}
+		return m, nil, true
+	case lockTick:
+		if uint64(msg) != m.reviewID || m.review.phase != "review" || m.review.delivery == nil {
+			return m, nil, true
+		}
+		if !time.Now().Before(m.review.deadline) {
+			m.review.outcome = "Lock expired; resend/delete disabled. Receive and review again explicitly."
+			return finish(m.release())
+		}
+		return m, m.lockTimer(), true
+	case tea.KeyMsg:
+		if m.review.phase == "" {
+			return m, nil, false
+		}
+		if msg.String() == "ctrl+p" {
+			m.status = "Finish or cancel the current review and acknowledge its outcome before switching"
+			return m, nil, true
+		}
+		if msg.String() == "ctrl+c" || (msg.String() == "q" && m.review.phase != "destination" && (m.review.phase != "review" || m.review.choice != 3)) {
+			return finish(m.quit())
+		}
+		return finish(m.reviewSurfaceInput(msg))
+	case tea.MouseMsg:
+		if m.review.phase != "" {
+			return finish(m.reviewSurfaceInput(msg))
+		}
+	}
+	return m, nil, false
+}
+
+func (m Model) reviewCancel() (tea.Model, tea.Cmd) {
+	switch m.review.phase {
+	case "destination", "configure":
+		return m.cancelSelected()
+	case "acquiring", "preparing":
+		m.review.cancelled = true
+		if m.review.cancel != nil {
+			m.review.cancel()
+		}
+		m.status = "Cancelling acquisition · any late delivery will be released"
+	case "review":
+		m.review.outcome = "Cancelled; no resend or delete requested."
+		return m.release()
+	case "result":
+		m.status = m.review.outcome
+		selected := m.review.selected
+		m.review = reviewState{}
+		if selected {
+			m.focus, m.reader.revealed = "inspector", true
+			m.status += " Snapshot retained; Esc then r refreshes the list."
+			return m, nil
+		}
+		return m.peek(m.from)
+	}
+	return m, nil
+}
+
+func (m Model) reviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.review.delivery != nil && !time.Now().Before(m.review.deadline) {
+		m.review.outcome = "Lock expired; no operation requested. Receive and review again."
+		return m.release()
+	}
+	if (m.width < 80 || m.height < 24) && msg.String() != "esc" {
+		return m, nil
+	}
+	if !m.splitReview() && m.review.scroll > 0 && msg.String() != "pgup" && msg.String() != "pgdown" && msg.String() != "esc" {
+		return m, nil // Never submit a confirmation hidden behind the narrow body view.
+	}
+	switch msg.String() {
+	case "pgdown":
+		if !m.splitReview() && m.review.scroll == 0 {
+			m.review.scroll = 1
+		} else {
+			m.review.scroll += max(1, m.height-10)
+		}
+	case "pgup":
+		m.review.scroll = max(0, m.review.scroll-max(1, m.height-10))
+	case "backspace", "ctrl+h":
+		runes := []rune(m.review.typed)
+		m.review.typed = string(runes[:max(0, len(runes)-1)])
+	default:
+		if m.review.choice == 3 && (msg.Type == tea.KeyRunes || msg.Type == tea.KeySpace) {
+			m.review.typed += clean(string(msg.Runes), false)
+			if msg.Type == tea.KeySpace && len(msg.Runes) == 0 {
+				m.review.typed += " "
+			}
+			m.review.typed = string([]rune(m.review.typed)[:min(16, len([]rune(m.review.typed)))])
+		}
+	}
+	return m, nil
+}
+
+// Both keyboard and pointer submission re-enter this domain boundary. Expiry
+// deliberately precedes geometry and authorization checks.
+func (m Model) reviewSubmit(deleting bool) (tea.Model, tea.Cmd) {
+	if m.review.phase != "review" {
+		return m, nil
+	}
+	if m.review.delivery != nil && !time.Now().Before(m.review.deadline) {
+		m.review.outcome = "Lock expired; no operation requested. Receive and review again."
+		return m.release()
+	}
+	if m.width < 80 || m.height < 24 || (!m.splitReview() && m.review.scroll > 0) {
+		return m, nil
+	}
+	if !m.reviewControlVisible(map[bool]string{false: "send", true: "delete"}[deleting]) {
+		return m, nil
+	}
+	if deleting && (m.review.selected || m.review.delivery == nil || m.review.typed != "delete") {
+		return m, nil
+	}
+	if m.review.replay == nil || (m.review.cleanup && m.review.delivery == nil) {
+		return m, nil
+	}
+	return m.operate(deleting)
+}
+
+func (m Model) operate(deleting bool) (tea.Model, tea.Cmd) {
+	d, id, cleanup, deadline := m.review.delivery, m.review.newID, m.review.cleanup, m.review.deadline
+	replay, destination := m.review.replay, m.review.destination
+	if d == nil {
+		deadline = time.Now().Add(10 * time.Second)
+	}
+	m.review.phase = "sending"
+	if deleting {
+		m.review.phase = "deleting"
+	}
+	m.status = "Operation in flight · no app-level retry (SDK recovery may retry) · cancellation is not rollback"
+	return m, func() tea.Msg {
+		ctx, cancel := context.WithDeadline(context.Background(), minTime(deadline, time.Now().Add(10*time.Second)))
+		defer cancel()
+		if deleting {
+			if err := d.Complete(ctx); err != nil {
+				return operated{"Deletion unconfirmed/unknown; check DLQ before trying again.", true}
+			}
+			return operated{"Deletion confirmed for the reviewed DLQ message.", true}
+		}
+		result, err := replay.Resend(ctx, destination, id)
+		switch result.State {
+		case "confirmed":
+			outcome := "Send confirmed · new ID " + id + "."
+			if cleanup {
+				if err := d.Complete(ctx); err != nil {
+					return operated{outcome + " Original cleanup unconfirmed/unknown; possible duplicate on later replay.", true}
+				}
+				return operated{outcome + " Separately authorized original cleanup confirmed.", true}
+			}
+			return operated{outcome + " Original retained; no cleanup requested.", false}
+		case "rejected":
+			return operated{fmt.Sprintf("Resend rejected; original retained. %v", err), false}
+		default:
+			return operated{"Send outcome UNKNOWN — check destination before retrying. Original retained; no cleanup attempted.", false}
+		}
+	}
+}
+
+func minTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
+}

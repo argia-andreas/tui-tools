@@ -1,0 +1,8 @@
+go 1.27.3
+
+use (
+	./apps/lazyftp
+	./apps/log-viewer
+	./apps/service-bus-explorer
+	./lib/terminalui
+)

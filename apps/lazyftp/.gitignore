@@ -1,0 +1,5 @@
+/bin/
+/.venv/
+/.lab/
+/lab/node_modules/
+/scripts/__pycache__/

@@ -33,10 +33,10 @@ export PATH="$HOME/.local/bin:$PATH"
 go version
 echo "Go ready after $((SECONDS - started))s: $toolchain/bin/go"
 
-for module_file in go.mod */go.mod; do
+for module_file in apps/*/go.mod lib/*/go.mod; do
   [[ -f "$module_file" ]] || continue
   echo "Downloading Go dependencies for $module_file..."
-  go -C "$(dirname "$module_file")" mod download
+  GOWORK=off go -C "$(dirname "$module_file")" mod download
 done
 
 echo 'Preparing terminal smoke-test dependencies...'
@@ -44,12 +44,8 @@ if ! command -v uv >/dev/null; then
   echo 'uv is required; install it from https://docs.astral.sh/uv/getting-started/installation/.' >&2
   exit 1
 fi
-if [[ ! -x .venv/bin/python ]]; then
-  uv venv .venv
-fi
-uv pip install --python .venv/bin/python 'pyte==0.8.2' 'pyftpdlib==2.1.0'
 
-for requirements in */scripts/requirements.txt; do
+for requirements in apps/*/scripts/requirements.txt; do
   [[ -f "$requirements" ]] || continue
   environment="${requirements%/scripts/requirements.txt}/.venv"
   echo "Preparing terminal-test environment: $environment..."
@@ -81,8 +77,8 @@ if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
   echo 'Node.js and npm are required for the pinned local Azurite emulator.' >&2
   exit 1
 fi
-python3 scripts/lab.py install-rclone
-python3 scripts/lab.py install-s3
-npm ci --prefix lab --ignore-scripts --no-audit --no-fund
-echo 'Lab dependencies ready. Run make lab-up lab-seed inside the orb (no Docker required).'
+python3 apps/lazyftp/scripts/lab.py install-rclone
+python3 apps/lazyftp/scripts/lab.py install-s3
+npm ci --prefix apps/lazyftp/lab --ignore-scripts --no-audit --no-fund
+echo 'Lab dependencies ready. Run make -C apps/lazyftp lab-up lab-seed inside the orb (no Docker required).'
 echo "Setup complete in $((SECONDS - started))s."
