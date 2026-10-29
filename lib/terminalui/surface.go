@@ -106,6 +106,8 @@ func surfaceRegions(spec SurfaceSpec, bounds Rect) []Region {
 // secondary actions; RenderActionBar omits whole controls that cannot fit.
 // CancelBlocked is also shown beside the always-visible close when space allows,
 // so a long unavailable footer label cannot hide every cancellation refusal.
+// Body padding uses Background; chrome and action bars use Surface. Explicit
+// body styles (including selected-row backgrounds) are retained.
 // Use Overlay for floating surfaces; pass the original surface frame to input.
 func RenderSurface(spec SurfaceSpec, bounds Rect, style Style) Frame {
 	f := blank(bounds, style)
@@ -130,7 +132,7 @@ func RenderSurface(spec SurfaceSpec, bounds Rect, style Style) Frame {
 	}
 	f.Lines[0] = paint(tl+title+tr, style.Border, style.Surface)
 	for y := 1; y < h-1; y++ {
-		f.Lines[y] = paint(vertical, style.Border, style.Surface) + paint(strings.Repeat(" ", inner), style.Foreground, style.Surface) + paint(vertical, style.Border, style.Surface)
+		f.Lines[y] = paint(vertical, style.Border, style.Surface) + paint(strings.Repeat(" ", inner), style.Foreground, style.Background) + paint(vertical, style.Border, style.Surface)
 	}
 	if h >= 2 {
 		f.Lines[h-1] = paint(bl+strings.Repeat(horizontal, inner)+br, style.Border, style.Surface)
@@ -142,9 +144,10 @@ func RenderSurface(spec SurfaceSpec, bounds Rect, style Style) Frame {
 		if i < 0 || i >= len(spec.Body.Lines) {
 			continue
 		}
-		line := Fit(spec.Body.Lines[i], spec.Body.Bounds.W)
-		text := strings.Repeat(" ", visible.X-body.X) + Fit(ansi.Cut(line, visible.X-spec.Body.Bounds.X, visible.X-spec.Body.Bounds.X+visible.W), visible.W)
-		f.Lines[y-f.Bounds.Y] = paint(vertical, style.Border, style.Surface) + Fit(text, inner) + paint(vertical, style.Border, style.Surface)
+		line := ansi.Cut(spec.Body.Lines[i], visible.X-spec.Body.Bounds.X, visible.X-spec.Body.Bounds.X+visible.W)
+		text := paint(strings.Repeat(" ", visible.X-body.X), style.Foreground, style.Background) + paint(line, style.Foreground, style.Background)
+		text += paint(strings.Repeat(" ", max(0, inner-ansi.StringWidth(text))), style.Foreground, style.Background)
+		f.Lines[y-f.Bounds.Y] = paint(vertical, style.Border, style.Surface) + text + paint(vertical, style.Border, style.Surface)
 	}
 	if h >= 3 {
 		bar := RenderActionBar(surfaceActions(spec), Rect{f.Bounds.X + 1, f.Bounds.Y + h - 2, inner, 1}, spec.FocusID, style)

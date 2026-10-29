@@ -247,6 +247,19 @@ def main():
         assert "FIXTURE · OFFLINE" in text and "WORKSPACE" in text
         modes = [sequence in output for sequence in (b"\x1b[?1002h", b"\x1b[?1006h")]
         assert modes == [not args.mouse_off] * 2, "mouse reporting did not follow --mouse flag"
+        toolbar_y, toolbar = next((y, row) for y, row in enumerate(screen.display) if "Help f1" in row)
+        toolbar_end = toolbar.index("]", toolbar.index("Actions ctrl+p")) + 1
+        assert all(screen.buffer[toolbar_y][x].bg == "101d2f" for x in range(toolbar_end)), "shared toolbar gaps lost the themed surface background"
+        action("Dashboard inclusion", "Mode: All entities")
+        for label in ("Same inclusion", "local-lab / payments", "Tab controls"):
+            y, row = next((y, row) for y, row in enumerate(screen.display) if label in row)
+            assert screen.buffer[y][row.index(label)].bg == "0b1423"
+            assert screen.buffer[y][150].bg == "0b1423", "surface padding lost the body background"
+        selected_y = next(y for y, row in enumerate(screen.display) if "local-lab / orders" in row)
+        assert all(screen.buffer[selected_y][x].bg == "8af0ce" for x in range(1, 159)), "surface fill erased the selected row background"
+        footer_y = next(y for y, row in enumerate(screen.display) if "Back / Cancel" in row)
+        assert all(screen.buffer[footer_y][x].bg == "101d2f" for x in range(160)), "surface footer padding lost the surface background"
+        send("\x1b", "128 queued")
         if not args.mouse_off:
             # A card/table/message row selects only. Explicit controls open the
             # current native identity, not the first or previously painted row.

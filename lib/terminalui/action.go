@@ -122,12 +122,12 @@ func RenderActionBar(actions []Action, bounds Rect, focusID string, style Style)
 			}
 		}
 		if i > 0 {
-			line += " "
+			line += paint(" ", style.Foreground, style.Surface)
 		}
 		line += paint(marker+control.text, actionColor(a, a.ID == focusID, style), style.Surface)
 		f.Regions = append(f.Regions, Region{a.ID, ControlRegion, control.bounds})
 	}
-	f.Lines[0] = Fit(line, f.Bounds.W)
+	f.Lines[0] = line + paint(strings.Repeat(" ", max(0, f.Bounds.W-ansi.StringWidth(line))), style.Foreground, style.Surface)
 	return f
 }
 
