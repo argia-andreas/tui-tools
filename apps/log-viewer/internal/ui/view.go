@@ -36,7 +36,12 @@ func (m Model) panel(title string, lines []string, width, height, owner int) str
 		if i < len(lines) {
 			line = lines[i]
 		}
-		rows = append(rows, border.Render("│")+m.style(t.Foreground).Render(fit(line, inner))+border.Render("│"))
+		// Embedded styles end with ANSI resets. Paint padding separately so
+		// those resets cannot leave the rest of the pane terminal-default.
+		line = ansi.Truncate(line, inner, "…")
+		body := m.style(t.Foreground).Render(line)
+		padding := m.style(t.Foreground).Render(strings.Repeat(" ", max(0, inner-ansi.StringWidth(line))))
+		rows = append(rows, border.Render("│")+body+padding+border.Render("│"))
 	}
 	rows = append(rows, border.Render("└"+strings.Repeat("─", inner)+"┘"))
 	return strings.Join(rows, "\n")
@@ -138,7 +143,7 @@ func (m Model) logListFrame(bounds terminalui.Rect) terminalui.Frame {
 	t := m.options.Theme
 	inner := width - 4
 	serviceWidth := min(18, max(10, inner/4))
-	columns := "  " + fit("TIME (UTC)", 13) + fit("LEVEL", 8) + fit("APP / SERVICE", serviceWidth) + "MESSAGE"
+	columns := "  " + fit("TIME (UTC)", 13) + fit("LEVEL", 8) + fit("APP / SERVICE", serviceWidth) + " MESSAGE"
 	lines := []string{" " + m.style(t.Muted).Render(fit(columns, inner)), " " + m.style(t.Border).Render(strings.Repeat("─", inner))}
 	visible := max(1, height-6)
 	for i := m.top; i < len(m.page.Events) && i < m.top+visible; i++ {
@@ -165,8 +170,8 @@ func (m Model) logListFrame(bounds terminalui.Rect) terminalui.Frame {
 			prefix = "› "
 		}
 		service := strings.ReplaceAll(e.Text("service"), "\n", " ↵ ")
-		row := prefix + fit(stamp, 13) + m.style(color).Render(fit(level, 8)) + fit(service, serviceWidth) + message
-		row = fit(row, inner)
+		row := m.style(t.Foreground).Render(prefix+fit(stamp, 13)) + m.style(color).Render(fit(level, 8)) + m.style(t.Foreground).Render(fit(service, serviceWidth)+" "+message)
+		row = ansi.Truncate(row, inner, "…")
 		if i == m.selected {
 			bg, fg := t.Surface, t.Foreground
 			if m.focus == 1 {

@@ -24,6 +24,7 @@ func (m Model) planQueue(entries []storage.Entry) (tea.Model, tea.Cmd) {
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.queueCancel, m.queuePlanning = cancel, true
 	m.queue, m.queueIndex, m.choice, m.modal = nil, 0, 0, "batch"
+	m.queueTargets = m.copyTargets()
 	source, destination := m.panes[m.active()].location, m.panes[1-m.active()].location
 	return m, func() tea.Msg {
 		var jobs []transferJob
@@ -193,6 +194,7 @@ func (m Model) retryQueue() (tea.Model, tea.Cmd) {
 		}
 	}
 	m.queueIndex, m.choice, m.modal = len(m.queue), 0, "batch"
+	m.queueTargets = "captured unfinished jobs (retry)"
 	return m, nil
 }
 
@@ -207,10 +209,12 @@ func (m Model) queueSummary() string {
 func (m Model) batchLines() (string, []string) {
 	lines := []string{"  Planning files… no writes yet."}
 	if !m.queuePlanning {
-		lines = []string{fmt.Sprintf("  %d captured file jobs. One transfer at a time.", len(m.queue)), "  " + m.queueSummary(), "  New files copy; each conflict pauses.", "  Cancel may leave partial files.", "  Empty directories are not created."}
+		lines = []string{"  Copy: " + m.queueTargets, fmt.Sprintf("  %d captured file jobs. One transfer at a time.", len(m.queue))}
 		if len(m.queue) > 0 {
-			lines = append(lines, "  From: "+text(m.queue[0].source.String()), "  To:   "+text(m.queue[0].destination.String()))
+			w, _ := m.modalSize()
+			lines = append(lines, "  From: "+displayPath(m.queue[0].source, w-10), "  To:   "+displayPath(m.queue[0].destination, w-10))
 		}
+		lines = append(lines, "  "+m.queueSummary(), "  New files copy; each conflict pauses.", "  Cancel may leave partial files.", "  Empty directories are not created.")
 	}
 	return "CONFIRM TRANSFER QUEUE", lines
 }

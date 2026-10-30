@@ -106,6 +106,14 @@ func (m Model) filterBody(bounds terminalui.Rect) terminalui.Frame {
 	}
 	if e.surfaceFocus != "" {
 		modeHelp = "Tab/Shift+Tab focus · arrows choose · Enter activate"
+	} else if e.field == 0 && !e.sidebar {
+		modeHelp = "Type keyword · Enter check app · Ctrl+S apply"
+		if m.settings.VimMode {
+			modeHelp = "NORMAL: i type · Space check app · Ctrl+S apply"
+			if e.insert {
+				modeHelp = "INSERT: keyword only · Esc/Enter normal · Ctrl+S apply"
+			}
+		}
 	}
 	body := lipgloss.JoinHorizontal(lipgloss.Top,
 		m.panel("FILTER EDITOR", nav, left, height, navOwner),
@@ -141,11 +149,13 @@ func (m Model) facetFrame(bounds terminalui.Rect) terminalui.Frame {
 	switch e.field {
 	case 0:
 		apps := strings.Join(e.draft.Scope.Services, " OR ")
+		applyHint := muted("Apply: checked apps only")
 		if apps == "" {
-			apps = "ALL"
+			apps = "ALL (none checked)"
+			applyHint = m.style(t.Warning).Render("Apply: ALL apps; keyword ignored")
 		}
-		lines := []string{muted("Selected: " + apps), ""}
-		lines = append(lines, input("Suggest apps · keyword only", 0, len(lines))...)
+		lines := []string{muted("Selected: " + apps), applyHint}
+		lines = append(lines, input("Keyword: suggestions only", 0, len(lines))...)
 		visible := min(8, max(1, m.height-14))
 		start := max(0, e.suggestion-visible+1)
 		for i := start; i < min(len(e.suggestions.Items), start+visible); i++ {

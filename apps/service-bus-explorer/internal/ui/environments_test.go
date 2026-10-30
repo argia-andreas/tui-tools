@@ -158,6 +158,67 @@ func TestEnvironmentFailuresRetainStaleCountsAndDistinguishMissing(t *testing.T)
 	}
 }
 
+func TestEmulatorDiscoveryStatusDistinguishesCompleteFromUnverified(t *testing.T) {
+	base, _ := fixture.NewScoped()
+	s := &scopedScenario{Store: base, failed: map[string]bool{}, empty: map[string]bool{}, active: 37}
+	core, _ := s.ResolveNamespace(context.Background(), "prod-core")
+	archive, _ := s.ResolveNamespace(context.Background(), "prod-archive")
+	p := config.Default()
+	p.Environments = []config.Environment{{ID: "prod", Name: "Production", Connection: "fixture", Namespaces: []explorer.Namespace{core, archive}, All: true}}
+	p.ActiveEnvironment = "prod"
+	for _, failures := range []int{0, 1, 2} {
+		s.failed[core.Address], s.failed[archive.Address] = failures >= 1, failures == 2
+		m := ui.New(s, ui.Options{Mode: "emulator", Preferences: p, ScopeProvider: s, Connection: "fixture"})
+		ready := commands(m, m.Init(), 2)
+		view := ansi.Strip(ready.View())
+		if strings.Contains(view, "Emulator connected") {
+			t.Fatalf("discovery status claimed a connection rather than its observed result (%d failures)\n%s", failures, view)
+		}
+		want := "discovery complete"
+		if failures > 0 {
+			want = "discovery incomplete"
+			ready = choose(ready, "Discovery details")
+			if !strings.Contains(ansi.Strip(ready.View()), "permission denied") {
+				t.Fatal("failure details were lost")
+			}
+		}
+		if !strings.Contains(ansi.Strip(ready.View()), want) {
+			t.Fatalf("missing observed emulator state %q (%d failures)\n%s", want, failures, ready.View())
+		}
+	}
+}
+
+func TestPreferencesStatusDoesNotClaimSavedAfterNewerChanges(t *testing.T) {
+	for _, editDuringSave := range []bool{false, true} {
+		t.Run(map[bool]string{false: "after save", true: "during save"}[editDuringSave], func(t *testing.T) {
+			s, _ := fixture.NewScoped()
+			p := config.EnsureLocal(config.Default(), "fixture", "Offline fixture", explorer.Namespace{Profile: "fixture", Address: "local-lab", Name: "local-lab"})
+			m := scopeWorkspace(t, s, s, p, filepath.Join(t.TempDir(), "preferences.json"))
+			m = press(m, "t")
+			m, save := scopeAction(m, "Save preferences")
+			if save == nil {
+				t.Fatal("Save did not start")
+			}
+			if editDuringSave {
+				m = press(m, "g")
+			}
+			m, _ = m.Update(save())
+			if !editDuringSave {
+				m = press(m, "g")
+			}
+			for _, size := range [][2]int{{160, 48}, {60, 18}} {
+				m, _ = m.Update(tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+				m = press(m, "q")
+				view := ansi.Strip(m.View())
+				if !strings.Contains(view, "unsaved preferences") || strings.Contains(view, "Preferences saved") {
+					t.Fatalf("stale save status contradicts dirty quit\n%s", view)
+				}
+				m = press(m, "esc")
+			}
+		})
+	}
+}
+
 func TestEnvironmentFirstRunEmptyAndFailedSave(t *testing.T) {
 	s, _ := fixture.NewScoped()
 	p := config.Default()

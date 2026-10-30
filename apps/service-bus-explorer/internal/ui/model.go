@@ -340,7 +340,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.status = "Offline sample data · browsing never receives or removes a message"
 		if m.mode == "emulator" {
-			m.status = "Emulator connected · runtime counts unavailable (emulator limitation) · peek only"
+			m.status = "Local emulator · discovery complete · runtime counts unavailable (emulator limitation) · peek only"
 		}
 		return m.refresh()
 	case counted:

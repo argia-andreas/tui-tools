@@ -86,6 +86,44 @@ def main():
                 return send(f"\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m", want, absent)
         raise AssertionError("Visible control missing: " + label)
 
+    def usability_scenarios():
+        def painted_body(first, last):
+            for y in range(first, last):
+                for x in range(screen.columns):
+                    assert screen.buffer[y][x].bg != "default", (
+                        "terminal-default pane cell", x, y, screen.display[y])
+
+        # Check the actual terminal cell colors, not ANSI substring presence.
+        # A contrasting terminal default (e.g. gray) must never show through.
+        painted_body(4, screen.lines - 4)
+        assert any(c.bg == "8af0ce" for row in screen.buffer.values()
+                   for c in row.values()), "selected log surface lost"
+        resize(61, 19); os.kill(proc.pid, signal.SIGWINCH)
+        text = wait("payment-worker Payment")
+        assert "APP / SERVICE  MESSAGE" in text
+        assert all(len(line) == 61 for line in screen.display)
+        painted_body(4, screen.lines - 4)
+        send("f", "NORMAL: i type · Space check app")
+        text = send("ipayment", "[ ] payment-worker")
+        for hint in ("Selected: ALL (none checked)",
+                     "Apply: ALL apps; keyword ignored",
+                     "Keyword: suggestions only",
+                     "INSERT: keyword only · Esc/Enter normal"):
+            assert hint in text, (hint, text)
+        painted_body(2, screen.lines - 2)
+        keyword_row = next(y for y, line in enumerate(screen.display)
+                           if "  payment" in line)
+        assert any(c.bg == "101d2f" for c in screen.buffer[keyword_row].values()), (
+            "intentional keyword input surface lost")
+        send("\x1b", "NORMAL: i type · Space check app")
+        send(" ", "Apply: checked apps only")
+        send(" ", "Apply: ALL apps; keyword ignored")
+        send("\x13", "App exact: ALL")
+        wait("22 " + ("lab events" if lab else "fictional events"))
+        resize(160, 48); os.kill(proc.pid, signal.SIGWINCH)
+        wait("WORKSPACE")
+        print("PASS: usability PTY — 61-column service delimiter/geometry, keyword not checked/applied, NORMAL/INSERT ownership, explicit pane-cell backgrounds, selected/input surfaces retained")
+
     def mouse_scenarios():
         assert b"\x1b[?1006h" in transcript, "default mouse reporting missing"
         click_text("Actions ctrl+p", "ACTIONS · Ctrl+P")
@@ -407,6 +445,7 @@ def main():
         assert "● LOGS" in text and "● INSPECTOR" not in text
         assert "Payment gateway timeout" in text and "[REDACTED]" in text
         assert "8c3e7a21b9f04450" in text
+        usability_scenarios()
         mouse_scenarios()
         navigation_pointer_scenarios()
         send("\r", "● INSPECTOR", "● LOGS")

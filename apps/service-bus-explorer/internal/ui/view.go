@@ -518,7 +518,10 @@ func (m Model) View() string {
 		}
 	}
 	if m.revision != m.persisted {
-		status += " · unsaved preferences"
+		if strings.HasPrefix(status, "Preferences saved") {
+			status = "changes made since last save"
+		}
+		status = "unsaved preferences · " + status
 	}
 	if !m.compactReading() {
 		lines = append(lines, m.paint(strings.Repeat("─", m.width), m.theme.Border), m.paint(fit(keys, m.width), m.theme.Focus))

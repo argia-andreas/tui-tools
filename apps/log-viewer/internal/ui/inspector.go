@@ -114,7 +114,7 @@ func (m Model) inspectorRows(width int) ([]string, []int) {
 			wrapped = append(wrapped, strings.Split(ansi.Hardwrap(part, max(1, width-2), true), "\n")...)
 		}
 		if !f.container && !m.expanded[f.path] && len(wrapped) > 1 {
-			wrapped = []string{ansi.Truncate(wrapped[0], max(1, width-3), "") + "…"}
+			wrapped = []string{ansi.Truncate(wrapped[0], max(1, width-3), "") + m.style(m.options.Theme.Foreground).Render("…")}
 		}
 		for n, line := range wrapped {
 			prefix := "  "
@@ -216,7 +216,7 @@ func (m Model) stackLine(line string) string {
 		pathStart, pathEnd := spans[4], spans[5]
 		numberStart, numberEnd := spans[6], spans[7]
 		return line[:pathStart] + m.style(t.Muted).Render(line[pathStart:pathEnd]) +
-			line[pathEnd:numberStart] + m.style(t.Warning).Render(line[numberStart:numberEnd]) +
+			m.style(t.Foreground).Render(line[pathEnd:numberStart]) + m.style(t.Warning).Render(line[numberStart:numberEnd]) +
 			m.style(t.Foreground).Render(line[numberEnd:])
 	}
 	if spans := stackFunction.FindStringSubmatchIndex(line); spans != nil {

@@ -58,6 +58,7 @@ type Model struct {
 	queue                       []transferJob
 	queueIndex                  int
 	jobCursor                   int
+	queueTargets                string
 	queuePlanning               bool
 	queueCancel                 context.CancelFunc
 	transferCancel              context.CancelFunc
@@ -549,7 +550,8 @@ func (m Model) actions() []terminalui.Action {
 	}
 	a := []terminalui.Action{
 		{ID: "open", Label: "Open highlighted entry", Keywords: "directory inspect"},
-		{ID: "copy", Label: "Copy to " + direction + " pane", Keys: []string{"c"}, Keywords: "upload download transfer", Unavailable: m.copyDisabled()},
+		{ID: "copy", Label: "Copy to " + direction + " pane · " + m.copyTargets(), Keys: []string{"c"}, Keywords: "upload download transfer", Unavailable: m.copyDisabled()},
+		{ID: "clear-marks", Label: "Clear marks in focused pane", Keys: []string{"ctrl+g"}, Keywords: "selection unselect deselect marked", Unavailable: m.clearMarksDisabled()},
 		{ID: "preview", Label: "Preview selected file", Keys: []string{"p"}, Keywords: "inspect text", Unavailable: m.previewDisabled()},
 		{ID: "edit", Label: "Edit selected file in Neovim", Keys: []string{"e"}, Keywords: "editor nvim save remote", Unavailable: m.editDisabled()},
 		{ID: "navigation", Label: "Toggle navigation sidebar", Keys: []string{"["}, Keywords: "connections places"},
@@ -622,6 +624,15 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		return m.openSelection()
 	case "mark":
 		return m.toggleMark()
+	case "clear-marks":
+		if reason := m.clearMarksDisabled(); reason != "" {
+			m.status = reason
+			return m, nil
+		}
+		// Replace rather than mutate the map shared by prior model values.
+		m.panes[m.active()].selected = map[string]bool{}
+		m.status = "Marks cleared — Copy uses the highlighted entry"
+		return m, nil
 	case "parent":
 		if (m.focus == 1 || m.focus == 2) && !m.panes[m.active()].detached {
 			i := m.active()
@@ -720,7 +731,7 @@ func (m Model) execute(id string) (tea.Model, tea.Cmd) {
 		source, destination := m.panes[i].location, m.panes[1-i].location
 		source.Path = path.Join(source.Path, e.Name)
 		destination.Path = path.Join(destination.Path, e.Name)
-		m.pending = &copyState{source: source, destination: destination, size: e.Size}
+		m.pending = &copyState{source: source, destination: destination, size: e.Size, targets: m.copyTargets()}
 		return m.checkDestination()
 	case "delete":
 		return m.confirmDelete()

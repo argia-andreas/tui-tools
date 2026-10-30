@@ -19,6 +19,67 @@ import (
 
 type multilineProvider struct{}
 
+func TestNarrowLogServiceMessageDelimiter(t *testing.T) {
+	d, _ := fixtureDriver(t, 22)
+	d.apply(tea.WindowSizeMsg{Width: 61, Height: 19})
+	// payment-worker fills all 14 service columns at this size.
+	for _, text := range []string{"payment-worker Payment", "APP / SERVICE  MESSAGE"} {
+		if !strings.Contains(d.view(), text) {
+			t.Fatalf("missing explicit column gap %q:\n%s", text, d.view())
+		}
+	}
+	for _, line := range strings.Split(d.view(), "\n") {
+		if ansi.StringWidth(line) != 61 {
+			t.Fatalf("narrow row width %d: %q", ansi.StringWidth(line), line)
+		}
+	}
+}
+
+func TestNarrowAppKeywordExplainsSelectionAndOwnership(t *testing.T) {
+	for _, vim := range []bool{true, false} {
+		t.Run(map[bool]string{true: "vim", false: "direct"}[vim], func(t *testing.T) {
+			d, _ := fixtureDriver(t, 22)
+			if !vim {
+				d.key(",")
+				d.key(" ")
+				d.key("ctrl+s")
+			}
+			d.apply(tea.WindowSizeMsg{Width: 61, Height: 19})
+			d.key("f")
+			if vim {
+				if !strings.Contains(d.view(), "NORMAL: i type · Space check app") {
+					t.Fatal("NORMAL ownership missing", d.view())
+				}
+				d.key("i")
+			}
+			d.key("payment")
+			for _, text := range []string{"Selected: ALL (none checked)", "Apply: ALL apps; keyword ignored", "Keyword: suggestions only", "[ ] payment-worker"} {
+				if !strings.Contains(d.view(), text) {
+					t.Fatalf("narrow keyword/selection distinction missing %q:\n%s", text, d.view())
+				}
+			}
+			if vim && !strings.Contains(d.view(), "INSERT: keyword only · Esc/Enter normal") {
+				t.Fatal("INSERT ownership missing", d.view())
+			}
+			d.key("ctrl+s")
+			if !strings.Contains(d.view(), "22 fictional events") {
+				t.Fatal("keyword silently became an app predicate", d.view())
+			}
+			d.key("f")
+			if vim {
+				d.key("j")
+				d.key(" ")
+			} else {
+				d.key("down")
+				d.key("enter")
+			}
+			if !strings.Contains(d.view(), "Apply: checked apps only") || !strings.Contains(d.view(), "[x] payment-worker") {
+				t.Fatal("checked app not distinguished from keyword", d.view())
+			}
+		})
+	}
+}
+
 func TestHelpReturnsToIntactOwnersAndConsumesInput(t *testing.T) {
 	d, path := fixtureDriver(t, 22)
 	click := func(label string) {

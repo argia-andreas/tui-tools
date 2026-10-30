@@ -29,6 +29,29 @@ func fit(s string, width int) string {
 	return s + strings.Repeat(" ", max(0, width-lipgloss.Width(s)))
 }
 
+// Confirmation paths favor the identifying tail, not a long directory prefix.
+// A basename wider than the field keeps both its beginning and extension/tail.
+// This is display-only: captured storage locations remain untouched.
+func displayPath(loc storage.Location, width int) string {
+	s := text(loc.String())
+	if ansi.StringWidth(s) <= width {
+		return s
+	}
+	base := text(path.Base(loc.Path))
+	prefix := "…"
+	if ansi.StringWidth(base) >= width {
+		head := max(0, (width-1)/2)
+		prefix, s = ansi.Truncate(base, head, "")+"…", base
+	}
+	remaining := width - ansi.StringWidth(prefix)
+	tail := ansi.TruncateLeft(s, ansi.StringWidth(s)-remaining, "")
+	// TruncateLeft retains a wide grapheme crossing its cut boundary.
+	if ansi.StringWidth(tail) > remaining {
+		tail = ansi.TruncateLeft(tail, 2, "")
+	}
+	return prefix + tail
+}
+
 func (m Model) paint(s, c string) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(c)).Background(lipgloss.Color(m.theme.Background)).Render(s)
 }
@@ -74,7 +97,7 @@ func join(a, b []string) []string {
 }
 
 const paneControls = " ↑ Up  / Filter  ↻ Refresh  Open/Inspect"
-const workspaceFooter = " Space Select   c Copy   D Delete   ? help"
+const workspaceFooter = " Space Mark   c Copy highlight   D Delete   ? help"
 
 func (m Model) workspaceFits() bool { return m.width >= 60 && m.height >= 12 }
 
@@ -219,6 +242,9 @@ func (m Model) View() string {
 			footer = " Filter: " + text(m.panes[m.active()].filter) + "▏   Enter apply · Esc clear"
 		} else if status != "" {
 			footer = " " + text(status)
+		}
+		if !m.filtering && m.markedCount() > 0 && (status == "" || strings.HasPrefix(status, "Queue finished") || strings.HasPrefix(status, "Completed:")) {
+			footer = fmt.Sprintf(" c Copy %d marked · Ctrl+G clear marks", m.markedCount())
 		}
 		if m.rename != nil && !m.rename.confirming {
 			footer = " Rename " + text(path.Base(m.rename.source.Path)) + " · Enter review · Esc cancel"
@@ -406,7 +432,7 @@ func (m Model) filePane(i, w, h int) terminalui.Frame {
 	if p.hasParent() && p.filter == "" {
 		entryCount--
 	}
-	info := fmt.Sprintf(" %d entries · %d selected", entryCount, count)
+	info := fmt.Sprintf(" %d entries · %d selected (marked)", entryCount, count)
 	if p.filter != "" {
 		info += " · /" + text(p.filter)
 	}

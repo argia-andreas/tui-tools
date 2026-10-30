@@ -181,7 +181,10 @@ func (m Model) environmentUpdate(msg tea.Msg) (tea.Model, tea.Cmd, bool) {
 		}
 		m.status = "Offline sample data · scoped discovery · browsing never receives or removes a message"
 		if m.mode == "emulator" {
-			m.status = "Emulator connected · runtime counts unavailable (emulator limitation) · scoped discovery"
+			m.status = "Local emulator · discovery complete · runtime counts unavailable (emulator limitation)"
+			if slices.ContainsFunc(m.scopeResults, func(result explorer.NamespaceDiscovery) bool { return result.Err != nil }) {
+				m.status = "Local emulator · discovery incomplete · see Discovery details"
+			}
 		}
 		if m.mode == "azure" {
 			m.status = "Azure read-only · scoped discovery · message mutations disabled"

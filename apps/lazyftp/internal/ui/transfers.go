@@ -15,6 +15,7 @@ import (
 
 type copyState struct {
 	source, destination storage.Location
+	targets             string // captured selection explanation, never a live target
 	size                int64
 	checking, conflict  bool
 	auto                bool // only untouched new files in a confirmed batch
@@ -35,6 +36,42 @@ type transferJob struct {
 	size                int64
 	state               string
 	err                 error
+}
+
+func (m Model) markedCount() int {
+	p := m.panes[m.active()]
+	count := 0
+	for _, e := range p.entries {
+		if p.selected[e.Name] {
+			count++
+		}
+	}
+	return count
+}
+
+func (m Model) copyTargets() string {
+	count := m.markedCount()
+	if count == 0 {
+		return "highlighted entry"
+	}
+	highlight := "excluded"
+	p := m.panes[m.active()]
+	if entries := p.visible(); p.cursor >= 0 && p.cursor < len(entries) && p.selected[entries[p.cursor].Name] {
+		highlight = "included"
+	}
+	return fmt.Sprintf("%d marked; highlight %s", count, highlight)
+}
+
+func (m Model) clearMarksDisabled() string {
+	if m.panes[m.active()].detached {
+		return "Choose a source before marking"
+	}
+	for _, marked := range m.panes[m.active()].selected {
+		if marked {
+			return ""
+		}
+	}
+	return "No marks in focused pane"
 }
 
 func (m Model) copyEntries() []storage.Entry {
@@ -223,7 +260,11 @@ func (m Model) startCopy(overwrite bool) (tea.Model, tea.Cmd) {
 func (m Model) copyLines(w, h int) (string, []string) {
 	p := m.pending
 	title := "CONFIRM SINGLE-FILE COPY"
-	lines := []string{"  From: " + text(p.source.String()), "  To:   " + text(p.destination.String()), fmt.Sprintf("  Size: %d B", p.size)}
+	targets := p.targets
+	if targets == "" {
+		targets = "captured queue job"
+	}
+	lines := []string{"  Copy: " + targets, "  From: " + displayPath(p.source, w-10), "  To:   " + displayPath(p.destination, w-10), fmt.Sprintf("  Size: %d B", p.size)}
 	if m.modal == "rename" {
 		return "RENAME DESTINATION", []string{"  New filename (Ctrl+U clears):", "  " + text(m.query) + "▏", "", "  Enter checks name · Esc cancels"}
 	}

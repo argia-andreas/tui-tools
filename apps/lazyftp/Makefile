@@ -18,6 +18,7 @@ test:
 
 test-terminal: build
 	.venv/bin/python scripts/terminal-smoke.py
+	.venv/bin/python scripts/terminal-copy-targets.py
 
 test-terminal-live: build
 	python3 scripts/lab.py check
