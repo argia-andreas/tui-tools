@@ -1,8 +1,8 @@
 go 1.27.3
 
 use (
-	./apps/lazyftp
-	./apps/log-viewer
-	./apps/service-bus-explorer
+	./apps/logs
+	./apps/queue
+	./apps/transfer
 	./lib/terminalui
 )

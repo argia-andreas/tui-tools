@@ -3,13 +3,13 @@ MODULES := $(patsubst %/go.mod,%,$(wildcard apps/*/go.mod lib/*/go.mod))
 
 .PHONY: build test vet check format-check test-terminal
 
-# ./build also accepts an app name directly; make build APP=log-viewer is equivalent.
+# ./build also accepts an app name directly; make build APP=logs is equivalent.
 build:
 	./build $(APP)
 
 test:
 	@set -e; for module in $(MODULES); do GOWORK=off $(GO) -C "$$module" test -race ./...; done
-	python3 -m unittest discover -s apps/service-bus-explorer/scripts -p lab_test.py
+	python3 -m unittest discover -s apps/queue/scripts -p lab_test.py
 
 vet:
 	@set -e; for module in $(MODULES); do GOWORK=off $(GO) -C "$$module" vet ./...; done
@@ -20,6 +20,6 @@ format-check:
 check: format-check vet test
 
 test-terminal:
-	$(MAKE) -C apps/lazyftp test-terminal
-	$(MAKE) -C apps/service-bus-explorer terminal-test
-	$(MAKE) -C apps/log-viewer test-terminal
+	$(MAKE) -C apps/transfer test-terminal
+	$(MAKE) -C apps/queue terminal-test
+	$(MAKE) -C apps/logs test-terminal

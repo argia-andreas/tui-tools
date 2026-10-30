@@ -4,3 +4,8 @@
 /.amp/in/
 /.lab/
 /lab/node_modules/
+
+# Preserve private lab/build state left at the former app paths after renaming.
+/apps/lazyftp/
+/apps/log-viewer/
+/apps/service-bus-explorer/

@@ -3,15 +3,15 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-apps=(lazyftp service-bus-explorer log-viewer)
+apps=(transfer queue logs)
 if [[ $# -gt 1 ]]; then
-  echo "Usage: $0 [lazyftp|service-bus-explorer|log-viewer]" >&2
+  echo "Usage: $0 [transfer|queue|logs]" >&2
   exit 2
 fi
 if [[ $# -eq 1 ]]; then
   case "$1" in
-    lazyftp|service-bus-explorer|log-viewer) apps=("$1") ;;
-    *) echo "Usage: $0 [lazyftp|service-bus-explorer|log-viewer]" >&2; exit 2 ;;
+    transfer|queue|logs) apps=("$1") ;;
+    *) echo "Usage: $0 [transfer|queue|logs]" >&2; exit 2 ;;
   esac
 fi
 

@@ -77,8 +77,8 @@ if ! command -v node >/dev/null || ! command -v npm >/dev/null; then
   echo 'Node.js and npm are required for the pinned local Azurite emulator.' >&2
   exit 1
 fi
-python3 apps/lazyftp/scripts/lab.py install-rclone
-python3 apps/lazyftp/scripts/lab.py install-s3
-npm ci --prefix apps/lazyftp/lab --ignore-scripts --no-audit --no-fund
-echo 'Lab dependencies ready. Run make -C apps/lazyftp lab-up lab-seed inside the orb (no Docker required).'
+python3 apps/transfer/scripts/lab.py install-rclone
+python3 apps/transfer/scripts/lab.py install-s3
+npm ci --prefix apps/transfer/lab --ignore-scripts --no-audit --no-fund
+echo 'Lab dependencies ready. Run make -C apps/transfer lab-up lab-seed inside the orb (no Docker required).'
 echo "Setup complete in $((SECONDS - started))s."
