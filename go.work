@@ -3,6 +3,7 @@ go 1.27.3
 use (
 	./apps/logs
 	./apps/queue
+	./apps/streams
 	./apps/transfer
 	./lib/terminalui
 )

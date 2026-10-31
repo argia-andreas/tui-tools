@@ -1,7 +1,7 @@
 # TUI Tools
 
 **Opinionated, minimalist terminal tools for moving files, inspecting messages,
-and understanding logs.**
+understanding logs, and investigating event streams.**
 
 Each tool focuses on a specific job, with a small set of discoverable controls
 and explicit actions where mistakes matter. They share an interaction vocabulary,
@@ -17,6 +17,7 @@ modes and read each app's limitations before connecting real services.
 | **transfer** | Two-pane file browsing and confirmed copies through rclone, with local/remote previews, transfer queues, and optional Neovim editing. | [transfer](apps/transfer/README.md) |
 | **logs** | Chronological log investigation with structured inspection, filters, literal find, and saved searches. Currently supports fictional fixtures and an authenticated local Elasticsearch lab—not arbitrary production sources. | [logs](apps/logs/README.md) |
 | **queue** | Scoped Azure Service Bus queue/topic browsing, Active/DLQ inspection, and saved environments. Azure mode is read-only; local modes support explicitly reviewed message operations. | [queue](apps/queue/README.md) |
+| **streams** | Read-only Kafka-compatible topic/event inspection, bounded seeks, follow/pause, and consumer-group lag. Includes offline fixtures and opt-in Redpanda/Kafka labs. | [streams](apps/streams/README.md) |
 
 ### What “opinionated and minimalist” means here
 
@@ -45,6 +46,7 @@ the repository root, then choose a tool:
 ./apps/transfer/bin/transfer --demo
 ./apps/logs/bin/logs --fixture
 ./apps/queue/bin/queue --fixture
+./apps/streams/bin/streams --fixture
 ```
 
 No cloud account, Docker daemon, or rclone installation is needed for these
@@ -66,6 +68,7 @@ Build the suite or a single app:
 ./build transfer
 ./build logs
 ./build queue
+./build streams
 ```
 
 The command delegates to each app's Makefile; binaries stay in that app's `bin/`.
@@ -118,8 +121,8 @@ lab operation is never an implicit part of building or checking the suite.
 ### Validation
 
 `make check` checks formatting, vets and race-tests every module independently
-with `GOWORK=off`, and runs Service Bus lab-script unit tests. `make test-terminal`
-builds and exercises all three real executables in offline PTYs. The root
+with `GOWORK=off`, and runs Service Bus and streams lab-script unit tests. `make test-terminal`
+builds and exercises all four real executables in offline PTYs. The root
 `go.work` is an editor/development convenience, not a substitute for module checks;
 root `go test ./...` is not the suite test command. App module identities and user
 configuration locations are unchanged.
@@ -143,6 +146,7 @@ or S3 transfers.
 | [rclone](https://rclone.org/) | transfer's real storage listing, file operations, and transfers. |
 | [Bubble Tea](https://github.com/charmbracelet/bubbletea), [Lip Gloss](https://github.com/charmbracelet/lipgloss), and [Charm's terminal libraries](https://github.com/charmbracelet/x) | Event-driven terminal applications, styling, ANSI handling, and terminal utilities. |
 | [Azure SDK for Go](https://github.com/Azure/azure-sdk-for-go) and [go-amqp](https://github.com/Azure/go-amqp) | Service Bus messaging clients and AMQP support. |
+| [franz-go](https://github.com/twmb/franz-go) and kadm | streams' Kafka protocol client and read-only metadata/group observations. |
 | [Model Context Protocol Go SDK](https://github.com/modelcontextprotocol/go-sdk) | transfer's separately built MCP server. |
 | [go-osc52](https://github.com/aymanbagabas/go-osc52), [uniseg](https://github.com/rivo/uniseg), and [fuzzy](https://github.com/sahilm/fuzzy) | Terminal clipboard sequences, Unicode segmentation/width handling, and command matching. |
 | [Neovim](https://neovim.io/) and [Nerd Fonts](https://www.nerdfonts.com/) | Optional external editing and file-type glyphs. |
@@ -158,6 +162,9 @@ or S3 transfers.
   terms and explicit EULA acceptance still apply.
 - [Elasticsearch](https://www.elastic.co/elasticsearch) provides the authenticated
   TLS log lab; its distribution has its own license terms.
+- [Redpanda](https://github.com/redpanda-data/redpanda) and
+  [Apache Kafka](https://kafka.apache.org/) provide streams' opt-in real broker
+  labs; their separate distribution/license terms apply.
 - [pyte](https://github.com/selectel/pyte) supports real-terminal regression checks;
   [ttyd](https://github.com/tsl0922/ttyd) provides browser terminal previews;
   [uv](https://docs.astral.sh/uv/) manages the Python test environments.

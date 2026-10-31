@@ -10,6 +10,7 @@ build:
 test:
 	@set -e; for module in $(MODULES); do GOWORK=off $(GO) -C "$$module" test -race ./...; done
 	python3 -m unittest discover -s apps/queue/scripts -p lab_test.py
+	python3 -B -m unittest discover -s apps/streams/scripts -p lab_test.py
 
 vet:
 	@set -e; for module in $(MODULES); do GOWORK=off $(GO) -C "$$module" vet ./...; done
@@ -23,3 +24,4 @@ test-terminal:
 	$(MAKE) -C apps/transfer test-terminal
 	$(MAKE) -C apps/queue terminal-test
 	$(MAKE) -C apps/logs test-terminal
+	$(MAKE) -C apps/streams test-terminal

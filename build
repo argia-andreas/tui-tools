@@ -3,15 +3,15 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-apps=(transfer queue logs)
+apps=(transfer queue logs streams)
 if [[ $# -gt 1 ]]; then
-  echo "Usage: $0 [transfer|queue|logs]" >&2
+  echo "Usage: $0 [transfer|queue|logs|streams]" >&2
   exit 2
 fi
 if [[ $# -eq 1 ]]; then
   case "$1" in
-    transfer|queue|logs) apps=("$1") ;;
-    *) echo "Usage: $0 [transfer|queue|logs]" >&2; exit 2 ;;
+    transfer|queue|logs|streams) apps=("$1") ;;
+    *) echo "Usage: $0 [transfer|queue|logs|streams]" >&2; exit 2 ;;
   esac
 fi
 

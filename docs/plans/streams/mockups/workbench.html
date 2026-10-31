@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>streams — static product study</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px; background: #0b1423; color: #dce8f4; font: 14px/1.6 ui-monospace, monospace; }
+h1 { font-size: 18px; margin: 0; color: #65c7f7; }
+p { margin: 8px 0 20px; color: #91a6bb; }
+header, footer { border: 1px solid #4b6a89; padding: 10px 14px; }
+header { display: flex; justify-content: space-between; gap: 16px; }
+main { display: grid; grid-template-columns: 200px minmax(0, 1fr) 290px; min-height: 420px; }
+section, aside { border: 1px solid #4b6a89; padding: 12px; min-width: 0; }
+h2 { margin: 0 0 14px; font-size: 14px; font-weight: normal; color: #65c7f7; }
+.muted { color: #91a6bb; }
+.selected { background: #071a24; color: #8af0ce; }
+.row { padding: 5px 8px; white-space: nowrap; }
+table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+td, th { padding: 5px 8px; text-align: left; font-weight: normal; }
+th { color: #91a6bb; border-bottom: 1px solid #4b6a89; }
+pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.notice { color: #efc46f; }
+footer { color: #91a6bb; }
+@media (max-width: 1000px) { main { grid-template-columns: 180px minmax(0, 1fr); } aside { display: none; } }
+@media (max-width: 650px) { body { padding: 12px; font-size: 12px; } nav { display: none; } main { display: block; min-height: 320px; } header { display: block; } .time { display: none; } }
+</style>
+<h1>streams</h1>
+<p>Product study · fictional data · not a running terminal application</p>
+<header><span>local-lab / READ ONLY / orders.created</span><span>[Actions Ctrl+P] [Help F1]</span></header>
+<main>
+<nav aria-label="Topics"><section>
+<h2>Topics / 3</h2>
+<div class="muted">Filter topics: orders</div>
+<div class="row selected">orders.created</div>
+<div class="row">orders.failed</div>
+<div class="row">orders.shipped</div>
+<br><div class="muted">Views</div>
+<div class="row">Topics</div><div class="row">Events</div><div class="row">Groups</div>
+</section></nav>
+<section aria-label="Events">
+<h2>▸ Events · all partitions · PAUSED</h2>
+<div class="muted">Arrival-order interleave · no global ordering</div>
+<div class="muted">Recent window · 6 loaded · find: none</div>
+<table>
+<thead><tr><th>P</th><th>Offset</th><th class="time">UTC</th><th>Key</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>8102</td><td class="time">12:04:10.102</td><td>ord-145</td></tr>
+<tr><td>2</td><td>3920</td><td class="time">12:04:09.980</td><td>ord-146</td></tr>
+<tr class="selected"><td>1</td><td>6408</td><td class="time">12:04:10.215</td><td>ord-147</td></tr>
+<tr><td>0</td><td>8104</td><td class="time">12:04:10.301</td><td>ord-148</td></tr>
+<tr><td>2</td><td>3921</td><td class="time">12:04:10.284</td><td>ord-149</td></tr>
+<tr><td>1</td><td>6409</td><td class="time">12:04:10.420</td><td>ord-150</td></tr>
+</tbody></table>
+<p>Offset gaps are valid; timestamps may interleave.</p>
+<div>[Inspect] [Seek…] [Resume] [Find loaded…]</div>
+</section>
+<aside aria-label="Selected event preview">
+<h2>Preview / partition 1 / offset 6408</h2>
+<div>Key: ord-147</div>
+<div>Timestamp: CreateTime</div>
+<div>Headers: 1</div>
+<div class="muted">content-type: application/json</div>
+<pre>{
+  "orderId": "ord-147",
+  "total": 249.50,
+  "currency": "SEK"
+}</pre>
+<div class="muted">Value · JSON / raw / hex</div>
+<div class="notice">Selection previews; Inspect opens reader.</div>
+</aside>
+</main>
+<footer>Read limits: 500 records / 4 MiB / 5s · committed records only<br>Tab panes · Enter inspect · Ctrl+P actions · F1 help · UTC</footer>
+<p>Illustrative limits, labels and layout—not final shortcuts or measured behavior. Narrow study hides navigation and preview; the planned reader is a separate view.</p>
+</html>

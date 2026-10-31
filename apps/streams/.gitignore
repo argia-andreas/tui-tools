@@ -1,0 +1,5 @@
+/bin/
+/.venv/
+/.lab/
+/.amp/portals/
+__pycache__/
