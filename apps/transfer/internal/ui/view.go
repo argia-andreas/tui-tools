@@ -57,30 +57,21 @@ func (m Model) paint(s, c string) string {
 }
 
 func (m Model) block(title string, w, h int, lines []string, focused bool, accent string) []string {
-	if w < 2 || h < 2 {
-		return make([]string, max(0, h))
-	}
-	border := m.theme.Border
+	style := m.theme.TerminalStyle(false)
 	if focused {
-		border = m.theme.Focus
+		style.Border = m.theme.Focus
 	}
-	bar := func(s string) string { return m.paint(s, border) }
-	top := "─ " + text(title) + " "
-	top = ansi.Truncate(top, w-2, "…") + strings.Repeat("─", max(0, w-2-lipgloss.Width(top)))
-	result := []string{bar("┌") + m.paint(top, accent) + bar("┐")}
-	for i := 0; i < h-2; i++ {
-		s := ""
-		if i < len(lines) {
-			s = lines[i]
+	body := make([]string, min(len(lines), max(0, h-2)))
+	for i := range body {
+		body[i] = lines[i]
+		if ansi.Strip(body[i]) == body[i] {
+			body[i] = m.paint(body[i], m.theme.Foreground)
 		}
-		s = ansi.Truncate(s, w-2, "…")
-		padding := m.paint(strings.Repeat(" ", max(0, w-2-lipgloss.Width(s))), m.theme.Foreground)
-		if ansi.Strip(s) == s {
-			s = m.paint(s, m.theme.Foreground)
-		}
-		result = append(result, bar("│")+s+padding+bar("│"))
 	}
-	return append(result, bar("└"+strings.Repeat("─", w-2)+"┘"))
+	return terminalui.RenderPanel(terminalui.PanelSpec{
+		Title: "─ " + text(title) + " ", Lines: body,
+		TitleColor: accent, TitleRule: true, Ellipsis: "…",
+	}, w, h, style)
 }
 
 func join(a, b []string) []string {

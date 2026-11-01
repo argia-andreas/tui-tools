@@ -6,7 +6,9 @@ import (
 	"testing"
 	"unicode/utf8"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/muesli/termenv"
 	ui "terminalui"
 )
 
@@ -26,6 +28,71 @@ func checkFrame(t *testing.T, f ui.Frame) {
 			t.Fatalf("region %+v outside %+v", r, f.Bounds)
 		}
 	}
+}
+
+func TestPanelPresentationAndCellBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name, title, body, marker, top, middle, bottom string
+		rule, ascii                                    bool
+	}{
+		{"rule", " A ", "body", "…", "┌ A ───┐", "│body  │", "└──────┘", true, false},
+		{"spaces", " B ", "body", "", "┌ B    ┐", "│body  │", "└──────┘", false, false},
+		{"ascii", " C ", "body", "", "+ C ---+", "|body  |", "+------+", true, true},
+		{"ellipsis", "long title", "abcdefghi", "…", "┌long …┐", "│abcde…│", "└──────┘", false, false},
+		{"hard clip", "long title", "abcdefghi", "", "┌long t┐", "│abcdef│", "└──────┘", false, false},
+		{"graphemes", "界é", "界é👩‍💻xy", "", "┌界é   ┐", "│界é👩‍💻x│", "└──────┘", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			lines := ui.RenderPanel(ui.PanelSpec{Title: tc.title, Lines: []string{tc.body, "ignored"}, TitleRule: tc.rule, Ellipsis: tc.marker}, 8, 3, ui.Style{ASCII: tc.ascii})
+			want := []string{tc.top, tc.middle, tc.bottom}
+			for i := range want {
+				if got := ansi.Strip(lines[i]); got != want[i] {
+					t.Fatalf("row %d = %q; want %q", i, got, want[i])
+				}
+			}
+		})
+	}
+	for _, width := range []int{-1, 0, 1, 2, 3, 11, 24} {
+		for _, height := range []int{-1, 0, 1, 2, 5} {
+			lines := ui.RenderPanel(ui.PanelSpec{Title: "界é👩‍💻", Lines: []string{"界é👩‍💻"}, Ellipsis: "…"}, width, height, ui.Style{})
+			if len(lines) != max(0, height) {
+				t.Fatalf("%dx%d: wrong height %d", width, height, len(lines))
+			}
+			if width < 2 || height < 2 {
+				for _, line := range lines {
+					if line != "" {
+						t.Fatalf("%dx%d: tiny panel has content", width, height)
+					}
+				}
+				continue
+			}
+			checkFrame(t, ui.Frame{Bounds: ui.Rect{W: width, H: height}, Lines: lines})
+			if height == 5 && ansi.Strip(lines[3]) != "│"+strings.Repeat(" ", width-2)+"│" {
+				t.Fatal("missing body row was not padded")
+			}
+		}
+	}
+	t.Run("style roles", func(t *testing.T) {
+		oldProfile := lipgloss.ColorProfile()
+		lipgloss.SetColorProfile(termenv.TrueColor)
+		t.Cleanup(func() { lipgloss.SetColorProfile(oldProfile) })
+		body := "\x1b[38;2;170;187;204;48;2;221;238;255mxy\x1b[0m"
+		lines := ui.RenderPanel(ui.PanelSpec{Title: "title", TitleColor: "#112233", Lines: []string{body}}, 11, 3,
+			ui.Style{Border: "#445566", Foreground: "#778899", Background: "#010203", Surface: "#aabbcc"})
+		for _, tc := range []struct{ text, color string }{
+			{ansi.Cut(lines[0], 0, 1), "38;2;68;85;102"},
+			{ansi.Cut(lines[0], 1, 6), "38;2;17;34;51"},
+			{ansi.Cut(lines[1], 3, 9), "38;2;119;136;153"},
+			{ansi.Cut(lines[1], 3, 9), "48;2;1;2;3"},
+		} {
+			if !strings.Contains(tc.text, tc.color) {
+				t.Fatalf("missing style role %s in %q", tc.color, tc.text)
+			}
+		}
+		if !strings.Contains(lines[1], body) {
+			t.Fatal("supplied body style was changed")
+		}
+	})
 }
 
 func TestFrameCellBoundsAndClipping(t *testing.T) {

@@ -54,24 +54,14 @@ func (m Model) button(label string, focused bool, color string) string {
 }
 
 func (m Model) panel(title string, width, height int, lines []string, focused bool) []string {
-	color := m.theme.Border
+	style := m.theme.TerminalStyle(false)
 	if focused {
-		color = m.theme.Focus
+		style.Border = m.theme.Focus
 	}
-	bar := func(s string) string { return m.paint(s, color) }
-	inner := max(0, width-2)
-	top := ansi.Truncate("─ "+clean(title, false)+" ", inner, "…")
-	top += strings.Repeat("─", max(0, inner-lipgloss.Width(top)))
-	result := []string{bar("┌" + top + "┐")}
-	for row := 0; row < height-2; row++ {
-		line := ""
-		if row < len(lines) {
-			line = lines[row]
-		}
-		line = ansi.Truncate(line, inner, "…")
-		result = append(result, bar("│")+line+m.paint(strings.Repeat(" ", max(0, inner-lipgloss.Width(line))), m.theme.Foreground)+bar("│"))
-	}
-	return append(result, bar("└"+strings.Repeat("─", inner)+"┘"))
+	return terminalui.RenderPanel(terminalui.PanelSpec{
+		Title: "─ " + clean(title, false) + " ", Lines: lines,
+		TitleRule: true, Ellipsis: "…",
+	}, width, height, style)
 }
 
 func (m Model) sidebarView(height int, frames ...*terminalui.Frame) []string {

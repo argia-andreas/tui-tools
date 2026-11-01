@@ -24,28 +24,18 @@ func (m Model) paint(s, color string) string {
 func safe(s string) string { return stream.SafeText([]byte(s)) }
 func (m Model) panel(title, id string, b terminalui.Rect, lines []string, regions []terminalui.Region) terminalui.Frame {
 	s := m.style()
-	v, h, tl, tr, bl, br := "│", "─", "┌", "┐", "└", "┘"
-	if s.ASCII {
-		v, h, tl, tr, bl, br = "|", "-", "+", "+", "+", "+"
-	}
-	color := s.Border
 	if m.focus == id {
-		color = s.Focus
+		s.Border = s.Focus
 		title = "> " + title
 	}
-	f := terminalui.Frame{Bounds: b, Regions: append([]terminalui.Region{{ID: id, Kind: terminalui.PaneRegion, Bounds: b}}, regions...)}
-	f.Lines = append(f.Lines, m.paint(tl+terminalui.Fit(" "+title+" ", b.W-2)+tr, color))
-	for y := 0; y < b.H-2; y++ {
-		line := ""
-		if y < len(lines) {
-			line = lines[y]
-		}
-		line = ansi.Truncate(line, max(0, b.W-2), "")
-		padding := strings.Repeat(" ", max(0, b.W-2-ansi.StringWidth(line)))
-		f.Lines = append(f.Lines, m.paint(v, color)+m.paint(line, s.Foreground)+m.paint(padding, s.Foreground)+m.paint(v, color))
+	body := make([]string, min(len(lines), max(0, b.H-2)))
+	for i := range body {
+		body[i] = m.paint(lines[i], s.Foreground)
 	}
-	f.Lines = append(f.Lines, m.paint(bl+strings.Repeat(h, max(0, b.W-2))+br, color))
-	return f
+	return terminalui.Frame{
+		Bounds: b, Regions: append([]terminalui.Region{{ID: id, Kind: terminalui.PaneRegion, Bounds: b}}, regions...),
+		Lines: terminalui.RenderPanel(terminalui.PanelSpec{Title: " " + title + " ", Lines: body}, b.W, b.H, s),
+	}
 }
 func (m Model) selectedLine(text string, selected bool) string {
 	if selected {

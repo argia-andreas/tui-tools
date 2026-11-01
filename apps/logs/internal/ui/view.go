@@ -22,28 +22,18 @@ func fit(s string, width int) string {
 
 func (m Model) panel(title string, lines []string, width, height, owner int) string {
 	t := m.options.Theme
-	color := t.Border
+	style := t.Interactions()
 	if m.focus == owner {
-		color = t.Focus
+		style.Border = t.Focus
 		title = "● " + title
 	}
-	inner := max(1, width-2)
-	border := m.style(color)
-	label := ansi.Truncate(" "+title+" ", inner, "…")
-	rows := []string{border.Render("┌" + label + strings.Repeat("─", inner-ansi.StringWidth(label)) + "┐")}
-	for i := 0; i < height-2; i++ {
-		line := ""
-		if i < len(lines) {
-			line = lines[i]
-		}
-		// Embedded styles end with ANSI resets. Paint padding separately so
-		// those resets cannot leave the rest of the pane terminal-default.
-		line = ansi.Truncate(line, inner, "…")
-		body := m.style(t.Foreground).Render(line)
-		padding := m.style(t.Foreground).Render(strings.Repeat(" ", max(0, inner-ansi.StringWidth(line))))
-		rows = append(rows, border.Render("│")+body+padding+border.Render("│"))
+	body := make([]string, min(len(lines), max(0, height-2)))
+	for i := range body {
+		body[i] = m.style(t.Foreground).Render(lines[i])
 	}
-	rows = append(rows, border.Render("└"+strings.Repeat("─", inner)+"┘"))
+	rows := terminalui.RenderPanel(terminalui.PanelSpec{
+		Title: " " + title + " ", Lines: body, TitleRule: true, Ellipsis: "…",
+	}, width, height, style)
 	return strings.Join(rows, "\n")
 }
 
