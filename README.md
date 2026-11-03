@@ -7,17 +7,17 @@ Each tool focuses on a specific job, with a small set of discoverable controls
 and explicit actions where mistakes matter. They share an interaction vocabulary,
 not a single layout or an all-purpose application framework.
 
-These are experimental tools under active development. Start with the offline
-modes and read each app's limitations before connecting real services.
+These are experimental tools under active development. Read each app's
+limitations and safety guidance before connecting real services.
 
 ## The tools
 
 | Tool | What it does | Documentation |
 | --- | --- | --- |
-| **transfer** | Two-pane file browsing and confirmed copies through rclone, with local/remote previews, transfer queues, and optional Neovim editing. | [transfer](apps/transfer/README.md) |
-| **logs** | Chronological log investigation with structured inspection, filters, literal find, and saved searches. Currently supports fictional fixtures and an authenticated local Elasticsearch lab—not arbitrary production sources. | [logs](apps/logs/README.md) |
-| **queue** | Scoped Azure Service Bus queue/topic browsing, Active/DLQ inspection, and saved environments. Azure mode is read-only; local modes support explicitly reviewed message operations. | [queue](apps/queue/README.md) |
-| **streams** | Read-only Kafka-compatible topic/event inspection, bounded seeks, follow/pause, and consumer-group lag. Includes offline fixtures and opt-in Redpanda/Kafka labs. | [streams](apps/streams/README.md) |
+| **Transfer** | Browse and transfer files over FTP/FTPS, S3, and Azure Blob via rclone. | [Transfer](apps/transfer/README.md) |
+| **Logs** | View and filter logs from the authenticated local Elasticsearch lab. | [Logs](apps/logs/README.md) |
+| **QE** | Service Bus queue/topic browsing, dashboards, and Active/DLQ inspection. Azure access is read-only. | [QE](apps/queue/README.md) |
+| **Streams** | Read-only Kafka-compatible event browsing and consumer-group lag inspection. | [Streams](apps/streams/README.md) |
 
 ### What “opinionated and minimalist” means here
 
@@ -34,33 +34,20 @@ modes and read each app's limitations before connecting real services.
 Minimalism is about reducing decisions and surprises, not hiding useful context
 or making every application look the same.
 
-## Try it without connecting anything
+## Connecting services
 
-Install the Go version in [.go-version](.go-version), Bash, and Make. Build from
-the repository root, then choose a tool:
-
-```sh
-./build
-
-# Run one at a time. These modes use fictional data, not external services.
-./apps/transfer/bin/transfer --demo
-./apps/logs/bin/logs --fixture
-./apps/queue/bin/queue --fixture
-./apps/streams/bin/streams --fixture
-```
-
-No cloud account, Docker daemon, or rclone installation is needed for these
-offline modes. They are a way to explore the UI, not proof that a live backend
-has been configured. transfer's demo is read-only; queue's fixture mutations
-affect only the in-memory sample scenario.
-
-For real connections and disposable labs, follow the app documentation above.
-transfer uses an external **rclone** executable for real storage operations;
-Neovim is optional. queue's Azure mode uses an existing Azure CLI login and
-never logs in for you. Lab services are opt-in and are not started by a build.
+The tools are intended for working with storage, messages, logs, and event
+streams on real services. Follow each app's documentation for supported
+connections, credentials, and limitations. Transfer uses an external **rclone**
+executable for storage operations; Neovim is optional. QE's Azure mode uses an
+existing Azure CLI login and never logs in for you. Streams uses explicit broker
+connection profiles and should be paired with broker-enforced read-only ACLs.
+Logs currently supports only its authenticated local Elasticsearch lab, not
+arbitrary production sources.
 
 ## Build
 
+Install the Go version in [.go-version](.go-version), Bash, and Make.
 Build the suite or a single app:
 
 ```sh
@@ -75,21 +62,17 @@ The command delegates to each app's Makefile; binaries stay in that app's `bin/`
 It also works when invoked by absolute path from another directory. An unknown
 app name or extra argument is rejected before building anything.
 `make build` and `make build APP=logs` are equivalent entry points.
-Individual app Makefiles remain usable, for example `make -C apps/transfer demo`
-or `make -C apps/logs run-fixture`.
+Individual app Makefiles remain usable, for example `make -C apps/logs build`.
 
-### Existing installations
+QE currently builds as `apps/queue/bin/queue`; use `./build queue` as shown above.
 
-The apps were previously named LazyFTP, Log Viewer (`logview`), and Service Bus
-Explorer (`sbx`). Their executable names are now `transfer`, `logs`, and `queue`;
-the companion commands are `transfer-mcp` and `queue-lab`. Update shell aliases,
-scripts, and MCP launch commands accordingly.
+### MCP servers
 
-Existing user configuration locations and formats remain unchanged: `lazyftp`
-for connection bookmarks, `logview` for saved searches/settings, and
-`service-bus-explorer` for preferences under your OS configuration directory.
-The internal Go module identities also remain stable. Historical design notes
-and screenshots may use the former names.
+Transfer includes the implemented `transfer-mcp` server, built alongside the
+terminal app. See its [MCP documentation](apps/transfer/docs/mcp.md) for setup and
+permissions. The intended companion server names for Logs, QE, and Streams are
+`logs-mcp`, `qe-mcp`, and `streams-mcp`, respectively; these three servers are not
+implemented or built yet. Do not configure them as working commands.
 
 ## Development and checks
 
@@ -118,14 +101,36 @@ Setup is repeatable and installs dependencies only: no cloud authentication,
 service startup, lab seeding or deletion. See each app's README for its own lab;
 lab operation is never an implicit part of building or checking the suite.
 
-### Validation
+### Testing
+
+Fixtures support testing the programs, including testing with agents, without
+connecting external services. After building, run one tool at a time:
+
+```sh
+./apps/transfer/bin/transfer --demo
+./apps/logs/bin/logs --fixture
+./apps/queue/bin/queue --fixture
+./apps/streams/bin/streams --fixture
+```
+
+These modes use fictional data and need no cloud account, Docker daemon, or
+rclone installation. transfer's demo is read-only; queue's fixture mutations
+affect only the in-memory sample scenario. Fixture tests do not prove that a
+live backend has been configured or that real-service integration works.
+App Makefile targets include `make -C apps/transfer demo` and
+`make -C apps/logs run-fixture`.
+
+For agent-assisted integration testing against real protocols, use the opt-in
+disposable labs documented by each app. Labs are development/test environments,
+not required onboarding steps. Building does not start services, authenticate
+accounts, seed data, or delete lab state. Local QE modes support explicitly
+reviewed message operations; Azure mode remains read-only.
 
 `make check` checks formatting, vets and race-tests every module independently
 with `GOWORK=off`, and runs Service Bus and streams lab-script unit tests. `make test-terminal`
 builds and exercises all four real executables in offline PTYs. The root
 `go.work` is an editor/development convenience, not a substitute for module checks;
-root `go test ./...` is not the suite test command. App module identities and user
-configuration locations are unchanged.
+root `go test ./...` is not the suite test command.
 
 Generated binaries, environments and private `.lab` state are app-local and
 ignored. Source relocation does not move/adopt old lab state or rewrite ownership
@@ -190,12 +195,15 @@ acknowledgement here does not replace their notices or imply endorsement.
 
 ## Project license
 
-A license for this repository has not been selected yet. The third-party
-dependencies and external tools above remain subject to their own licenses.
+This project's original code is licensed under the [MIT License](LICENSE).
+You may copy, modify, and distribute it, including commercially, provided you
+retain the copyright and permission notice. It is provided without warranty.
+Third-party code, palette notices, dependencies, and external tools retain their
+own licenses and attribution requirements; the project license does not replace
+them.
 
 ## Design notes
 
-The approved shared-interaction design and incremental implementation state live
-in [docs/plans/shared-terminal-ui](docs/plans/shared-terminal-ui/00-status.md).
-The apps keep their distinct layouts and domain safety while shared components
-are introduced in verified slices.
+See the [maintainer documentation index](docs/README.md) for current architecture,
+safety contracts, historical verification, and remaining plans/acceptance work.
+The apps retain their distinct layouts and domain safety around shared components.

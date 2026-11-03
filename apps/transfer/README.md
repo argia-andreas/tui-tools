@@ -39,7 +39,7 @@ Use `--theme` to select a theme and `--config` to select the local configuration
 file. Theme choices are also available in the command palette.
 
 Presets: `midnight` (default), `catppuccin-mocha`, `tokyo-night`, `gruvbox-dark`,
-`dracula`. Midnight is an original lazyftp palette inspired by the project's
+`dracula`. Midnight is an original Transfer palette inspired by the project's
 dark-blue mockup, with mint selections and contrasting borders; it is not an
 editor-theme port. The four existing editor-inspired presets remain unchanged.
 Configuration uses semantic color roles, not executable editor theme files:
@@ -296,6 +296,9 @@ without connecting to a remote or changing fixture bytes.
 
 See [alpha packaging and limitations](docs/alpha.md) for local Linux/macOS
 cross-build archives. Cross-building is not native platform verification.
+
+Maintainers: see [architecture, rename safety, and historical verification](docs/architecture.md)
+for the consolidated connection/startup/rename contracts.
 
 ## Agent MCP access
 

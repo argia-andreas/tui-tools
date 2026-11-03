@@ -1,4 +1,4 @@
-# streams
+# Streams
 
 A small, read-only terminal workbench for Kafka-compatible event logs. Find a
 topic, inspect exact event bytes, seek by partition/offset or time, follow new

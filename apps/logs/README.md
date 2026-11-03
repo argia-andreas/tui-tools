@@ -1,12 +1,11 @@
-# Logs — fixture and local Elasticsearch workbench
+# Logs
 
-An independent keyboard-first terminal logs app in the LazyFTP/Service Bus visual
-family. Choose **offline fixtures** or an **authenticated TLS local Elasticsearch
-lab**. Neither mode connects to the unidentified company backend. `logs` is a
-neutral executable name.
+An independent keyboard-first terminal logs app. Real-service access currently
+supports only an **authenticated TLS local Elasticsearch lab**, not arbitrary
+production sources.
 
 The Actions/Inspect/Help buttons, command palette and contextual Help use the shared
-`terminalui` library alongside LazyFTP and Service Bus Explorer. Click Actions or press Ctrl+P; type to fuzzy-find,
+`terminalui` library alongside Transfer, QE, and Streams. Click Actions or press Ctrl+P; type to fuzzy-find,
 choose with arrows/Tab/Shift+Tab (clamped ends), and activate with Enter or a
 result click. Esc, Ctrl+P, the close button or an outside click closes the palette
 without also activating the workspace. Unavailable actions stay open with their

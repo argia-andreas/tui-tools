@@ -1,6 +1,6 @@
-# queue — Service Bus Explorer
+# QE
 
-An independent keyboard-first terminal workspace in the lazy suite.
+An independent keyboard-first terminal workspace for Azure Service Bus.
 **Three explicit modes:** deterministic offline fixtures, the independent local
 Service Bus emulator, or read-only Azure using an existing Azure CLI login.
 Named environments constrain discovery to saved, explicit namespaces; dashboard
@@ -26,10 +26,10 @@ Or inside this directory: `go run ./cmd/queue --fixture`. Select exactly one of
 `--fixture`, `--emulator`, or `--azure --tenant <tenant-id>`; the app never silently
 falls back to sample data or logs in for you.
 
-### Names retained for compatibility
+### Configuration and runtime identifiers
 
-The app directory is `apps/queue`, the executable is `bin/queue`, the UI brand
-is **QUEUE**, and the local lab helper is `go run ./cmd/queue-lab`.
+QE currently runs from `apps/queue` as `bin/queue`; the runtime UI header is
+**QUEUE**, and the local lab helper is `go run ./cmd/queue-lab`.
 The Go module/import path remains `servicebusexplorer`; the lab helper finds its
 root by that module declaration, not by the app directory's name.
 Preferences intentionally remain at
@@ -37,10 +37,8 @@ Preferences intentionally remain at
 and appearance load without migration. The fixed Docker Compose project and orb
 service remain `sbx-explorer-lab`, and generated credentials remain under
 `~/.local/share/sbx-explorer-lab/`. Existing `SBX_*` variables, credential format,
-owner markers and message ID prefixes are unchanged. These compatibility names
-are not alternate executable names. Historical plan links retain their old paths.
-The rename moves tracked source only: ignored binaries, virtual environments and
-private state in the old directory are not moved or deleted.
+owner markers and message ID prefixes are runtime identifiers, not alternate
+executable names. Do not rename private state or reset volumes to change branding.
 
 ## Saved environments and scoped discovery
 
@@ -371,6 +369,8 @@ These checks do not prove cloud authentication, accurate
 Azure runtime counts, binary-property broker preservation or native Mac/Windows
 execution. Unknown outcomes are exercised deterministically offline.
 
-Design, future lab commands and the known emulator count limitation are recorded
-in [the independent project plan](../../docs/plans/service-bus-explorer/00-status.md).
-No root build/setup or LazyFTP files are required or modified by these commands.
+See [architecture, replay safety, and historical verification](docs/architecture.md)
+for the consolidated inspector, environment/scoping, and UI integration guidance.
+The [application plan](../../docs/plans/service-bus-explorer/00-status.md) retains
+the separate portable-handoff backlog; it is not a current command reference.
+No root build/setup or Transfer files are required or modified by these commands.

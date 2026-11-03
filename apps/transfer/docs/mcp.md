@@ -1,6 +1,6 @@
-# Transfer MCP server
+# Transfer MCP server (`transfer-mcp`)
 
-This is the FTP project's own MCP server, **not** the Service Bus explorer.
+Transfer's MCP server uses rclone for storage operations.
 It exposes three tools over newline-delimited JSON-RPC on **stdio only**:
 
 | Tool | Required arguments | Result |
@@ -30,7 +30,7 @@ Example MCP client configuration (replace paths with your own absolute paths):
 ```json
 {
   "mcpServers": {
-    "transfer": {
+    "transfer-mcp": {
       "command": "/tmp/transfer-mcp",
       "args": [
         "--policy", "/home/operator/.config/lazyftp/mcp-policy.json",
