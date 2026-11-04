@@ -10,13 +10,15 @@ import (
 // session is shared across Bubble Tea's model copies. Polls never hold mu,
 // so Pause can cancel/close an in-flight poll without waiting for its deadline.
 type session struct {
-	mu       sync.Mutex
-	op       sync.Mutex
-	gen      uint64
-	reader   stream.Reader
-	cancel   context.CancelFunc
-	backends []stream.Backend
-	closed   bool
+	mu               sync.Mutex
+	op               sync.Mutex
+	gen              uint64
+	reader           stream.Reader
+	cancel           context.CancelFunc
+	current, pending stream.Backend
+	connectionGen    uint64
+	connectionCancel context.CancelFunc
+	closed           bool
 }
 
 func (s *session) invalidate() uint64 {
@@ -74,29 +76,68 @@ func (s *session) next(ctx context.Context, gen uint64) stream.Batch {
 	return r.Next(ctx)
 }
 
-func (s *session) add(b stream.Backend) bool {
+// beginConnection retires an unconsumed result, but keeps current usable until
+// a new connection has opened successfully and its message is accepted.
+func (s *session) beginConnection(gen uint64, cancel context.CancelFunc) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
+	previous, pending := s.connectionCancel, s.pending
+	s.connectionGen, s.connectionCancel, s.pending = gen, cancel, nil
+	closed := s.closed
+	s.mu.Unlock()
+	if previous != nil {
+		previous()
+	}
+	if pending != nil {
+		pending.Close()
+	}
+	if closed {
+		cancel()
+	}
+}
+
+// stageConnection transfers ownership before delivering the message: quit may
+// happen after OpenConnection returns but before Bubble Tea consumes its result.
+func (s *session) stageConnection(gen uint64, b stream.Backend) bool {
+	s.mu.Lock()
+	if s.closed || gen != s.connectionGen {
+		s.mu.Unlock()
 		b.Close()
 		return false
 	}
-	s.backends = append(s.backends, b)
+	s.pending = b
+	s.mu.Unlock()
 	return true
+}
+
+func (s *session) commitConnection(gen uint64) (stream.Backend, bool) {
+	s.mu.Lock()
+	if s.closed || gen != s.connectionGen || s.pending == nil {
+		s.mu.Unlock()
+		return nil, false
+	}
+	previous, current := s.current, s.pending
+	s.current, s.pending = current, nil
+	s.mu.Unlock()
+	previous.Close()
+	return current, true
 }
 
 func (s *session) close() {
 	s.mu.Lock()
 	s.closed = true
+	current, pending, cancel := s.current, s.pending, s.connectionCancel
+	s.current, s.pending, s.connectionCancel = nil, nil, nil
 	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 	s.invalidate()
 	s.op.Lock()
 	defer s.op.Unlock()
-	s.mu.Lock()
-	backends := s.backends
-	s.backends = nil
-	s.mu.Unlock()
-	for _, b := range backends {
-		b.Close()
+	if current != nil {
+		current.Close()
+	}
+	if pending != nil {
+		pending.Close()
 	}
 }

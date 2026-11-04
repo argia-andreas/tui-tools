@@ -48,7 +48,6 @@ type Model struct {
 	paletteOpen, help                                bool
 	helpOffset                                       int
 	editor                                           *editor
-	jobCancel                                        context.CancelFunc
 }
 type catalogMsg struct {
 	gen    uint64
@@ -73,17 +72,16 @@ type batchMsg struct {
 type tickMsg struct{ gen uint64 }
 type statusMsg string
 type connectionMsg struct {
-	gen     uint64
-	name    string
-	backend stream.Backend
-	err     error
+	gen  uint64
+	name string
+	err  error
 }
 
 func New(o Options) Model {
 	if o.Context == nil {
 		o.Context = context.Background()
 	}
-	s := &session{backends: []stream.Backend{o.Backend}}
+	s := &session{current: o.Backend}
 	m := Model{options: o, session: s, connectionGen: 1, view: "topics", focus: "list", settings: config.DefaultSettings(), status: "Loading topics…"}
 	if o.SettingsPath != "" {
 		var err error
@@ -95,9 +93,6 @@ func New(o Options) Model {
 	return m
 }
 func (m Model) Close() {
-	if m.jobCancel != nil {
-		m.jobCancel()
-	}
 	m.session.close()
 }
 func (m Model) Init() tea.Cmd           { return m.catalog("topics") }
@@ -166,9 +161,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case connectionMsg:
 		if v.gen != m.connectionGen {
-			if v.backend != nil {
-				v.backend.Close()
-			}
 			return m, nil
 		}
 		m.switching = false
@@ -179,7 +171,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = v.err.Error()
 			return m, nil
 		}
-		m.options.Backend, m.options.Connection = v.backend, v.name
+		backend, ok := m.session.commitConnection(v.gen)
+		if !ok {
+			return m, nil
+		}
+		m.options.Backend, m.options.Connection = backend, v.name
 		m.topics, m.groups, m.records = nil, nil, nil
 		m.group = stream.GroupObservation{}
 		m.cursor = stream.Cursor{}

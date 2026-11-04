@@ -1,0 +1,54 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline-tests:
+    name: Offline suite (race, vet, build, Streams PTY)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: .go-version
+          cache-dependency-path: |
+            apps/*/go.sum
+            lib/*/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # Do not run .agents/setup: it installs optional live-service labs.
+      # All default Go tests use local fixtures; broker/cloud tests are opt-in.
+      - name: Check formatting
+        run: make format-check
+      - name: Vet, race-test and build every module
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in apps/*/go.mod lib/*/go.mod; do
+            module="${file%/go.mod}"
+            go -C "$module" vet ./...
+            go -C "$module" test -race -timeout 3m ./...
+            go -C "$module" build ./...
+          done
+      - name: Test offline lab helpers
+        run: |
+          python3 -B -m unittest discover -s apps/queue/scripts -p lab_test.py
+          python3 -B -m unittest discover -s apps/streams/scripts -p lab_test.py
+      - name: Test real Streams binary with offline terminal fixtures
+        run: |
+          python3 -m pip install -r apps/streams/scripts/requirements.txt
+          timeout 180s make -C apps/streams test-terminal PYTHON=python3

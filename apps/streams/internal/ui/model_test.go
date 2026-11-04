@@ -4,7 +4,9 @@ import (
 	"context"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -287,5 +289,223 @@ func TestPauseRejectsLateOpen(t *testing.T) {
 	<-b.closed
 	if strings.Contains(text(m), "18 loaded") || !strings.Contains(text(m), "PAUSED") {
 		t.Fatal("late Open changed paused view", text(m))
+	}
+}
+
+type trackedBackend struct {
+	stream.Backend
+	closed atomic.Int32
+}
+
+func tracked() *trackedBackend { return &trackedBackend{Backend: fixture.New()} }
+func (b *trackedBackend) Close() {
+	b.closed.Add(1)
+	b.Backend.Close()
+}
+func (b *trackedBackend) Topics(ctx context.Context) ([]stream.Topic, error) {
+	if b.closed.Load() != 0 {
+		return nil, stream.ErrClosed
+	}
+	return b.Backend.Topics(ctx)
+}
+func (b *trackedBackend) Open(ctx context.Context, q stream.ReadRequest) (stream.Reader, error) {
+	if b.closed.Load() != 0 {
+		return nil, stream.ErrClosed
+	}
+	return b.Backend.Open(ctx, q)
+}
+func switchConnection(t *testing.T, m ui.Model, name string) (ui.Model, tea.Cmd) {
+	t.Helper()
+	m, _ = send(m, tea.KeyMsg{Type: tea.KeyCtrlP})
+	m, _ = key(m, "Switch connection")
+	m, _ = key(m, "enter")
+	m, _ = key(m, "ctrl+u")
+	m, _ = key(m, name)
+	m, cmd := key(m, "enter")
+	if cmd == nil {
+		t.Fatal("switch command missing", text(m))
+	}
+	return m, cmd
+}
+func connectionModel(b stream.Backend, open func(context.Context, string) (stream.Backend, error)) ui.Model {
+	m := ui.New(ui.Options{Backend: b, Connection: "first", Connections: []string{"first", "second"}, OpenConnection: open})
+	m, _ = send(m, tea.WindowSizeMsg{Width: 160, Height: 40})
+	m, _ = send(m, m.Init()())
+	return m
+}
+
+func TestConnectionReplacementLifetime(t *testing.T) {
+	current := tracked()
+	var opened []*trackedBackend
+	m := connectionModel(current, func(context.Context, string) (stream.Backend, error) {
+		b := tracked()
+		opened = append(opened, b)
+		return b, nil
+	})
+	original := m // Bubble Tea's original model must still own final cleanup.
+	defer original.Close()
+	var previous tea.Msg
+	for i := 0; i < 20; i++ {
+		var cmd tea.Cmd
+		m, cmd = switchConnection(t, m, "second")
+		result := cmd()
+		if current.closed.Load() != 0 {
+			t.Fatal("current closed before result accepted")
+		}
+		m, cmd = send(m, result)
+		if current.closed.Load() != 1 {
+			t.Fatal("replaced backend was not closed exactly once")
+		}
+		current = opened[i]
+		m, _ = send(m, cmd())
+		if previous != nil {
+			m, _ = send(m, previous)
+		}
+		previous = result
+		if current.closed.Load() != 0 || !strings.Contains(text(m), "orders.created") {
+			t.Fatal("replacement unusable", text(m))
+		}
+	}
+	original.Close()
+	m.Close()
+	for _, b := range opened {
+		if b.closed.Load() != 1 {
+			t.Fatal("backend cleanup was not exactly once")
+		}
+	}
+}
+
+func TestFailedConnectionRetainsUsableBackend(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		t.Run(map[bool]string{false: "no backend", true: "partial backend"}[partial], func(t *testing.T) {
+			old, failed := tracked(), tracked()
+			m := connectionModel(old, func(context.Context, string) (stream.Backend, error) {
+				if partial {
+					return failed, stream.ErrAuthentication
+				}
+				return nil, stream.ErrAuthentication
+			})
+			defer m.Close()
+			m, cmd := switchConnection(t, m, "second")
+			m, _ = send(m, cmd())
+			if old.closed.Load() != 0 || !strings.Contains(text(m), "authentication failed") {
+				t.Fatal("failed switch lost original connection", text(m))
+			}
+			if partial && failed.closed.Load() != 1 {
+				t.Fatal("partially opened backend leaked")
+			}
+			m, cmd = key(m, "r")
+			m, _ = send(m, cmd())
+			m, cmd = key(m, "enter")
+			m, _ = send(m, cmd())
+			if !strings.Contains(text(m), "18 loaded") {
+				t.Fatal("original connection cannot refresh and read", text(m))
+			}
+		})
+	}
+}
+
+func TestConnectionQuitDisposesUnconsumedAndLateResults(t *testing.T) {
+	for _, late := range []bool{false, true} {
+		t.Run(map[bool]string{false: "pending message", true: "late open"}[late], func(t *testing.T) {
+			old, next := tracked(), tracked()
+			started, release := make(chan struct{}), make(chan struct{})
+			var openContext context.Context
+			m := connectionModel(old, func(ctx context.Context, _ string) (stream.Backend, error) {
+				openContext = ctx
+				close(started)
+				<-release // Deliberately ignore cancellation, as a late factory can.
+				return next, nil
+			})
+			defer m.Close()
+			original := m
+			m, cmd := switchConnection(t, m, "second")
+			result := make(chan tea.Msg, 1)
+			go func() { result <- cmd() }()
+			<-started
+			var msg tea.Msg
+			if !late {
+				close(release)
+				msg = <-result
+			}
+			original.Close()
+			if openContext.Err() != context.Canceled {
+				t.Fatal("quit through original model did not cancel switch")
+			}
+			if late {
+				close(release)
+				msg = <-result
+			}
+			m, catalog := send(m, msg)
+			if catalog != nil || old.closed.Load() != 1 || next.closed.Load() != 1 {
+				t.Fatal("quit leaked or reinstalled a backend")
+			}
+		})
+	}
+}
+
+// A catalog waits for backend shutdown while a read waits for its context.
+// Switching must release both without letting their late results alter the UI.
+type cancellingBackend struct {
+	*trackedBackend
+	catalogStarted, readStarted, done chan struct{}
+	catalogCalls                      atomic.Int32
+}
+
+func (b *cancellingBackend) Topics(ctx context.Context) ([]stream.Topic, error) {
+	if b.catalogCalls.Add(1) == 1 {
+		return b.trackedBackend.Topics(ctx)
+	}
+	close(b.catalogStarted)
+	<-b.done
+	return []stream.Topic{{Ref: stream.TopicRef{Name: "obsolete"}}}, nil
+}
+func (b *cancellingBackend) Open(ctx context.Context, _ stream.ReadRequest) (stream.Reader, error) {
+	close(b.readStarted)
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+func (b *cancellingBackend) Close() { b.trackedBackend.Close(); close(b.done) }
+
+func TestConnectionCleanupCancelsConcurrentCatalogAndRead(t *testing.T) {
+	for _, action := range []string{"switch", "quit"} {
+		t.Run(action, func(t *testing.T) {
+			old := &cancellingBackend{trackedBackend: tracked(), catalogStarted: make(chan struct{}), readStarted: make(chan struct{}), done: make(chan struct{})}
+			next := tracked()
+			// Bootstrap with normal metadata, then hold concurrent refresh/read work.
+			m := connectionModel(old, func(context.Context, string) (stream.Backend, error) { return next, nil })
+			defer m.Close()
+			m, catalog := key(m, "r")
+			results := make(chan tea.Msg, 2)
+			go func() { results <- catalog() }()
+			<-old.catalogStarted
+			m, read := key(m, "enter")
+			go func() { results <- read() }()
+			<-old.readStarted
+			if action == "quit" {
+				m.Close()
+			} else {
+				var connect tea.Cmd
+				m, connect = switchConnection(t, m, "second")
+				m, catalog = send(m, connect())
+				m, _ = send(m, catalog())
+			}
+			for i := 0; i < 2; i++ {
+				select {
+				case result := <-results:
+					if action == "switch" {
+						m, _ = send(m, result)
+					}
+				case <-time.After(2 * time.Second):
+					t.Fatal("cleanup did not cancel outstanding operation")
+				}
+			}
+			if old.closed.Load() != 1 || next.closed.Load() != 0 || strings.Contains(text(m), "obsolete") {
+				t.Fatal("cleanup leaked backend or late operation replaced state", text(m))
+			}
+			if action == "switch" && !strings.Contains(text(m), "3 topics") {
+				t.Fatal("late operation replaced new catalog", text(m))
+			}
+		})
 	}
 }

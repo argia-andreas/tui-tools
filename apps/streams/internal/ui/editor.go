@@ -110,24 +110,23 @@ func (m Model) applyEditor() (tea.Model, tea.Cmd) {
 		m.cursor = stream.Cursor{}
 		m.loading = true
 		ctx, cancel := context.WithCancel(m.options.Context)
-		if m.jobCancel != nil {
-			m.jobCancel()
-		}
-		m.jobCancel = cancel
 		gen, open, s := m.connectionGen, m.options.OpenConnection, m.session
+		s.beginConnection(gen, cancel)
 		return m, func() tea.Msg {
 			b, err := open(ctx, name)
 			if ctx.Err() != nil {
+				err = ctx.Err()
+			}
+			if err != nil {
 				if b != nil {
 					b.Close()
 				}
-				return connectionMsg{gen: gen, name: name, err: ctx.Err()}
+				return connectionMsg{gen: gen, name: name, err: err}
 			}
-			if b != nil && !s.add(b) {
-				b = nil
+			if b == nil || !s.stageConnection(gen, b) {
 				err = stream.ErrClosed
 			}
-			return connectionMsg{gen: gen, name: name, backend: b, err: err}
+			return connectionMsg{gen: gen, name: name, err: err}
 		}
 	case "seek":
 		t := m.request.Topic
